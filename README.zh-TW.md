@@ -1,4 +1,4 @@
-# claude-prism v0.4.0
+# claude-prism v0.5.0
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Bash](https://img.shields.io/badge/Bash-4.0+-4EAA25.svg)](https://www.gnu.org/software/bash/)
@@ -113,6 +113,9 @@ flowchart LR
     User["👤 使用者"] <--> Claude["🟣 Claude Code\n(調度者)"]
     Claude -->|"/ask-codex\n/code-review\n/multi-review"| Codex["🟢 Codex CLI"]
     Claude -->|"/ask-gemini\n/ui-design\n/ui-review\n/research\n/multi-review"| Gemini["🔵 Gemini CLI"]
+    CI["⚙️ GitHub Actions"] -->|"ci-review.sh"| GeminiAPI["🔵 Gemini API"]
+    CI -->|"ci-review.sh"| OpenAIAPI["🟢 OpenAI API"]
+    CI -->|"synthesis"| ClaudeAPI["🟣 Claude API"]
 ```
 
 ### 運作原理
@@ -136,6 +139,7 @@ flowchart LR
 | Claude Code | 調度者 | 讀取 command，分派至外部 CLI |
 | Codex CLI | OpenAI 存取 | Code review 與 Q&A（模型可設定） |
 | Gemini CLI | Google 存取 | 研究、UI 審查、Q&A（模型可設定） |
+| GitHub Actions | CI/CD 整合 | 自動化 PR review，透過 REST API |
 
 ---
 
@@ -180,6 +184,8 @@ cd claude-prism
 
 ```
 claude-prism/
+├── .github/workflows/
+│   └── ai-review.yml           # GitHub Actions CI review workflow
 ├── commands/                   # Slash command 定義（Markdown）
 │   ├── ask-codex.md
 │   ├── ask-gemini.md
@@ -191,6 +197,7 @@ claude-prism/
 ├── scripts/                    # CLI 包裝腳本與工具（Bash）
 │   ├── call-codex.sh           # Codex CLI 包裝
 │   ├── call-gemini.sh          # Gemini CLI 包裝
+│   ├── ci-review.sh            # CI/CD review 調度器（curl API）
 │   ├── usage-summary.sh        # API 使用量統計
 │   └── review-insights.sh      # Review 趨勢分析
 ├── tests/
@@ -316,6 +323,61 @@ export CODEX_MODEL="gpt-5.3-codex"
 
 ---
 
+## CI/CD 整合
+
+透過 GitHub Actions 自動化多方 provider PR review。CI 路徑直接使用 REST API（不需在 runner 上安裝 CLI）。
+
+### 快速設定
+
+1. 複製 workflow 檔案到你的專案：
+
+```bash
+mkdir -p .github/workflows
+cp path/to/claude-prism/.github/workflows/ai-review.yml .github/workflows/
+cp path/to/claude-prism/scripts/ci-review.sh scripts/
+```
+
+2. 在 GitHub Secrets 設定 API key（至少一個）：
+
+| Secret | Provider | 必要？ |
+|--------|----------|--------|
+| `GEMINI_API_KEY` | Gemini review | 選配 |
+| `OPENAI_API_KEY` | OpenAI review | 選配 |
+| `ANTHROPIC_API_KEY` | Claude 綜合分析 | 選配 |
+
+3. 在 PR 加上 `ai-review` label 即可觸發 review。
+
+### 觸發模式
+
+**Label 觸發（預設）：** 在 PR 加上 `ai-review` label → workflow 執行。適合控制成本。
+
+**自動觸發：** 取消 workflow 檔案中 `pull_request: [opened, synchronize]` 區塊的註解 → 每次 PR 更新自動執行。
+
+### CI 運作原理
+
+1. GitHub Actions checkout PR 並取得 diff
+2. `ci-review.sh` 並行送 diff 給可用 provider（Gemini API、OpenAI API）
+3. 若有設定 `ANTHROPIC_API_KEY`，Claude 綜合分析結果（共識/分歧/補充）
+4. 若無，直接串接各方結果
+5. 結果以 PR comment 形式呈現
+
+### CI 環境變數
+
+| 變數 | 預設值 | 說明 |
+|------|--------|------|
+| `GEMINI_MODEL` | `gemini-2.0-flash` | CI review 用的 Gemini 模型 |
+| `OPENAI_MODEL` | `gpt-4o` | CI review 用的 OpenAI 模型 |
+| `ANTHROPIC_MODEL` | `claude-sonnet-4-20250514` | 綜合分析用的 Claude 模型 |
+| `MAX_DIFF_CHARS` | `32000` | Diff 截斷上限 |
+
+### 安全注意事項
+
+- **Fork PR**：Workflow 使用 `pull_request`（不是 `pull_request_target`），fork PR 無法存取你的 secrets。這是設計如此——fork PR 會被跳過。
+- **API key**：使用 GitHub repository secrets，切勿將 API key commit 到 repo。
+- **Concurrency**：同一 PR 同時只跑一個 review；新 push 會取消進行中的 review。
+
+---
+
 **輸出語言：**
 
 Command 的 prompt 預設英文。要改成繁體中文輸出：
@@ -351,7 +413,29 @@ Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 emoji/score 格式
 
 ---
 
+## 隨想
+
+在 AI Coding 的時代，大部分開發者都會使用御三家（Claude、Codex、Gemini）的 CLI。我自己訂閱了 Claude Code 之後，就一直在想：既然已經有一個強大的 orchestrator 在手上，為什麼不能同時調度其他家的 CLI 來協助我完成更多事情？不管是 Code Review、技術研究，還是 UI/UX 設計，讓不同 AI 各自從不同角度切入，結果一定比單一來源更全面。
+
+但我找了一圈，發現網路上現有的工具用起來都不太順手，不是太重、就是跟 Claude Code 的工作流整合得不好。所以我決定自己做一個。
+
+本來只打算寫幾個簡單的 wrapper script，解決日常 review 的需求就好。沒想到做著做著，越來越多可能性冒出來：三方對抗式審查、review 趨勢分析、CI/CD 自動化⋯⋯這些方向都不在原本的計畫裡，但每一個都讓我覺得「欸，這好像真的有用」。
+
+所以就變成了現在這個樣子。希望這個工具也能幫到你。
+
+---
+
 ## 更新紀錄
+
+### v0.5.0 (2026-02-24)
+
+**CI/CD 整合** — 透過 GitHub Actions 自動化多方 provider PR review：
+
+- **`ci-review.sh`** — CI/CD review 調度器，並行呼叫 Gemini API + OpenAI API，可選 Claude 綜合分析。直接使用 REST API（不需安裝 CLI）
+- **GitHub Actions workflow**（`ai-review.yml`）— label 觸發或自動觸發的 PR review，含 concurrency 控制
+- **CI 環境的 graceful degradation** — 任意 API key 組合皆可運作（1-3 個 provider）
+- **大 diff 處理** — 自動截斷至 32K 字元（可透過 `MAX_DIFF_CHARS` 設定）
+- Smoke test 擴充至 24 項測試（原 20 項）
 
 ### v0.4.0 (2026-02-24)
 

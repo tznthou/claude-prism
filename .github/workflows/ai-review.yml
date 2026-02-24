@@ -1,0 +1,66 @@
+# AI Code Review — Multi-provider review powered by claude-prism
+#
+# Trigger modes (choose one):
+#   1. Label trigger (default) — add "ai-review" label to a PR
+#   2. Auto trigger — uncomment the pull_request block below
+#
+# Required secrets: at least one of GEMINI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY
+# Optional secrets: all three for full multi-provider synthesis
+
+name: AI Code Review
+
+# --- Label trigger (default) ---
+on:
+  pull_request:
+    types: [labeled]
+
+# --- Auto trigger (uncomment to replace label trigger) ---
+# on:
+#   pull_request:
+#     types: [opened, synchronize]
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    # For label trigger: only run when "ai-review" label is added
+    # For auto trigger: remove this if condition
+    if: github.event.label.name == 'ai-review'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR diff
+        id: diff
+        run: |
+          gh pr diff ${{ github.event.pull_request.number }} > /tmp/pr.diff
+          echo "lines=$(wc -l < /tmp/pr.diff | tr -d ' ')" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run AI review
+        if: steps.diff.outputs.lines != '0'
+        run: |
+          chmod +x scripts/ci-review.sh
+          scripts/ci-review.sh \
+            --diff /tmp/pr.diff \
+            --pr ${{ github.event.pull_request.number }}
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Skip empty diff
+        if: steps.diff.outputs.lines == '0'
+        run: echo "No changes to review."

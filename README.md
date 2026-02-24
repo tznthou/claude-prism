@@ -1,4 +1,4 @@
-# claude-prism v0.4.0
+# claude-prism v0.5.0
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Bash](https://img.shields.io/badge/Bash-4.0+-4EAA25.svg)](https://www.gnu.org/software/bash/)
@@ -113,6 +113,9 @@ flowchart LR
     User["👤 You"] <--> Claude["🟣 Claude Code\n(Orchestrator)"]
     Claude -->|"/ask-codex\n/code-review\n/multi-review"| Codex["🟢 Codex CLI"]
     Claude -->|"/ask-gemini\n/ui-design\n/ui-review\n/research\n/multi-review"| Gemini["🔵 Gemini CLI"]
+    CI["⚙️ GitHub Actions"] -->|"ci-review.sh"| GeminiAPI["🔵 Gemini API"]
+    CI -->|"ci-review.sh"| OpenAIAPI["🟢 OpenAI API"]
+    CI -->|"synthesis"| ClaudeAPI["🟣 Claude API"]
 ```
 
 ### How It Works
@@ -136,6 +139,7 @@ flowchart LR
 | Claude Code | Orchestrator | Reads commands, dispatches to external CLIs |
 | Codex CLI | OpenAI access | Code review and Q&A (model configurable) |
 | Gemini CLI | Google access | Research, UI review, Q&A (model configurable) |
+| GitHub Actions | CI/CD integration | Automated PR review via REST APIs |
 
 ---
 
@@ -180,6 +184,8 @@ The installer:
 
 ```
 claude-prism/
+├── .github/workflows/
+│   └── ai-review.yml           # GitHub Actions workflow for CI review
 ├── commands/                   # Slash command definitions (Markdown)
 │   ├── ask-codex.md
 │   ├── ask-gemini.md
@@ -191,6 +197,7 @@ claude-prism/
 ├── scripts/                    # CLI wrappers & utilities (Bash)
 │   ├── call-codex.sh           # Codex CLI wrapper
 │   ├── call-gemini.sh          # Gemini CLI wrapper
+│   ├── ci-review.sh            # CI/CD review orchestrator (curl APIs)
 │   ├── usage-summary.sh        # API usage statistics
 │   └── review-insights.sh      # Review pattern analysis
 ├── tests/
@@ -316,6 +323,61 @@ Each review record follows this schema:
 
 ---
 
+## CI/CD Integration
+
+Automate multi-provider reviews on every PR via GitHub Actions. The CI path uses REST APIs directly (no CLI installation needed on runners).
+
+### Quick Setup
+
+1. Copy the workflow file to your project:
+
+```bash
+mkdir -p .github/workflows
+cp path/to/claude-prism/.github/workflows/ai-review.yml .github/workflows/
+cp path/to/claude-prism/scripts/ci-review.sh scripts/
+```
+
+2. Add API keys as GitHub Secrets (at least one required):
+
+| Secret | Provider | Required? |
+|--------|----------|-----------|
+| `GEMINI_API_KEY` | Gemini review | Optional |
+| `OPENAI_API_KEY` | OpenAI review | Optional |
+| `ANTHROPIC_API_KEY` | Claude synthesis | Optional |
+
+3. Add the `ai-review` label to a PR to trigger the review.
+
+### Trigger Modes
+
+**Label trigger (default):** Add `ai-review` label to a PR → workflow runs. Best for cost control.
+
+**Auto trigger:** Uncomment the `pull_request: [opened, synchronize]` block in the workflow file → runs on every PR update.
+
+### How It Works (CI)
+
+1. GitHub Actions checks out the PR and fetches the diff
+2. `ci-review.sh` sends the diff to available providers (Gemini API, OpenAI API) in parallel
+3. If `ANTHROPIC_API_KEY` is set, Claude synthesizes the results (consensus/divergence/supplements)
+4. If not, results are concatenated directly
+5. Output is posted as a PR comment
+
+### CI Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GEMINI_MODEL` | `gemini-2.0-flash` | Gemini model for CI review |
+| `OPENAI_MODEL` | `gpt-4o` | OpenAI model for CI review |
+| `ANTHROPIC_MODEL` | `claude-sonnet-4-20250514` | Claude model for synthesis |
+| `MAX_DIFF_CHARS` | `32000` | Diff truncation limit |
+
+### Security Notes
+
+- **Fork PRs**: The workflow uses `pull_request` (not `pull_request_target`), so fork PRs cannot access your secrets. This is intentional — fork PRs are skipped.
+- **API keys**: Use GitHub repository secrets. Never commit API keys to the repo.
+- **Concurrency**: Only one review runs per PR at a time; new pushes cancel in-progress reviews.
+
+---
+
 **Changing the output language:**
 
 The command prompts default to English. To get responses in Traditional Chinese:
@@ -351,7 +413,29 @@ Yes. The commands and scripts are standalone — they only depend on `~/.claude/
 
 ---
 
+## Reflections
+
+In the age of AI-assisted coding, most developers have access to the "big three" CLIs: Claude, Codex, and Gemini. After subscribing to Claude Code, I kept thinking: since I already have a powerful orchestrator at hand, why not leverage other providers' CLIs at the same time? Whether it's code review, technical research, or UI/UX design, having different AIs approach the same problem from different angles yields more comprehensive results than any single source.
+
+I looked around, but the existing tools I found were either too heavy or didn't integrate well with Claude Code's workflow. So I decided to build my own.
+
+It started as a few simple wrapper scripts to handle everyday review tasks. But as I kept building, more possibilities emerged: triple-provider adversarial review, review trend analysis, CI/CD automation... None of these were in the original plan, yet each one felt genuinely useful.
+
+So here we are. I hope this tool helps you too.
+
+---
+
 ## Changelog
+
+### v0.5.0 (2026-02-24)
+
+**CI/CD Integration** — automated multi-provider PR review via GitHub Actions:
+
+- **`ci-review.sh`** — CI/CD review orchestrator that calls Gemini API + OpenAI API in parallel, with optional Claude synthesis. Uses REST APIs directly (no CLI installation needed)
+- **GitHub Actions workflow** (`ai-review.yml`) — label-triggered or auto-triggered PR review with concurrency control
+- **Graceful degradation in CI** — works with any combination of API keys (1-3 providers)
+- **Large diff handling** — auto-truncation at 32K chars (configurable via `MAX_DIFF_CHARS`)
+- Smoke test expanded to 24 tests (from 20)
 
 ### v0.4.0 (2026-02-24)
 
