@@ -3,7 +3,7 @@
 # Usage:
 #   call-gemini.sh "your prompt"
 #   echo "code" | call-gemini.sh "review this"
-#   call-gemini.sh -m gemini-3-flash-preview "your prompt"
+#   call-gemini.sh -m model-name "your prompt"
 #   call-gemini.sh --dry-run "your prompt"   # test without calling API
 
 set -euo pipefail

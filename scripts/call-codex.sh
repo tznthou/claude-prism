@@ -3,7 +3,7 @@
 # Usage:
 #   call-codex.sh "your prompt"
 #   echo "code" | call-codex.sh "review this"
-#   call-codex.sh -m gpt-5.2-codex "your prompt"
+#   call-codex.sh -m model-name "your prompt"
 #   call-codex.sh --dry-run "your prompt"   # test without calling API
 
 set -euo pipefail
