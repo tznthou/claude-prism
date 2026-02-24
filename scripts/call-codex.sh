@@ -24,8 +24,12 @@ _log() {
 # --- Parse flags ---
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -m|--model)   MODEL="$2"; shift 2 ;;
-        --sandbox)    SANDBOX="$2"; shift 2 ;;
+        -m|--model)
+            [[ $# -ge 2 ]] || { echo "Error: -m requires a model name" >&2; exit 1; }
+            MODEL="$2"; shift 2 ;;
+        --sandbox)
+            [[ $# -ge 2 ]] || { echo "Error: --sandbox requires a mode" >&2; exit 1; }
+            SANDBOX="$2"; shift 2 ;;
         --dry-run)    DRY_RUN=true; shift ;;
         *) break ;;
     esac
@@ -89,20 +93,15 @@ CMD=("$CODEX_BIN" exec --sandbox "$SANDBOX")
 [[ -n "$MODEL" ]] && CMD+=(--model "$MODEL")
 
 if [[ ${#PROMPT} -gt 4000 ]]; then
-    RESULT=$(printf '%s' "$PROMPT" | "${CMD[@]}" - 2>&1) || {
-        rc=$?
-        _log ERROR "codex call failed (exit $rc): ${RESULT:0:200}"
-        echo "$RESULT" >&2
-        exit $rc
-    }
+    RESULT=$(printf '%s' "$PROMPT" | "${CMD[@]}" - 2>&1)
 else
-    RESULT=$("${CMD[@]}" "$PROMPT" 2>&1) || {
-        rc=$?
-        _log ERROR "codex call failed (exit $rc): ${RESULT:0:200}"
-        echo "$RESULT" >&2
-        exit $rc
-    }
-fi
+    RESULT=$("${CMD[@]}" "$PROMPT" 2>&1)
+fi || {
+    rc=$?
+    _log ERROR "codex call failed (exit $rc)"
+    echo "$RESULT" >&2
+    exit $rc
+}
 
 _log INFO "success response_len=${#RESULT}"
 echo "$RESULT"

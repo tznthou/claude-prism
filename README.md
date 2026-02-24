@@ -1,4 +1,4 @@
-# claude-prism v0.2.0
+# claude-prism v0.2.1
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Bash](https://img.shields.io/badge/Bash-4.0+-4EAA25.svg)](https://www.gnu.org/software/bash/)
@@ -272,6 +272,25 @@ Each command makes one API call to the external provider. Costs depend on your G
 **Q: Can I use this with other Claude Code setups?**
 
 Yes. The commands and scripts are standalone — they only depend on `~/.claude/` directory conventions that Claude Code uses.
+
+---
+
+## Changelog
+
+### v0.2.1 (2026-02-24)
+
+**Script hardening** — fixes identified via `/multi-review` (Codex + Gemini + Claude triple-provider review):
+
+- **`-m` flag guard**: `-m` without a value now shows a clear error instead of crashing with "unbound variable" (`set -u`)
+- **Deduplicate execution logic**: merged identical error handling from the if/else branches into a single `|| { ... }` block
+- **Sanitize error logs**: error log entries no longer include response content (which could contain source code or tokens); only exit code is logged
+
+### v0.2.0 (2026-02-24)
+
+- Initial public release
+- 6 slash commands: `/ask-codex`, `/ask-gemini`, `/code-review`, `/ui-review`, `/research`, `/multi-review`
+- Model defaults deferred to CLI built-in (no hardcoded versions)
+- Dry-run exits before binary check (works without CLI installed)
 
 ---
 
