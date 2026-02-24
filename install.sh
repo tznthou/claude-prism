@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh — Install claude-code-multi-ai commands and scripts
+# install.sh — Install claude-prism commands and scripts
 # Usage: ./install.sh [--check-only]
 
 set -euo pipefail
@@ -26,7 +26,7 @@ info() { echo -e "  ${CYAN}→${NC} $*"; }
 
 echo ""
 echo "╔══════════════════════════════════════════╗"
-echo "║   claude-code-multi-ai installer         ║"
+echo "║   claude-prism installer                 ║"
 echo "╚══════════════════════════════════════════╝"
 echo ""
 

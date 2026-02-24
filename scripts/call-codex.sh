@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# call-codex.sh — Codex CLI wrapper for Claude Code multi-AI workflow
+# call-codex.sh — Codex CLI wrapper for claude-prism
 # Usage:
 #   call-codex.sh "your prompt"
 #   echo "code" | call-codex.sh "review this"
@@ -84,17 +84,20 @@ if [[ "$DRY_RUN" == true ]]; then
 fi
 
 # --- Execute ---
+# Long prompts go via stdin to avoid ARG_MAX limits.
 if [[ ${#PROMPT} -gt 4000 ]]; then
-    RESULT=$(echo "$PROMPT" | "$CODEX_BIN" exec --model "$MODEL" --sandbox "$SANDBOX" - 2>&1) || {
-        _log ERROR "codex call failed (exit $?): ${RESULT:0:200}"
+    RESULT=$(printf '%s' "$PROMPT" | "$CODEX_BIN" exec --model "$MODEL" --sandbox "$SANDBOX" - 2>&1) || {
+        rc=$?
+        _log ERROR "codex call failed (exit $rc): ${RESULT:0:200}"
         echo "$RESULT" >&2
-        exit 1
+        exit $rc
     }
 else
     RESULT=$("$CODEX_BIN" exec --model "$MODEL" --sandbox "$SANDBOX" "$PROMPT" 2>&1) || {
-        _log ERROR "codex call failed (exit $?): ${RESULT:0:200}"
+        rc=$?
+        _log ERROR "codex call failed (exit $rc): ${RESULT:0:200}"
         echo "$RESULT" >&2
-        exit 1
+        exit $rc
     }
 fi
 

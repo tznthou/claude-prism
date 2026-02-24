@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# call-gemini.sh — Gemini CLI wrapper for Claude Code multi-AI workflow
+# call-gemini.sh — Gemini CLI wrapper for claude-prism
 # Usage:
 #   call-gemini.sh "your prompt"
 #   echo "code" | call-gemini.sh "review this"
@@ -75,17 +75,21 @@ if [[ "$DRY_RUN" == true ]]; then
 fi
 
 # --- Execute ---
+# Long prompts go via stdin to avoid ARG_MAX limits.
+# -p " " activates headless mode; Gemini appends it to stdin (harmless).
 if [[ ${#PROMPT} -gt 4000 ]]; then
-    RESULT=$(echo "$PROMPT" | "$GEMINI_BIN" -p "" -m "$MODEL" 2>&1) || {
-        _log ERROR "gemini call failed (exit $?): ${RESULT:0:200}"
+    RESULT=$(printf '%s' "$PROMPT" | "$GEMINI_BIN" -p " " -m "$MODEL" 2>&1) || {
+        rc=$?
+        _log ERROR "gemini call failed (exit $rc): ${RESULT:0:200}"
         echo "$RESULT" >&2
-        exit 1
+        exit $rc
     }
 else
     RESULT=$("$GEMINI_BIN" -p "$PROMPT" -m "$MODEL" 2>&1) || {
-        _log ERROR "gemini call failed (exit $?): ${RESULT:0:200}"
+        rc=$?
+        _log ERROR "gemini call failed (exit $rc): ${RESULT:0:200}"
         echo "$RESULT" >&2
-        exit 1
+        exit $rc
     }
 fi
 

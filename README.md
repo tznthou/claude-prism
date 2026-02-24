@@ -1,62 +1,37 @@
-# claude-code-multi-ai
+# claude-prism
 
-> Cross-provider AI orchestration for Claude Code — eliminate same-source blind spots
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Bash](https://img.shields.io/badge/Bash-4.0+-4EAA25.svg)](https://www.gnu.org/software/bash/)
+[![Claude Code](https://img.shields.io/badge/Claude_Code-Plugin-7C3AED.svg)](https://claude.com/claude-code)
 
-[繁體中文版 README](README.zh-TW.md)
+[繁體中文](README.zh-TW.md)
 
-## The Problem
+Cross-provider AI orchestration for Claude Code — eliminate same-source blind spots.
+
+---
+
+## Core Concept
+
+### The Problem
 
 When Claude Code writes your code **and** reviews it, you get same-source blind spots. It's like grading your own exam — certain classes of bugs, design flaws, and security issues consistently slip through because the same model has the same knowledge gaps.
 
-## The Solution
+### The Solution
 
 Use Claude Code as the **orchestrator**, but dispatch review and research tasks to **Gemini** and **Codex** via their CLIs. Three different AI providers, three different training datasets, three different perspectives.
 
-```
-You ↔ Claude Code ─── /ask-codex ──────→ Codex CLI (GPT-5.3)
-                  ├── /ask-gemini ─────→ Gemini CLI (3 Pro)
-                  ├── /code-review ────→ Codex reviews what Claude wrote
-                  ├── /ui-review ──────→ Gemini audits UI/UX
-                  ├── /research ───────→ Gemini researches alternatives
-                  └── /multi-review ───→ Both + Claude synthesizes
-```
-
-## Quick Start
-
-### Prerequisites
-
-| Tool | Required | Install |
-|------|----------|---------|
-| [Claude Code](https://claude.com/claude-code) | Yes | `npm install -g @anthropic-ai/claude-code` |
-| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | For Gemini commands | `npm install -g @google/gemini-cli` |
-| [Codex CLI](https://github.com/openai/codex) | For Codex commands | `npm install -g @openai/codex` |
-
-### Install
-
-```bash
-git clone https://github.com/user/claude-code-multi-ai.git
-cd claude-code-multi-ai
-./install.sh
-```
-
-The installer:
-- Checks for prerequisites and reports what's available
-- Backs up any existing files before overwriting
-- Copies commands to `~/.claude/commands/` and scripts to `~/.claude/scripts/`
-
-### Verify
-
-```bash
-./tests/smoke-test.sh
-```
-
-### Uninstall
-
-```bash
-./uninstall.sh
-```
+---
 
 ## Commands
+
+| Command | Provider | Description |
+|---------|----------|-------------|
+| `/ask-codex` | Codex (GPT-5.3) | Direct Q&A — get OpenAI's perspective |
+| `/ask-gemini` | Gemini (3 Pro) | Direct Q&A — get Google's perspective |
+| `/code-review` | Codex | Cross-provider code review |
+| `/ui-review` | Gemini | UI/UX accessibility & design audit |
+| `/research` | Gemini | Structured technical research |
+| `/multi-review` | Codex + Gemini + Claude | Triple-provider adversarial review |
 
 ### `/ask-codex` — Ask OpenAI
 
@@ -117,22 +92,15 @@ The flagship command. Sends the same code to **both** Codex and Gemini in parall
 /multi-review --pr              # review entire PR
 ```
 
+---
+
 ## Architecture
 
-```
-~/.claude/
-├── commands/                   # Slash command definitions (Markdown)
-│   ├── ask-codex.md
-│   ├── ask-gemini.md
-│   ├── code-review.md
-│   ├── multi-review.md
-│   ├── research.md
-│   └── ui-review.md
-├── scripts/                    # CLI wrappers (Bash)
-│   ├── call-codex.sh           # Codex CLI wrapper
-│   └── call-gemini.sh          # Gemini CLI wrapper
-└── logs/
-    └── multi-ai.log            # Call logs for auditing
+```mermaid
+flowchart LR
+    User["👤 You"] <--> Claude["🟣 Claude Code\n(Orchestrator)"]
+    Claude -->|"/ask-codex\n/code-review\n/multi-review"| Codex["🟢 Codex CLI\n(GPT-5.3)"]
+    Claude -->|"/ask-gemini\n/ui-review\n/research\n/multi-review"| Gemini["🔵 Gemini CLI\n(3 Pro)"]
 ```
 
 ### How It Works
@@ -144,7 +112,104 @@ The flagship command. Sends the same code to **both** Codex and Gemini in parall
 5. External AI processes the request and returns results
 6. Claude presents the results, adding its own perspective where relevant
 
-### Scripts
+---
+
+## Tech Stack
+
+| Technology | Purpose | Notes |
+|------------|---------|-------|
+| Bash | CLI wrapper scripts | Handles binary detection, logging, stdin piping |
+| Markdown | Slash command definitions | Claude Code reads these as instructions |
+| Claude Code | Orchestrator | Reads commands, dispatches to external CLIs |
+| Codex CLI | OpenAI access | GPT-5.3 for code review and Q&A |
+| Gemini CLI | Google access | Gemini 3 Pro for research, UI review, Q&A |
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+| Tool | Required | Install |
+|------|----------|---------|
+| [Claude Code](https://claude.com/claude-code) | Yes | `npm install -g @anthropic-ai/claude-code` |
+| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | For Gemini commands | `npm install -g @google/gemini-cli` |
+| [Codex CLI](https://github.com/openai/codex) | For Codex commands | `npm install -g @openai/codex` |
+
+### Install
+
+```bash
+git clone https://github.com/tznthou/claude-prism.git
+cd claude-prism
+./install.sh
+```
+
+The installer:
+- Checks for prerequisites and reports what's available
+- Backs up any existing files before overwriting
+- Copies commands to `~/.claude/commands/` and scripts to `~/.claude/scripts/`
+
+### Verify
+
+```bash
+./tests/smoke-test.sh
+```
+
+### Uninstall
+
+```bash
+./uninstall.sh
+```
+
+---
+
+## Project Structure
+
+```
+claude-prism/
+├── commands/                   # Slash command definitions (Markdown)
+│   ├── ask-codex.md
+│   ├── ask-gemini.md
+│   ├── code-review.md
+│   ├── multi-review.md
+│   ├── research.md
+│   └── ui-review.md
+├── scripts/                    # CLI wrappers (Bash)
+│   ├── call-codex.sh
+│   └── call-gemini.sh
+├── tests/
+│   └── smoke-test.sh
+├── install.sh
+├── uninstall.sh
+├── README.md
+└── README.zh-TW.md
+```
+
+Installed to:
+
+```
+~/.claude/
+├── commands/                   # ← command definitions copied here
+├── scripts/                    # ← wrapper scripts copied here
+└── logs/
+    └── multi-ai.log            # Call logs for auditing
+```
+
+---
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GEMINI_MODEL` | `gemini-3-pro-preview` | Gemini model to use |
+| `CODEX_MODEL` | `gpt-5.3-codex` | Codex model to use |
+| `GEMINI_BIN` | (auto-detect) | Path to gemini binary |
+| `CODEX_BIN` | (auto-detect) | Path to codex binary |
+| `MULTI_AI_LOG_DIR` | `~/.claude/logs` | Log directory |
+
+### Script Features
 
 Both wrapper scripts support:
 
@@ -156,36 +221,28 @@ Both wrapper scripts support:
 | **Stdin piping** | `echo "code" \| call-gemini.sh "review"` for long inputs |
 | **Model override** | `-m model-name` to use a different model |
 
-Environment variables:
+### Customization
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `GEMINI_MODEL` | `gemini-3-pro-preview` | Gemini model to use |
-| `CODEX_MODEL` | `gpt-5.3-codex` | Codex model to use |
-| `GEMINI_BIN` | (auto-detect) | Path to gemini binary |
-| `CODEX_BIN` | (auto-detect) | Path to codex binary |
-| `MULTI_AI_LOG_DIR` | `~/.claude/logs` | Log directory |
-
-## Customization
-
-### Adding a New Provider
+**Adding a new provider:**
 
 1. Create `scripts/call-newprovider.sh` following the pattern of existing scripts
 2. Create `commands/ask-newprovider.md` with the command definition
 3. Run `./install.sh` to deploy
 
-### Changing the Review Prompt
+**Changing the review prompt:**
 
 Edit the command `.md` files in `commands/`. The prompt templates are inline and easy to modify.
 
-### Language
+**Changing the output language:**
 
-The command prompts default to English. To change the output language, edit the prompts in the command files. For example, to get responses in Traditional Chinese:
+The command prompts default to English. To get responses in Traditional Chinese:
 
 ```diff
 - "You are a Senior Code Reviewer. Review the following code."
 + "You are a Senior Code Reviewer. Review the following code. Respond in Traditional Chinese (繁體中文)."
 ```
+
+---
 
 ## FAQ
 
@@ -205,6 +262,14 @@ Each command makes one API call to the external provider. Costs depend on your G
 
 Yes. The commands and scripts are standalone — they only depend on `~/.claude/` directory conventions that Claude Code uses.
 
+---
+
 ## License
 
-MIT
+This project is licensed under [MIT](LICENSE).
+
+---
+
+## Author
+
+**tznthou** — {email}

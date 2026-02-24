@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# uninstall.sh — Remove claude-code-multi-ai commands and scripts
+# uninstall.sh — Remove claude-prism commands and scripts
 
 set -euo pipefail
 
@@ -17,7 +17,7 @@ COMMANDS=(ask-codex ask-gemini code-review multi-review research ui-review)
 SCRIPTS=(call-codex.sh call-gemini.sh)
 
 echo ""
-echo "Uninstalling claude-code-multi-ai..."
+echo "Uninstalling claude-prism..."
 echo ""
 
 echo "Removing commands..."
