@@ -27,7 +27,11 @@ Relevant code:
 $(code content)" | ~/.claude/scripts/call-gemini.sh "review"
 ```
 
-### 3. Present results
+### 3. Handle failures
+
+If Gemini fails (script exits non-zero or CLI not found), Claude answers the question directly and notes: "Gemini unavailable — answering with Claude only."
+
+### 4. Present results
 
 Show the Gemini response, clearly labeled **Gemini**.
 

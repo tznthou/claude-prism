@@ -27,7 +27,11 @@ Relevant code:
 $(code content)"
 ```
 
-### 3. Present results
+### 3. Handle failures
+
+If Codex fails (script exits non-zero or CLI not found), Claude answers the question directly and notes: "Codex unavailable — answering with Claude only."
+
+### 4. Present results
 
 Show the Codex response, clearly labeled **Codex**.
 

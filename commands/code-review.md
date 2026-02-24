@@ -60,11 +60,48 @@ For long code (>3000 chars), use stdin mode:
 echo "prompt + code" | ~/.claude/scripts/call-codex.sh "review"
 ```
 
-### 4. Present results
+### 4. Handle failures and non-conforming output
+
+**If Codex fails** (script exits non-zero or CLI not found):
+- Do NOT abort. Claude performs the review independently instead.
+- Note in output: "Codex unavailable — Claude solo review (same-source blind spot caveat applies)."
+
+**If Codex output doesn't match requested format** (no emoji severity, no score, pure prose):
+- Extract actionable issues from the raw text. Do NOT discard the response.
+- If no numeric score was given, omit the score or note "score not provided."
+
+### 5. Present results
 
 Show the review labeled **Codex**. If Codex makes obvious misjudgments (e.g., misunderstanding language features), Claude adds corrections.
 
+### 6. Record review insights
+
+**MUST do this as part of presenting results** — not as an optional follow-up.
+
+After outputting the review, use the Bash tool to append a single-line JSON to the insights log:
+
+```bash
+echo '{"date":"<ISO 8601 UTC>","project":"<repo or directory name>","scope":"<staged|file:path|diff|pr>","providers":["<list of providers that responded>"],"issues":[<issue objects>]}' >> ~/.claude/logs/review-insights.jsonl
+```
+
+Each issue object in the `issues` array:
+```json
+{
+  "category": "security|performance|design|logic|maintainability|accessibility|other",
+  "severity": "critical|medium|suggestion",
+  "title": "Brief one-line description of the issue",
+  "source": "codex-only|claude-only|consensus"
+}
+```
+
+Rules:
+- Only record **actionable issues** (skip praise and generic comments)
+- Map emoji severity to strings: 🔴→critical, 🟡→medium, 🟢→suggestion
+- If Codex didn't give structured severity, infer from context
+- Keep `title` under 80 chars
+- Create the directory if it doesn't exist: `mkdir -p ~/.claude/logs`
+
 ### Notes
 
-- Must be run inside a git repo
+- Must be run inside a git repo (Codex CLI requirement)
 - Codex output may include metadata (token counts etc.) — extract only the review content

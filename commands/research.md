@@ -38,13 +38,17 @@ If this involves tech selection, compare at least 3 options across these dimensi
 - Use cases"
 ```
 
-### 3. Claude supplement
+### 3. Handle failures
+
+If Gemini fails (script exits non-zero or CLI not found), Claude performs the research independently. Note in output: "Gemini unavailable — research conducted by Claude only (no Google search integration)."
+
+### 4. Claude supplement
 
 After Gemini responds, Claude adds:
 - Perspectives Gemini may have missed
 - Corrections for potentially outdated information
 - Claude's independent judgment on the topic
 
-### 4. Integrated output
+### 5. Integrated output
 
 Merge Gemini research + Claude supplements into a structured report. Label each section's source (Gemini / Claude / Consensus).

@@ -1,4 +1,4 @@
-# claude-prism v0.3.1
+# claude-prism v0.4.0
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Bash](https://img.shields.io/badge/Bash-4.0+-4EAA25.svg)](https://www.gnu.org/software/bash/)
@@ -33,6 +33,8 @@ Use Claude Code as the **orchestrator**, but dispatch review and research tasks 
 | `/ui-review` | Gemini | UI/UX accessibility & design audit |
 | `/research` | Gemini | Structured technical research |
 | `/multi-review` | Codex + Gemini + Claude | Triple-provider adversarial review |
+
+All commands include **graceful degradation** — if a provider is unavailable, Claude continues with the remaining providers instead of failing.
 
 ### `/ask-codex` — Ask OpenAI
 
@@ -121,6 +123,7 @@ flowchart LR
 4. Claude calls the shell script via Bash tool → script invokes the external CLI
 5. External AI processes the request and returns results
 6. Claude presents the results, adding its own perspective where relevant
+7. For review commands, structured insights are logged to `review-insights.jsonl` for trend analysis
 
 ---
 
@@ -185,9 +188,11 @@ claude-prism/
 │   ├── research.md
 │   ├── ui-design.md
 │   └── ui-review.md
-├── scripts/                    # CLI wrappers (Bash)
-│   ├── call-codex.sh
-│   └── call-gemini.sh
+├── scripts/                    # CLI wrappers & utilities (Bash)
+│   ├── call-codex.sh           # Codex CLI wrapper
+│   ├── call-gemini.sh          # Gemini CLI wrapper
+│   ├── usage-summary.sh        # API usage statistics
+│   └── review-insights.sh      # Review pattern analysis
 ├── tests/
 │   └── smoke-test.sh
 ├── install.sh
@@ -203,7 +208,8 @@ Installed to:
 ├── commands/                   # ← command definitions copied here
 ├── scripts/                    # ← wrapper scripts copied here
 └── logs/
-    └── multi-ai.log            # Call logs for auditing
+    ├── multi-ai.log            # Call logs (timestamps, prompt/response lengths)
+    └── review-insights.jsonl   # Structured review history (auto-recorded)
 ```
 
 ---
@@ -255,6 +261,61 @@ Both wrapper scripts support:
 
 Edit the command `.md` files in `commands/`. The prompt templates are inline and easy to modify.
 
+---
+
+## Observability
+
+### Usage Summary
+
+Track API call volume and estimated token consumption:
+
+```bash
+~/.claude/scripts/usage-summary.sh            # today
+~/.claude/scripts/usage-summary.sh --week      # last 7 days
+~/.claude/scripts/usage-summary.sh --all       # all time
+~/.claude/scripts/usage-summary.sh --date 2026-02-24  # specific date
+```
+
+Output includes per-provider call counts, success/error/dry-run breakdown, and a rough token estimate (~4 chars/token).
+
+### Review Insights
+
+After each `/code-review` or `/multi-review`, Claude automatically records structured issue data to `~/.claude/logs/review-insights.jsonl`. Analyze patterns over time:
+
+```bash
+~/.claude/scripts/review-insights.sh              # full analysis
+~/.claude/scripts/review-insights.sh --recent 10  # last 10 reviews
+~/.claude/scripts/review-insights.sh --project my-app  # filter by project
+```
+
+Output includes:
+- **Category distribution** — security, performance, design, logic, etc. (with bar chart)
+- **Severity breakdown** — critical / medium / suggestion
+- **Discovery source** — consensus vs. single-provider findings
+- **Most frequent issues** — recurring patterns highlighted
+- **Recent review timeline** — last 5 reviews with issue counts
+
+Each review record follows this schema:
+
+```json
+{
+  "date": "2026-02-24T10:30:00Z",
+  "project": "my-app",
+  "scope": "pr",
+  "providers": ["codex", "gemini", "claude"],
+  "issues": [
+    {
+      "category": "security",
+      "severity": "critical",
+      "title": "SQL injection in user input handler",
+      "source": "consensus"
+    }
+  ]
+}
+```
+
+---
+
 **Changing the output language:**
 
 The command prompts default to English. To get responses in Traditional Chinese:
@@ -274,11 +335,15 @@ With logging enabled (default), check `~/.claude/logs/multi-ai.log` to verify. E
 
 **Q: What if I only have Gemini CLI installed?**
 
-That's fine. Commands that use Codex (`/ask-codex`, `/code-review`) will fail gracefully with an error message. Gemini-based commands (`/ask-gemini`, `/ui-design`, `/ui-review`, `/research`) will work. `/multi-review` will only get one perspective.
+That's fine. All commands include graceful degradation — if a provider is unavailable, Claude continues with the remaining providers. `/multi-review` will use Claude + Gemini (two perspectives instead of three). `/code-review` will fall back to a Claude-only review with a caveat note.
+
+**Q: What if a provider returns an unexpected format?**
+
+Claude handles it. If Codex or Gemini doesn't follow the requested emoji/score format, Claude extracts actionable insights from the raw text using semantic matching rather than format parsing. Scores show "—" in the comparison table when not provided.
 
 **Q: How much does this cost?**
 
-Each command makes one API call to the external provider. Costs depend on your Gemini/OpenAI pricing tier. Use `--dry-run` on the scripts to test without consuming tokens.
+Each command makes one API call to the external provider. Costs depend on your Gemini/OpenAI pricing tier. Use `--dry-run` on the scripts to test without consuming tokens. Run `~/.claude/scripts/usage-summary.sh` to see call counts and estimated token consumption over time.
 
 **Q: Can I use this with other Claude Code setups?**
 
@@ -287,6 +352,16 @@ Yes. The commands and scripts are standalone — they only depend on `~/.claude/
 ---
 
 ## Changelog
+
+### v0.4.0 (2026-02-24)
+
+**Reliability & Observability** — graceful degradation, usage tracking, and review insights:
+
+- **Graceful degradation** across all 7 commands — if a provider fails, Claude continues with remaining providers instead of aborting. Non-conforming output (no emoji, no score) is handled via semantic extraction
+- **`usage-summary.sh`** — per-provider call stats, success/error breakdown, estimated token consumption (`--week`, `--all`, `--date`)
+- **`review-insights.sh`** — analyze recurring patterns from review history (category/severity distribution, consensus vs. single-provider findings, most frequent issues)
+- **Review insights auto-recording** — `/code-review` and `/multi-review` append structured JSONL after each review for trend analysis
+- Smoke test expanded to 20 tests (from 14)
 
 ### v0.3.1 (2026-02-24)
 

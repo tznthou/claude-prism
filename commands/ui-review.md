@@ -43,7 +43,11 @@ Code:
 $(frontend code content)"
 ```
 
-### 4. Screenshot analysis (if provided)
+### 4. Handle failures
+
+If Gemini fails (script exits non-zero or CLI not found), Claude performs the UI/UX review independently. Note in output: "Gemini unavailable — review conducted by Claude only."
+
+### 5. Screenshot analysis (if provided)
 
 Skip Gemini CLI. Use Claude's Read tool to view the screenshot, then analyze with multimodal:
 - Visual hierarchy and information architecture
@@ -51,6 +55,6 @@ Skip Gemini CLI. Use Claude's Read tool to view the screenshot, then analyze wit
 - Typography and spacing
 - Visibility of interactive elements
 
-### 5. Present results
+### 6. Present results
 
 Label source: **Gemini** or **Claude (multimodal screenshot analysis)**.

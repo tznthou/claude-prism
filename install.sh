@@ -148,6 +148,12 @@ echo "  /ui-review      — UI/UX review via Gemini"
 echo "  /research       — Technical research via Gemini"
 echo "  /multi-review   — Triple-provider adversarial review"
 echo ""
+echo "Utilities:"
+echo "  usage-summary    — View API usage stats (today/--week/--all)"
+echo "  review-insights  — Analyze recurring issues from review history"
+echo "                     Run: ~/.claude/scripts/usage-summary.sh"
+echo "                          ~/.claude/scripts/review-insights.sh"
+echo ""
 echo "Logs: $CLAUDE_DIR/logs/multi-ai.log"
 
 if [[ "$PREREQ_OK" == false ]]; then

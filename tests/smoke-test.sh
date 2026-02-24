@@ -107,9 +107,63 @@ else
     fail "Log file not created at $LOG_FILE"
 fi
 
-# ─── Test 6: Codex git repo check ───
+# ─── Test 6: Usage summary script ───
 echo ""
-echo "6. Error handling..."
+echo "6. Usage summary..."
+
+if [[ -x "$SCRIPT_DIR/scripts/usage-summary.sh" ]]; then
+    pass "usage-summary.sh exists and is executable"
+else
+    fail "usage-summary.sh missing or not executable"
+fi
+
+# Dry run to generate some log entries, then test summary
+SUMMARY_OUT=$("$SCRIPT_DIR/scripts/usage-summary.sh" --all 2>&1) || true
+if echo "$SUMMARY_OUT" | grep -q "Provider"; then
+    pass "usage-summary.sh --all produces output"
+else
+    # May have no log entries yet — that's OK
+    if echo "$SUMMARY_OUT" | grep -q "No log"; then
+        pass "usage-summary.sh --all handles empty logs"
+    else
+        fail "usage-summary.sh unexpected output: $SUMMARY_OUT"
+    fi
+fi
+
+# ─── Test 7: Review insights script ───
+echo ""
+echo "7. Review insights..."
+
+if [[ -x "$SCRIPT_DIR/scripts/review-insights.sh" ]]; then
+    pass "review-insights.sh exists and is executable"
+else
+    fail "review-insights.sh missing or not executable"
+fi
+
+# Test with synthetic data
+TEMP_LOG=$(mktemp -d)
+echo '{"date":"2026-01-01T00:00:00Z","project":"test","scope":"staged","providers":["claude"],"issues":[{"category":"security","severity":"critical","title":"Test issue","source":"claude-only"}]}' > "$TEMP_LOG/review-insights.jsonl"
+INSIGHTS_OUT=$(MULTI_AI_LOG_DIR="$TEMP_LOG" "$SCRIPT_DIR/scripts/review-insights.sh" 2>&1) || true
+rm -rf "$TEMP_LOG"
+if echo "$INSIGHTS_OUT" | grep -q "Issues by Category"; then
+    pass "review-insights.sh parses JSONL and produces report"
+else
+    fail "review-insights.sh unexpected output"
+fi
+
+# Test empty state (no file)
+EMPTY_DIR=$(mktemp -d)
+EMPTY_OUT=$(MULTI_AI_LOG_DIR="$EMPTY_DIR" "$SCRIPT_DIR/scripts/review-insights.sh" 2>&1) || true
+rm -rf "$EMPTY_DIR"
+if echo "$EMPTY_OUT" | grep -q "No review insights"; then
+    pass "review-insights.sh handles missing file gracefully"
+else
+    fail "review-insights.sh empty state handling unexpected"
+fi
+
+# ─── Test 8: Codex git repo check ───
+echo ""
+echo "8. Error handling..."
 
 if command -v codex &>/dev/null || [[ -x "$HOME/.npm-global/bin/codex" ]]; then
     TEMP_DIR=$(mktemp -d)
