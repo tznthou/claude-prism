@@ -1,0 +1,10 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs (local only, not shipped)
+*.log
