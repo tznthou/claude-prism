@@ -1,4 +1,4 @@
-# claude-prism v0.3.0
+# claude-prism v0.3.1
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Bash](https://img.shields.io/badge/Bash-4.0+-4EAA25.svg)](https://www.gnu.org/software/bash/)
@@ -29,7 +29,7 @@ Use Claude Code as the **orchestrator**, but dispatch review and research tasks 
 | `/ask-codex` | Codex | Direct Q&A — get OpenAI's perspective |
 | `/ask-gemini` | Gemini | Direct Q&A — get Google's perspective |
 | `/code-review` | Codex | Cross-provider code review |
-| `/ui-design` | Gemini | UI/UX design spec generation from requirements |
+| `/ui-design` | Gemini | HTML mockup from design spec |
 | `/ui-review` | Gemini | UI/UX accessibility & design audit |
 | `/research` | Gemini | Structured technical research |
 | `/multi-review` | Codex + Gemini + Claude | Triple-provider adversarial review |
@@ -61,14 +61,13 @@ Codex reviews code that Claude wrote. The core use case — **different AI, diff
 /code-review --pr               # review entire PR
 ```
 
-### `/ui-design` — UI/UX Design Spec Generation
+### `/ui-design` — HTML Mockup from Design Spec
 
-Gemini generates a structured, implementable UI/UX design specification from your requirements. Outputs information architecture, ASCII wireframes, component breakdowns, interaction design, visual direction, and implementation hints. Optionally generates an HTML prototype with `--html`.
+Gemini reads a design specification and generates a self-contained HTML mockup (Tailwind CDN) you can preview in a browser. Confirm the design visually, then let Claude Code implement it into your project.
 
 ```
-/ui-design a SaaS dashboard with analytics and user management
-/ui-design docs/requirements.md
-/ui-design --html landing page for a developer tool
+/ui-design design-spec.md              # generate HTML mockup from design spec
+/ui-design "a SaaS dashboard"          # no spec → Gemini drafts spec first, then mockup
 ```
 
 ### `/ui-review` — UI/UX Audit
@@ -288,6 +287,13 @@ Yes. The commands and scripts are standalone — they only depend on `~/.claude/
 ---
 
 ## Changelog
+
+### v0.3.1 (2026-02-24)
+
+- **`/ui-design` redesigned** — now generates a previewable HTML mockup (Tailwind CDN) from design spec files
+- Workflow: design spec → HTML mockup → browser preview → confirm → Claude Code implements
+- Text input (no spec file) triggers a two-step flow: generate spec → generate mockup
+- Next steps presented as choices (adjust, implement, or `/ui-review`)
 
 ### v0.3.0 (2026-02-24)
 

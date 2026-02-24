@@ -1,140 +1,101 @@
 ---
 command: ui-design
-description: UI/UX design spec generation via Gemini — from requirements to implementable design
+description: HTML mockup generation via Gemini — from design spec to previewable prototype
 ---
 
-# UI/UX Design via Gemini
+# UI/UX Mockup via Gemini
 
-Use Gemini CLI to generate a structured UI/UX design specification from requirements. Gemini brings Google Design ecosystem knowledge (Material Design, web patterns, responsive best practices).
+Use Gemini CLI to generate a previewable HTML mockup from a design specification document. The mockup is a single self-contained HTML file (Tailwind CDN) that can be opened in a browser for visual confirmation before implementation.
 
-**Limitation**: Gemini CLI headless mode does not support image output. This command produces text-based design specs (information architecture, wireframes in ASCII/structured text, component breakdowns). For visual mockups, use dedicated design tools.
+**Workflow**: `Design spec → /ui-design → Browser preview → Confirm → Claude Code implements`
 
 ## Execution
 
 ### 1. Parse input
 
 Based on `$ARGUMENTS`:
-- **Text description**: use directly as requirements (e.g., `a SaaS dashboard with analytics charts and user management`)
-- **File path** (`.md`, `.txt`): read the file as a requirements document
-- **`--html`**: also request a self-contained HTML prototype (Tailwind CDN) in addition to the design spec
+- **File path** (`.md`, `.txt`): read the file as a design specification → Gemini generates HTML mockup
+- **Text description** (no file): treat as requirements → Gemini generates a design spec first, then ask user if they want to proceed to mockup
 - **No args**: use AskUserQuestion to ask what to design
 
-### 2. Detect project context (optional, skip if not in a project)
+### 2. Read the design spec
 
-Scan for tech stack signals to inform the design. This is **automatic context enrichment**, not user-configured parameters:
+Read the design specification file using the Read tool. Identify the key sections that inform the mockup:
+- Information Architecture (routes, page structure)
+- Layout Specification (grid, spacing, responsive breakpoints)
+- Component Breakdown (component tree, key elements)
+- Visual Direction (colors, typography, spacing scale)
+- Interaction Design (hover states, transitions)
 
-```bash
-# Check for frontend framework
-cat package.json 2>/dev/null | grep -oE '"(react|vue|svelte|next|nuxt|angular)"'
-
-# Check for CSS framework
-ls tailwind.config.* 2>/dev/null || ls postcss.config.* 2>/dev/null
-
-# Check for component library patterns
-ls src/components/ 2>/dev/null | head -5
-```
-
-If detected, include as `Tech context (auto-detected):` in the prompt. If nothing found, omit entirely — do not ask the user.
-
-### 3. Call Gemini
+### 3. Call Gemini — Generate HTML mockup
 
 ```bash
-~/.claude/scripts/call-gemini.sh "You are a senior UX/UI designer with expertise in web and mobile application design.
-
-Generate a comprehensive, implementable UI/UX design specification based on the requirements below.
-
-${TECH_CONTEXT:+Tech context (auto-detected): $TECH_CONTEXT}
-
-Requirements:
-$USER_INPUT
-
-Deliver the following sections:
-
-## 1. Information Architecture
-- Page/screen inventory with purpose
-- Content hierarchy per page
-- Navigation structure (primary, secondary, breadcrumbs)
-- User flow diagram (text-based: step → step → step)
-
-## 2. Layout Specification
-For each key page, provide:
-- ASCII wireframe showing component placement
-- Grid system recommendation (columns, gutters, max-width)
-- Responsive strategy: mobile (<640px) → tablet (640-1024px) → desktop (>1024px)
-- Spacing rhythm (base unit and scale)
-
-## 3. Component Breakdown
-- Component tree (parent → children hierarchy)
-- For each component: name, purpose, key props/states
-- Identify reusable vs page-specific components
-- State variations: default, loading, empty, error, success
-
-## 4. Interaction Design
-- Key user flows (step-by-step)
-- Interactive states: hover, focus, active, disabled
-- Transitions and feedback patterns
-- Form validation strategy (inline vs submit)
-
-## 5. Visual Direction
-- Color palette: primary, secondary, neutral, semantic (success/warning/error) — provide hex codes
-- Typography: font pairing suggestion, size scale (h1-h6, body, caption)
-- Spacing scale (4px base: 4, 8, 12, 16, 24, 32, 48, 64)
-- Border radius, shadow, and elevation system
-- Overall aesthetic rationale
-
-## 6. Implementation Hints
-- Suggested component library or UI kit
-- Key layout patterns (CSS Grid vs Flexbox recommendations per section)
-- Accessibility checklist: landmarks, ARIA, keyboard nav, contrast
-- Performance considerations: lazy loading, skeleton screens
-
-Use tables where appropriate. Use ASCII art for wireframes. Be specific — provide actual values, not vague guidance."
-```
-
-If `--html` flag is present, make a **second** Gemini call:
-
-```bash
-~/.claude/scripts/call-gemini.sh "Based on this UI design spec, generate a single self-contained HTML file that serves as a visual prototype.
+~/.claude/scripts/call-gemini.sh "You are a senior frontend engineer. Generate a single self-contained HTML file that serves as a high-fidelity visual mockup based on the design specification below.
 
 Requirements:
 - Use Tailwind CSS via CDN (<script src='https://cdn.tailwindcss.com'></script>)
-- Responsive (mobile-first)
-- Include realistic placeholder content
-- All styles inline or via Tailwind classes
-- No external dependencies beyond Tailwind CDN
-- Add comments marking each major section
+- Include a <script> block to extend the Tailwind config with custom colors, fonts, and spacing from the spec
+- Import any Google Fonts specified in the design via <link> tags
+- Responsive: implement all breakpoints from the spec (mobile-first)
+- Include realistic placeholder content (not lorem ipsum — use contextually appropriate text)
+- Implement hover states and CSS transitions as specified
+- All styles via Tailwind classes or inline <style> for effects Tailwind can't handle (gradients, overlays, etc.)
+- No external dependencies beyond Tailwind CDN and Google Fonts
+- Add HTML comments marking each major section for easy reference
+- If the spec defines multiple pages, implement the HOME PAGE only. Add navigation links as anchors that scroll to section placeholders.
 
-Design spec:
-$(design spec from previous call)"
+Structure the HTML as:
+1. <head> — Tailwind CDN, Google Fonts, custom config, any CSS overrides
+2. <body> — Semantic HTML5 with proper landmarks (header, main, nav, footer)
+3. Sections matching the spec's page structure
+
+Design specification:
+$DESIGN_SPEC_CONTENT"
 ```
 
-Save the HTML output and inform the user of the file path.
+### 3b. Alternative: text description (no spec file)
+
+If the user provided a text description instead of a file, first call Gemini to generate a design spec:
+
+```bash
+~/.claude/scripts/call-gemini.sh "You are a senior UX/UI designer. Generate a concise design specification for:
+
+$USER_INPUT
+
+Include: Information Architecture, Layout (ASCII wireframe), Component Breakdown, Visual Direction (hex colors, font suggestions, spacing), and Interaction Design.
+Use tables where appropriate. Be specific — provide actual values."
+```
+
+Present the spec to the user and ask: **"要用這份規格產生 HTML mockup 嗎？"** If yes, proceed to Step 3.
 
 ### 4. Claude post-processing
 
-After Gemini responds, Claude adds value:
+After Gemini responds with HTML, Claude reviews:
 
-- **Accessibility audit**: flag any gaps in Gemini's design (missing ARIA, contrast issues, keyboard traps)
-- **Tech stack mapping**: if project context was detected, map Gemini's component suggestions to specific library components (e.g., shadcn/ui Button, Radix Dialog)
-- **Practical corrections**: flag unrealistic suggestions or missing edge cases
-- **Next step suggestion**: recommend `/ui-review` after implementation to close the design→implement→review loop
+- **Spec fidelity**: verify colors, fonts, spacing match the design spec
+- **Accessibility**: check semantic HTML, contrast, alt texts
+- **Responsiveness**: confirm mobile/tablet/desktop breakpoints are implemented
+- **Practical fixes**: fix broken Tailwind classes, missing CDN links, incorrect color values
 
-### 5. Present results
+If Claude finds issues, **fix them inline** before saving.
+
+### 5. Save and present
+
+Save the HTML file next to the design spec (or in a user-specified location). Then:
 
 ```
-## 🎨 UI Design Specification
+## 🎨 HTML Mockup
 
-> Generated by **Gemini** | Post-processed by **Claude**
-> Tech context: [detected stack or "none detected"]
+> Generated by **Gemini** | Reviewed by **Claude**
+> Design spec: [file path]
+> Mockup: [saved file path]
 
-[Gemini's 6-section design spec]
+### Claude Review
+[Issues found and fixed, or "No corrections needed"]
 
----
-
-### 💡 Claude Supplements
-[Accessibility gaps, tech stack mapping, corrections]
-
-### ➡️ Next Steps
-1. Implement based on the spec above
-2. Run `/ui-review` on the implementation to validate against the design
+### Next Steps
+Open the HTML file in a browser to preview. When you're happy with the design:
+1. **Adjust** — Tell me what to change in the mockup
+2. **Implement** — I can implement this design into your project (Next.js / React / etc.)
+3. **Run `/ui-review`** — Have Gemini audit the mockup for accessibility and UX
 ```
