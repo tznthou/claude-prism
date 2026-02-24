@@ -1,5 +1,9 @@
 # claude-prism v0.5.0
 
+<p align="center">
+  <img src="assets/claude-prism-logo.png" alt="claude-prism" width="640">
+</p>
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Bash](https://img.shields.io/badge/Bash-4.0+-4EAA25.svg)](https://www.gnu.org/software/bash/)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-Plugin-7C3AED.svg)](https://claude.com/claude-code)
