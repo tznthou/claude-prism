@@ -21,26 +21,6 @@ _log() {
     echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [codex] [$level] $*" >> "$LOG_FILE"
 }
 
-# --- Resolve codex binary ---
-CODEX_BIN="${CODEX_BIN:-}"
-if [[ -z "$CODEX_BIN" ]]; then
-    for candidate in \
-        "$HOME/.npm-global/bin/codex" \
-        "$(command -v codex 2>/dev/null || true)" \
-        "/usr/local/bin/codex"; do
-        if [[ -n "$candidate" && -x "$candidate" ]]; then
-            CODEX_BIN="$candidate"
-            break
-        fi
-    done
-fi
-
-if [[ -z "$CODEX_BIN" ]]; then
-    _log ERROR "codex CLI not found"
-    echo "Error: codex CLI not found. Install: npm install -g @openai/codex" >&2
-    exit 1
-fi
-
 # --- Parse flags ---
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -66,21 +46,41 @@ if [[ ! -t 0 ]]; then
 ${STDIN_DATA}"
 fi
 
+_log INFO "model=$MODEL sandbox=$SANDBOX prompt_len=${#PROMPT} dry_run=$DRY_RUN"
+
+# --- Dry run mode (no binary or git repo needed) ---
+if [[ "$DRY_RUN" == true ]]; then
+    echo "[DRY RUN] Would call: codex exec --model $MODEL --sandbox $SANDBOX \"...\""
+    echo "[DRY RUN] Prompt length: ${#PROMPT} chars"
+    _log INFO "dry run complete"
+    exit 0
+fi
+
+# --- Resolve codex binary ---
+CODEX_BIN="${CODEX_BIN:-}"
+if [[ -z "$CODEX_BIN" ]]; then
+    for candidate in \
+        "$HOME/.npm-global/bin/codex" \
+        "$(command -v codex 2>/dev/null || true)" \
+        "/usr/local/bin/codex"; do
+        if [[ -n "$candidate" && -x "$candidate" ]]; then
+            CODEX_BIN="$candidate"
+            break
+        fi
+    done
+fi
+
+if [[ -z "$CODEX_BIN" ]]; then
+    _log ERROR "codex CLI not found"
+    echo "Error: codex CLI not found. Install: npm install -g @openai/codex" >&2
+    exit 1
+fi
+
 # --- Git repo check ---
 if ! git rev-parse --is-inside-work-tree &>/dev/null; then
     _log ERROR "not inside a git repo"
     echo "Error: codex exec requires a git repo. cd into one first." >&2
     exit 1
-fi
-
-_log INFO "model=$MODEL sandbox=$SANDBOX prompt_len=${#PROMPT} dry_run=$DRY_RUN"
-
-# --- Dry run mode ---
-if [[ "$DRY_RUN" == true ]]; then
-    echo "[DRY RUN] Would call: $CODEX_BIN exec --model $MODEL --sandbox $SANDBOX \"...\""
-    echo "[DRY RUN] Prompt length: ${#PROMPT} chars"
-    _log INFO "dry run complete"
-    exit 0
 fi
 
 # --- Execute ---

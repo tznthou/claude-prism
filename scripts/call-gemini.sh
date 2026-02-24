@@ -20,26 +20,6 @@ _log() {
     echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [gemini] [$level] $*" >> "$LOG_FILE"
 }
 
-# --- Resolve gemini binary ---
-GEMINI_BIN="${GEMINI_BIN:-}"
-if [[ -z "$GEMINI_BIN" ]]; then
-    for candidate in \
-        "$HOME/.npm-global/bin/gemini" \
-        "$(command -v gemini 2>/dev/null || true)" \
-        "/usr/local/bin/gemini"; do
-        if [[ -n "$candidate" && -x "$candidate" ]]; then
-            GEMINI_BIN="$candidate"
-            break
-        fi
-    done
-fi
-
-if [[ -z "$GEMINI_BIN" ]]; then
-    _log ERROR "gemini CLI not found"
-    echo "Error: gemini CLI not found. Install: npm install -g @google/gemini-cli" >&2
-    exit 1
-fi
-
 # --- Parse flags ---
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -66,12 +46,32 @@ fi
 
 _log INFO "model=$MODEL prompt_len=${#PROMPT} dry_run=$DRY_RUN"
 
-# --- Dry run mode ---
+# --- Dry run mode (no binary needed) ---
 if [[ "$DRY_RUN" == true ]]; then
-    echo "[DRY RUN] Would call: $GEMINI_BIN -p \"...\" -m $MODEL"
+    echo "[DRY RUN] Would call: gemini -p \"...\" -m $MODEL"
     echo "[DRY RUN] Prompt length: ${#PROMPT} chars"
     _log INFO "dry run complete"
     exit 0
+fi
+
+# --- Resolve gemini binary ---
+GEMINI_BIN="${GEMINI_BIN:-}"
+if [[ -z "$GEMINI_BIN" ]]; then
+    for candidate in \
+        "$HOME/.npm-global/bin/gemini" \
+        "$(command -v gemini 2>/dev/null || true)" \
+        "/usr/local/bin/gemini"; do
+        if [[ -n "$candidate" && -x "$candidate" ]]; then
+            GEMINI_BIN="$candidate"
+            break
+        fi
+    done
+fi
+
+if [[ -z "$GEMINI_BIN" ]]; then
+    _log ERROR "gemini CLI not found"
+    echo "Error: gemini CLI not found. Install: npm install -g @google/gemini-cli" >&2
+    exit 1
 fi
 
 # --- Execute ---

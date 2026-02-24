@@ -111,12 +111,18 @@ fi
 echo ""
 echo "6. Error handling..."
 
-TEMP_DIR=$(mktemp -d)
-NO_GIT_RESULT=$("$SCRIPT_DIR/scripts/call-codex.sh" --dry-run "test" 2>&1 || true)
-rm -rf "$TEMP_DIR"
-# This test runs from SCRIPT_DIR which may or may not be a git repo
-# The important thing is the script doesn't crash
-pass "Scripts handle errors without crashing"
+if command -v codex &>/dev/null || [[ -x "$HOME/.npm-global/bin/codex" ]]; then
+    TEMP_DIR=$(mktemp -d)
+    NO_GIT_RESULT=$(cd "$TEMP_DIR" && "$SCRIPT_DIR/scripts/call-codex.sh" "test" 2>&1 || true)
+    rm -rf "$TEMP_DIR"
+    if echo "$NO_GIT_RESULT" | grep -q "requires a git repo"; then
+        pass "call-codex.sh reports clear error outside git repo"
+    else
+        fail "call-codex.sh no-git error message unexpected: $NO_GIT_RESULT"
+    fi
+else
+    skip "Codex no-git error test skipped (Codex CLI not installed)"
+fi
 
 # ─── Summary ───
 echo ""
