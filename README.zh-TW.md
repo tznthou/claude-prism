@@ -485,4 +485,4 @@ Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 emoji/score 格式
 
 ## 作者
 
-**tznthou** — [service@tznthou.com](mailto:service@tznthou.com)
+**tznthou** — [tznthou.com](https://tznthou.com) · [service@tznthou.com](mailto:service@tznthou.com)

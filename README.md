@@ -485,4 +485,4 @@ This project is licensed under [MIT](LICENSE).
 
 ## Author
 
-**tznthou** — [service@tznthou.com](mailto:service@tznthou.com)
+**tznthou** — [tznthou.com](https://tznthou.com) · [service@tznthou.com](mailto:service@tznthou.com)
