@@ -272,4 +272,4 @@ This project is licensed under [MIT](LICENSE).
 
 ## Author
 
-**tznthou** — {email}
+**tznthou** — [service@tznthou.com](mailto:service@tznthou.com)
