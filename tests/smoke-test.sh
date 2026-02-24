@@ -161,9 +161,45 @@ else
     fail "review-insights.sh empty state handling unexpected"
 fi
 
-# ─── Test 8: Codex git repo check ───
+# ─── Test 8: CI review script ───
 echo ""
-echo "8. Error handling..."
+echo "8. CI review script..."
+
+if [[ -x "$SCRIPT_DIR/scripts/ci-review.sh" ]]; then
+    pass "ci-review.sh exists and is executable"
+else
+    fail "ci-review.sh missing or not executable"
+fi
+
+# Dry run (no API keys needed)
+DRY_CI=$(echo "fake diff" | "$SCRIPT_DIR/scripts/ci-review.sh" --dry-run 2>&1) || true
+if echo "$DRY_CI" | grep -q "\[DRY RUN\]"; then
+    pass "ci-review.sh --dry-run works"
+else
+    fail "ci-review.sh --dry-run unexpected output: $DRY_CI"
+fi
+
+# No input and no API keys → error
+NO_INPUT_RESULT=$("$SCRIPT_DIR/scripts/ci-review.sh" 2>&1 || true)
+if echo "$NO_INPUT_RESULT" | grep -qi "error"; then
+    pass "ci-review.sh reports error when no input provided"
+else
+    fail "ci-review.sh no-input error handling unexpected: $NO_INPUT_RESULT"
+fi
+
+# ─── Test 9: GitHub Actions workflow ───
+echo ""
+echo "9. GitHub Actions workflow..."
+
+if [[ -f "$SCRIPT_DIR/.github/workflows/ai-review.yml" ]]; then
+    pass "ai-review.yml workflow exists"
+else
+    fail "ai-review.yml workflow missing"
+fi
+
+# ─── Test 10: Codex git repo check ───
+echo ""
+echo "10. Error handling..."
 
 if command -v codex &>/dev/null || [[ -x "$HOME/.npm-global/bin/codex" ]]; then
     TEMP_DIR=$(mktemp -d)
