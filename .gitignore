@@ -11,7 +11,7 @@ Thumbs.db
 *.swo
 
 # Claude Code (local settings, not shared)
-.claude/settings.local.json
+.claude/
 
 # Environment (may contain API keys)
 .env

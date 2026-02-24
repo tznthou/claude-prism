@@ -29,7 +29,7 @@ $(code content)" | ~/.claude/scripts/call-gemini.sh "review"
 
 ### 3. Present results
 
-Show the Gemini response, clearly labeled **Gemini (3 Pro)**.
+Show the Gemini response, clearly labeled **Gemini**.
 
 If Claude disagrees with any part of Gemini's answer, append Claude's own take so the user can compare both perspectives.
 

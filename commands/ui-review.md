@@ -53,4 +53,4 @@ Skip Gemini CLI. Use Claude's Read tool to view the screenshot, then analyze wit
 
 ### 5. Present results
 
-Label source: **Gemini (3 Pro)** or **Claude (multimodal screenshot analysis)**.
+Label source: **Gemini** or **Claude (multimodal screenshot analysis)**.

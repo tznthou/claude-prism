@@ -8,7 +8,7 @@
 
 set -euo pipefail
 
-MODEL="${GEMINI_MODEL:-gemini-3-pro-preview}"
+MODEL="${GEMINI_MODEL:-}"
 DRY_RUN=false
 LOG_DIR="${MULTI_AI_LOG_DIR:-$HOME/.claude/logs}"
 LOG_FILE="$LOG_DIR/multi-ai.log"
@@ -44,11 +44,11 @@ if [[ ! -t 0 ]]; then
 ${STDIN_DATA}"
 fi
 
-_log INFO "model=$MODEL prompt_len=${#PROMPT} dry_run=$DRY_RUN"
+_log INFO "model=${MODEL:-(default)} prompt_len=${#PROMPT} dry_run=$DRY_RUN"
 
 # --- Dry run mode (no binary needed) ---
 if [[ "$DRY_RUN" == true ]]; then
-    echo "[DRY RUN] Would call: gemini -p \"...\" -m $MODEL"
+    echo "[DRY RUN] Would call: gemini -p \"...\"${MODEL:+ -m $MODEL}"
     echo "[DRY RUN] Prompt length: ${#PROMPT} chars"
     _log INFO "dry run complete"
     exit 0
@@ -77,15 +77,18 @@ fi
 # --- Execute ---
 # Long prompts go via stdin to avoid ARG_MAX limits.
 # -p " " activates headless mode; Gemini appends it to stdin (harmless).
+CMD=("$GEMINI_BIN")
+[[ -n "$MODEL" ]] && CMD+=(-m "$MODEL")
+
 if [[ ${#PROMPT} -gt 4000 ]]; then
-    RESULT=$(printf '%s' "$PROMPT" | "$GEMINI_BIN" -p " " -m "$MODEL" 2>&1) || {
+    RESULT=$(printf '%s' "$PROMPT" | "${CMD[@]}" -p " " 2>&1) || {
         rc=$?
         _log ERROR "gemini call failed (exit $rc): ${RESULT:0:200}"
         echo "$RESULT" >&2
         exit $rc
     }
 else
-    RESULT=$("$GEMINI_BIN" -p "$PROMPT" -m "$MODEL" 2>&1) || {
+    RESULT=$("${CMD[@]}" -p "$PROMPT" 2>&1) || {
         rc=$?
         _log ERROR "gemini call failed (exit $rc): ${RESULT:0:200}"
         echo "$RESULT" >&2

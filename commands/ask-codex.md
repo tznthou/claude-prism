@@ -29,7 +29,7 @@ $(code content)"
 
 ### 3. Present results
 
-Show the Codex response, clearly labeled **Codex (GPT-5.3)**.
+Show the Codex response, clearly labeled **Codex**.
 
 If Claude disagrees with any part of Codex's answer, append Claude's own take so the user can compare both perspectives.
 

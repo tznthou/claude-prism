@@ -70,8 +70,8 @@ Issues neither provider caught but worth noting.
 ### 📊 Score Comparison
 | Provider | Score | Focus Area |
 |----------|-------|------------|
-| Codex (GPT-5.3) | X/10 | ... |
-| Gemini (3 Pro) | Y/10 | ... |
+| Codex | X/10 | ... |
+| Gemini | Y/10 | ... |
 | Claude (Opus) | Z/10 | ... |
 
 ### ✅ Consensus Issues (high confidence, fix first)

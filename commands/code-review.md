@@ -62,7 +62,7 @@ echo "prompt + code" | ~/.claude/scripts/call-codex.sh "review"
 
 ### 4. Present results
 
-Show the review labeled **Codex (GPT-5.3)**. If Codex makes obvious misjudgments (e.g., misunderstanding language features), Claude adds corrections.
+Show the review labeled **Codex**. If Codex makes obvious misjudgments (e.g., misunderstanding language features), Claude adds corrections.
 
 ### Notes
 

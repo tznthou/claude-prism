@@ -8,7 +8,7 @@
 
 set -euo pipefail
 
-MODEL="${CODEX_MODEL:-gpt-5.3-codex}"
+MODEL="${CODEX_MODEL:-}"
 SANDBOX="read-only"
 DRY_RUN=false
 LOG_DIR="${MULTI_AI_LOG_DIR:-$HOME/.claude/logs}"
@@ -46,11 +46,11 @@ if [[ ! -t 0 ]]; then
 ${STDIN_DATA}"
 fi
 
-_log INFO "model=$MODEL sandbox=$SANDBOX prompt_len=${#PROMPT} dry_run=$DRY_RUN"
+_log INFO "model=${MODEL:-(default)} sandbox=$SANDBOX prompt_len=${#PROMPT} dry_run=$DRY_RUN"
 
 # --- Dry run mode (no binary or git repo needed) ---
 if [[ "$DRY_RUN" == true ]]; then
-    echo "[DRY RUN] Would call: codex exec --model $MODEL --sandbox $SANDBOX \"...\""
+    echo "[DRY RUN] Would call: codex exec${MODEL:+ --model $MODEL} --sandbox $SANDBOX \"...\""
     echo "[DRY RUN] Prompt length: ${#PROMPT} chars"
     _log INFO "dry run complete"
     exit 0
@@ -85,15 +85,18 @@ fi
 
 # --- Execute ---
 # Long prompts go via stdin to avoid ARG_MAX limits.
+CMD=("$CODEX_BIN" exec --sandbox "$SANDBOX")
+[[ -n "$MODEL" ]] && CMD+=(--model "$MODEL")
+
 if [[ ${#PROMPT} -gt 4000 ]]; then
-    RESULT=$(printf '%s' "$PROMPT" | "$CODEX_BIN" exec --model "$MODEL" --sandbox "$SANDBOX" - 2>&1) || {
+    RESULT=$(printf '%s' "$PROMPT" | "${CMD[@]}" - 2>&1) || {
         rc=$?
         _log ERROR "codex call failed (exit $rc): ${RESULT:0:200}"
         echo "$RESULT" >&2
         exit $rc
     }
 else
-    RESULT=$("$CODEX_BIN" exec --model "$MODEL" --sandbox "$SANDBOX" "$PROMPT" 2>&1) || {
+    RESULT=$("${CMD[@]}" "$PROMPT" 2>&1) || {
         rc=$?
         _log ERROR "codex call failed (exit $rc): ${RESULT:0:200}"
         echo "$RESULT" >&2

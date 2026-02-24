@@ -26,8 +26,8 @@ Use Claude Code as the **orchestrator**, but dispatch review and research tasks 
 
 | Command | Provider | Description |
 |---------|----------|-------------|
-| `/ask-codex` | Codex (GPT-5.3) | Direct Q&A — get OpenAI's perspective |
-| `/ask-gemini` | Gemini (3 Pro) | Direct Q&A — get Google's perspective |
+| `/ask-codex` | Codex | Direct Q&A — get OpenAI's perspective |
+| `/ask-gemini` | Gemini | Direct Q&A — get Google's perspective |
 | `/code-review` | Codex | Cross-provider code review |
 | `/ui-review` | Gemini | UI/UX accessibility & design audit |
 | `/research` | Gemini | Structured technical research |
@@ -35,7 +35,7 @@ Use Claude Code as the **orchestrator**, but dispatch review and research tasks 
 
 ### `/ask-codex` — Ask OpenAI
 
-Direct Q&A with Codex (GPT-5.3). Good for getting a second opinion on any technical question.
+Direct Q&A with Codex. Good for getting a second opinion on any technical question.
 
 ```
 /ask-codex What's the best way to handle optimistic updates in React Query v5?
@@ -43,7 +43,7 @@ Direct Q&A with Codex (GPT-5.3). Good for getting a second opinion on any techni
 
 ### `/ask-gemini` — Ask Google
 
-Direct Q&A with Gemini (3 Pro). Leverages Google's broad ecosystem knowledge.
+Direct Q&A with Gemini. Leverages Google's broad ecosystem knowledge.
 
 ```
 /ask-gemini Compare Bun vs Deno vs Node.js for a new backend project in 2026
@@ -99,8 +99,8 @@ The flagship command. Sends the same code to **both** Codex and Gemini in parall
 ```mermaid
 flowchart LR
     User["👤 You"] <--> Claude["🟣 Claude Code\n(Orchestrator)"]
-    Claude -->|"/ask-codex\n/code-review\n/multi-review"| Codex["🟢 Codex CLI\n(GPT-5.3)"]
-    Claude -->|"/ask-gemini\n/ui-review\n/research\n/multi-review"| Gemini["🔵 Gemini CLI\n(3 Pro)"]
+    Claude -->|"/ask-codex\n/code-review\n/multi-review"| Codex["🟢 Codex CLI"]
+    Claude -->|"/ask-gemini\n/ui-review\n/research\n/multi-review"| Gemini["🔵 Gemini CLI"]
 ```
 
 ### How It Works
@@ -121,8 +121,8 @@ flowchart LR
 | Bash | CLI wrapper scripts | Handles binary detection, logging, stdin piping |
 | Markdown | Slash command definitions | Claude Code reads these as instructions |
 | Claude Code | Orchestrator | Reads commands, dispatches to external CLIs |
-| Codex CLI | OpenAI access | GPT-5.3 for code review and Q&A |
-| Gemini CLI | Google access | Gemini 3 Pro for research, UI review, Q&A |
+| Codex CLI | OpenAI access | Code review and Q&A (model configurable) |
+| Gemini CLI | Google access | Research, UI review, Q&A (model configurable) |
 
 ---
 
@@ -203,11 +203,22 @@ Installed to:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GEMINI_MODEL` | `gemini-3-pro-preview` | Gemini model to use |
-| `CODEX_MODEL` | `gpt-5.3-codex` | Codex model to use |
+| `GEMINI_MODEL` | (CLI default) | Override Gemini model (e.g. `gemini-3-pro-preview`) |
+| `CODEX_MODEL` | (CLI default) | Override Codex model (e.g. `gpt-5.3-codex`) |
 | `GEMINI_BIN` | (auto-detect) | Path to gemini binary |
 | `CODEX_BIN` | (auto-detect) | Path to codex binary |
 | `MULTI_AI_LOG_DIR` | `~/.claude/logs` | Log directory |
+
+By default, scripts defer to each CLI's built-in default model — no configuration needed. As CLIs update, you automatically get the latest model. To pin a specific model:
+
+```bash
+# Shell profile (~/.zshrc or ~/.bashrc)
+export GEMINI_MODEL="gemini-3-pro-preview"
+export CODEX_MODEL="gpt-5.3-codex"
+
+# Or per-invocation via the -m flag
+~/.claude/scripts/call-gemini.sh -m gemini-3-flash-preview "your prompt"
+```
 
 ### Script Features
 
