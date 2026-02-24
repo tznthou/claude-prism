@@ -44,8 +44,20 @@ fi
 # --- Parse flags ---
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -m|--model)   MODEL="$2"; shift 2 ;;
-        --sandbox)    SANDBOX="$2"; shift 2 ;;
+        -m|--model)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --model requires a value" >&2
+                echo "Usage: call-codex.sh [-m model] [--sandbox mode] [--dry-run] \"prompt\"" >&2
+                exit 1
+            fi
+            MODEL="$2"; shift 2 ;;
+        --sandbox)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --sandbox requires a value" >&2
+                echo "Usage: call-codex.sh [-m model] [--sandbox mode] [--dry-run] \"prompt\"" >&2
+                exit 1
+            fi
+            SANDBOX="$2"; shift 2 ;;
         --dry-run)    DRY_RUN=true; shift ;;
         *) break ;;
     esac

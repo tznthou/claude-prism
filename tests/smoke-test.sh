@@ -71,22 +71,30 @@ echo ""
 echo "4. Dry run tests..."
 
 # Gemini dry run
-DRY_GEMINI=$("$SCRIPT_DIR/scripts/call-gemini.sh" --dry-run "hello" 2>&1) || true
-if echo "$DRY_GEMINI" | grep -q "\[DRY RUN\]"; then
-    pass "call-gemini.sh --dry-run works"
+if command -v gemini &>/dev/null || [[ -x "$HOME/.npm-global/bin/gemini" ]]; then
+    DRY_GEMINI=$("$SCRIPT_DIR/scripts/call-gemini.sh" --dry-run "hello" 2>&1) || true
+    if echo "$DRY_GEMINI" | grep -q "\[DRY RUN\]"; then
+        pass "call-gemini.sh --dry-run works"
+    else
+        fail "call-gemini.sh --dry-run unexpected output: $DRY_GEMINI"
+    fi
 else
-    fail "call-gemini.sh --dry-run unexpected output: $DRY_GEMINI"
+    skip "call-gemini.sh --dry-run skipped (Gemini CLI not installed)"
 fi
 
 # Codex dry run (needs git repo)
-TEMP_REPO=$(mktemp -d)
-git -C "$TEMP_REPO" init -q
-DRY_CODEX=$(cd "$TEMP_REPO" && "$SCRIPT_DIR/scripts/call-codex.sh" --dry-run "hello" 2>&1) || true
-rm -rf "$TEMP_REPO"
-if echo "$DRY_CODEX" | grep -q "\[DRY RUN\]"; then
-    pass "call-codex.sh --dry-run works"
+if command -v codex &>/dev/null || [[ -x "$HOME/.npm-global/bin/codex" ]]; then
+    TEMP_REPO=$(mktemp -d)
+    git -C "$TEMP_REPO" init -q
+    DRY_CODEX=$(cd "$TEMP_REPO" && "$SCRIPT_DIR/scripts/call-codex.sh" --dry-run "hello" 2>&1) || true
+    rm -rf "$TEMP_REPO"
+    if echo "$DRY_CODEX" | grep -q "\[DRY RUN\]"; then
+        pass "call-codex.sh --dry-run works"
+    else
+        fail "call-codex.sh --dry-run unexpected output: $DRY_CODEX"
+    fi
 else
-    fail "call-codex.sh --dry-run unexpected output: $DRY_CODEX"
+    skip "call-codex.sh --dry-run skipped (Codex CLI not installed)"
 fi
 
 # ─── Test 5: Logging ───
@@ -97,26 +105,42 @@ LOG_DIR="${MULTI_AI_LOG_DIR:-$HOME/.claude/logs}"
 LOG_FILE="$LOG_DIR/multi-ai.log"
 
 if [[ -f "$LOG_FILE" ]]; then
-    RECENT=$(tail -2 "$LOG_FILE" | grep -c "dry_run=true" || true)
+    RECENT=$(tail -20 "$LOG_FILE" | grep -c "dry_run=true" || true)
     if [[ "$RECENT" -ge 1 ]]; then
         pass "Dry run calls were logged to $LOG_FILE"
     else
-        fail "Log file exists but dry run entries not found"
+        if command -v gemini &>/dev/null || [[ -x "$HOME/.npm-global/bin/gemini" ]] || \
+           command -v codex &>/dev/null || [[ -x "$HOME/.npm-global/bin/codex" ]]; then
+            fail "Log file exists but dry run entries not found"
+        else
+            skip "No dry-run log entries expected (no external CLIs installed)"
+        fi
     fi
 else
-    fail "Log file not created at $LOG_FILE"
+    if command -v gemini &>/dev/null || [[ -x "$HOME/.npm-global/bin/gemini" ]] || \
+       command -v codex &>/dev/null || [[ -x "$HOME/.npm-global/bin/codex" ]]; then
+        fail "Log file not created at $LOG_FILE"
+    else
+        skip "Log file not created because dry-run calls were skipped (no external CLIs installed)"
+    fi
 fi
 
 # ─── Test 6: Codex git repo check ───
 echo ""
 echo "6. Error handling..."
 
-TEMP_DIR=$(mktemp -d)
-NO_GIT_RESULT=$("$SCRIPT_DIR/scripts/call-codex.sh" --dry-run "test" 2>&1 || true)
-rm -rf "$TEMP_DIR"
-# This test runs from SCRIPT_DIR which may or may not be a git repo
-# The important thing is the script doesn't crash
-pass "Scripts handle errors without crashing"
+if command -v codex &>/dev/null || [[ -x "$HOME/.npm-global/bin/codex" ]]; then
+    TEMP_DIR=$(mktemp -d)
+    NO_GIT_RESULT=$(cd "$TEMP_DIR" && "$SCRIPT_DIR/scripts/call-codex.sh" --dry-run "test" 2>&1 || true)
+    rm -rf "$TEMP_DIR"
+    if echo "$NO_GIT_RESULT" | grep -q "requires a git repo"; then
+        pass "call-codex.sh reports clear error outside git repo"
+    else
+        fail "call-codex.sh no-git error message unexpected: $NO_GIT_RESULT"
+    fi
+else
+    skip "Codex no-git error test skipped (Codex CLI not installed)"
+fi
 
 # ─── Summary ───
 echo ""

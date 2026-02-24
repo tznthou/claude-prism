@@ -43,7 +43,13 @@ fi
 # --- Parse flags ---
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -m|--model) MODEL="$2"; shift 2 ;;
+        -m|--model)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --model requires a value" >&2
+                echo "Usage: call-gemini.sh [-m model] [--dry-run] \"prompt\"" >&2
+                exit 1
+            fi
+            MODEL="$2"; shift 2 ;;
         --dry-run)  DRY_RUN=true; shift ;;
         *) break ;;
     esac
