@@ -13,7 +13,7 @@ NC='\033[0m'
 ok()   { echo -e "  ${GREEN}✓${NC} $*"; }
 warn() { echo -e "  ${YELLOW}⚠${NC} $*"; }
 
-COMMANDS=(ask-codex ask-gemini code-review multi-review research ui-review)
+COMMANDS=(ask-codex ask-gemini code-review multi-review research ui-design ui-review)
 SCRIPTS=(call-codex.sh call-gemini.sh)
 
 echo ""

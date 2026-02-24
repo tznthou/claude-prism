@@ -51,7 +51,7 @@ else
     if [[ -x "$HOME/.npm-global/bin/gemini" ]]; then
         ok "Gemini CLI found at ~/.npm-global/bin/gemini"
     else
-        warn "Gemini CLI not found — /ask-gemini, /ui-review, /research will not work"
+        warn "Gemini CLI not found — /ask-gemini, /ui-design, /ui-review, /research will not work"
         info "Install: npm install -g @google/gemini-cli"
         PREREQ_OK=false
     fi
@@ -143,6 +143,7 @@ echo "Available commands in Claude Code:"
 echo "  /ask-codex      — Ask Codex a question"
 echo "  /ask-gemini     — Ask Gemini a question"
 echo "  /code-review    — Cross-provider code review via Codex"
+echo "  /ui-design      — UI/UX design spec generation via Gemini"
 echo "  /ui-review      — UI/UX review via Gemini"
 echo "  /research       — Technical research via Gemini"
 echo "  /multi-review   — Triple-provider adversarial review"

@@ -1,0 +1,140 @@
+---
+command: ui-design
+description: UI/UX design spec generation via Gemini — from requirements to implementable design
+---
+
+# UI/UX Design via Gemini
+
+Use Gemini CLI to generate a structured UI/UX design specification from requirements. Gemini brings Google Design ecosystem knowledge (Material Design, web patterns, responsive best practices).
+
+**Limitation**: Gemini CLI headless mode does not support image output. This command produces text-based design specs (information architecture, wireframes in ASCII/structured text, component breakdowns). For visual mockups, use dedicated design tools.
+
+## Execution
+
+### 1. Parse input
+
+Based on `$ARGUMENTS`:
+- **Text description**: use directly as requirements (e.g., `a SaaS dashboard with analytics charts and user management`)
+- **File path** (`.md`, `.txt`): read the file as a requirements document
+- **`--html`**: also request a self-contained HTML prototype (Tailwind CDN) in addition to the design spec
+- **No args**: use AskUserQuestion to ask what to design
+
+### 2. Detect project context (optional, skip if not in a project)
+
+Scan for tech stack signals to inform the design. This is **automatic context enrichment**, not user-configured parameters:
+
+```bash
+# Check for frontend framework
+cat package.json 2>/dev/null | grep -oE '"(react|vue|svelte|next|nuxt|angular)"'
+
+# Check for CSS framework
+ls tailwind.config.* 2>/dev/null || ls postcss.config.* 2>/dev/null
+
+# Check for component library patterns
+ls src/components/ 2>/dev/null | head -5
+```
+
+If detected, include as `Tech context (auto-detected):` in the prompt. If nothing found, omit entirely — do not ask the user.
+
+### 3. Call Gemini
+
+```bash
+~/.claude/scripts/call-gemini.sh "You are a senior UX/UI designer with expertise in web and mobile application design.
+
+Generate a comprehensive, implementable UI/UX design specification based on the requirements below.
+
+${TECH_CONTEXT:+Tech context (auto-detected): $TECH_CONTEXT}
+
+Requirements:
+$USER_INPUT
+
+Deliver the following sections:
+
+## 1. Information Architecture
+- Page/screen inventory with purpose
+- Content hierarchy per page
+- Navigation structure (primary, secondary, breadcrumbs)
+- User flow diagram (text-based: step → step → step)
+
+## 2. Layout Specification
+For each key page, provide:
+- ASCII wireframe showing component placement
+- Grid system recommendation (columns, gutters, max-width)
+- Responsive strategy: mobile (<640px) → tablet (640-1024px) → desktop (>1024px)
+- Spacing rhythm (base unit and scale)
+
+## 3. Component Breakdown
+- Component tree (parent → children hierarchy)
+- For each component: name, purpose, key props/states
+- Identify reusable vs page-specific components
+- State variations: default, loading, empty, error, success
+
+## 4. Interaction Design
+- Key user flows (step-by-step)
+- Interactive states: hover, focus, active, disabled
+- Transitions and feedback patterns
+- Form validation strategy (inline vs submit)
+
+## 5. Visual Direction
+- Color palette: primary, secondary, neutral, semantic (success/warning/error) — provide hex codes
+- Typography: font pairing suggestion, size scale (h1-h6, body, caption)
+- Spacing scale (4px base: 4, 8, 12, 16, 24, 32, 48, 64)
+- Border radius, shadow, and elevation system
+- Overall aesthetic rationale
+
+## 6. Implementation Hints
+- Suggested component library or UI kit
+- Key layout patterns (CSS Grid vs Flexbox recommendations per section)
+- Accessibility checklist: landmarks, ARIA, keyboard nav, contrast
+- Performance considerations: lazy loading, skeleton screens
+
+Use tables where appropriate. Use ASCII art for wireframes. Be specific — provide actual values, not vague guidance."
+```
+
+If `--html` flag is present, make a **second** Gemini call:
+
+```bash
+~/.claude/scripts/call-gemini.sh "Based on this UI design spec, generate a single self-contained HTML file that serves as a visual prototype.
+
+Requirements:
+- Use Tailwind CSS via CDN (<script src='https://cdn.tailwindcss.com'></script>)
+- Responsive (mobile-first)
+- Include realistic placeholder content
+- All styles inline or via Tailwind classes
+- No external dependencies beyond Tailwind CDN
+- Add comments marking each major section
+
+Design spec:
+$(design spec from previous call)"
+```
+
+Save the HTML output and inform the user of the file path.
+
+### 4. Claude post-processing
+
+After Gemini responds, Claude adds value:
+
+- **Accessibility audit**: flag any gaps in Gemini's design (missing ARIA, contrast issues, keyboard traps)
+- **Tech stack mapping**: if project context was detected, map Gemini's component suggestions to specific library components (e.g., shadcn/ui Button, Radix Dialog)
+- **Practical corrections**: flag unrealistic suggestions or missing edge cases
+- **Next step suggestion**: recommend `/ui-review` after implementation to close the design→implement→review loop
+
+### 5. Present results
+
+```
+## 🎨 UI Design Specification
+
+> Generated by **Gemini** | Post-processed by **Claude**
+> Tech context: [detected stack or "none detected"]
+
+[Gemini's 6-section design spec]
+
+---
+
+### 💡 Claude Supplements
+[Accessibility gaps, tech stack mapping, corrections]
+
+### ➡️ Next Steps
+1. Implement based on the spec above
+2. Run `/ui-review` on the implementation to validate against the design
+```

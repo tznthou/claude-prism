@@ -40,7 +40,7 @@ done
 echo ""
 echo "2. Command files..."
 
-for cmd in ask-codex ask-gemini code-review multi-review research ui-review; do
+for cmd in ask-codex ask-gemini code-review multi-review research ui-design ui-review; do
     if [[ -f "$SCRIPT_DIR/commands/$cmd.md" ]]; then
         pass "/$(basename "$cmd") command definition exists"
     else

@@ -1,4 +1,4 @@
-# claude-prism v0.2.1
+# claude-prism v0.3.0
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Bash](https://img.shields.io/badge/Bash-4.0+-4EAA25.svg)](https://www.gnu.org/software/bash/)
@@ -29,6 +29,7 @@ Use Claude Code as the **orchestrator**, but dispatch review and research tasks 
 | `/ask-codex` | Codex | Direct Q&A — get OpenAI's perspective |
 | `/ask-gemini` | Gemini | Direct Q&A — get Google's perspective |
 | `/code-review` | Codex | Cross-provider code review |
+| `/ui-design` | Gemini | UI/UX design spec generation from requirements |
 | `/ui-review` | Gemini | UI/UX accessibility & design audit |
 | `/research` | Gemini | Structured technical research |
 | `/multi-review` | Codex + Gemini + Claude | Triple-provider adversarial review |
@@ -58,6 +59,16 @@ Codex reviews code that Claude wrote. The core use case — **different AI, diff
 /code-review src/auth.ts        # review specific file
 /code-review --diff             # review unstaged changes
 /code-review --pr               # review entire PR
+```
+
+### `/ui-design` — UI/UX Design Spec Generation
+
+Gemini generates a structured, implementable UI/UX design specification from your requirements. Outputs information architecture, ASCII wireframes, component breakdowns, interaction design, visual direction, and implementation hints. Optionally generates an HTML prototype with `--html`.
+
+```
+/ui-design a SaaS dashboard with analytics and user management
+/ui-design docs/requirements.md
+/ui-design --html landing page for a developer tool
 ```
 
 ### `/ui-review` — UI/UX Audit
@@ -100,7 +111,7 @@ The flagship command. Sends the same code to **both** Codex and Gemini in parall
 flowchart LR
     User["👤 You"] <--> Claude["🟣 Claude Code\n(Orchestrator)"]
     Claude -->|"/ask-codex\n/code-review\n/multi-review"| Codex["🟢 Codex CLI"]
-    Claude -->|"/ask-gemini\n/ui-review\n/research\n/multi-review"| Gemini["🔵 Gemini CLI"]
+    Claude -->|"/ask-gemini\n/ui-design\n/ui-review\n/research\n/multi-review"| Gemini["🔵 Gemini CLI"]
 ```
 
 ### How It Works
@@ -173,6 +184,7 @@ claude-prism/
 │   ├── code-review.md
 │   ├── multi-review.md
 │   ├── research.md
+│   ├── ui-design.md
 │   └── ui-review.md
 ├── scripts/                    # CLI wrappers (Bash)
 │   ├── call-codex.sh
@@ -263,7 +275,7 @@ With logging enabled (default), check `~/.claude/logs/multi-ai.log` to verify. E
 
 **Q: What if I only have Gemini CLI installed?**
 
-That's fine. Commands that use Codex (`/ask-codex`, `/code-review`) will fail gracefully with an error message. Gemini-based commands (`/ask-gemini`, `/ui-review`, `/research`) will work. `/multi-review` will only get one perspective.
+That's fine. Commands that use Codex (`/ask-codex`, `/code-review`) will fail gracefully with an error message. Gemini-based commands (`/ask-gemini`, `/ui-design`, `/ui-review`, `/research`) will work. `/multi-review` will only get one perspective.
 
 **Q: How much does this cost?**
 
@@ -276,6 +288,12 @@ Yes. The commands and scripts are standalone — they only depend on `~/.claude/
 ---
 
 ## Changelog
+
+### v0.3.0 (2026-02-24)
+
+- New command: `/ui-design` — UI/UX design spec generation via Gemini (information architecture, wireframes, component breakdown, visual direction)
+- Optional `--html` flag generates a self-contained HTML prototype with Tailwind CDN
+- Auto-detects project tech stack to inform design suggestions
 
 ### v0.2.1 (2026-02-24)
 
