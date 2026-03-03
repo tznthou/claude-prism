@@ -1,5 +1,5 @@
 ---
-command: ask-gemini
+command: pi-ask-gemini
 description: Ask Gemini CLI a question — get Google's perspective alongside Claude's
 ---
 

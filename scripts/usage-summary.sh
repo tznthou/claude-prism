@@ -34,7 +34,7 @@ esac
 
 if [[ ! -f "$LOG_FILE" ]]; then
     echo "No log file found at $LOG_FILE"
-    echo "Run some commands first (/ask-codex, /ask-gemini, /multi-review, etc.)"
+    echo "Run some commands first (/pi-ask-codex, /pi-ask-gemini, /pi-multi-review, etc.)"
     exit 0
 fi
 

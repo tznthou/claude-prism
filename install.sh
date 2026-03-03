@@ -51,7 +51,7 @@ else
     if [[ -x "$HOME/.npm-global/bin/gemini" ]]; then
         ok "Gemini CLI found at ~/.npm-global/bin/gemini"
     else
-        warn "Gemini CLI not found — /ask-gemini, /ui-design, /ui-review, /research will not work"
+        warn "Gemini CLI not found — /pi-ask-gemini, /pi-ui-design, /pi-ui-review, /pi-research will not work"
         info "Install: npm install -g @google/gemini-cli"
         PREREQ_OK=false
     fi
@@ -64,7 +64,7 @@ else
     if [[ -x "$HOME/.npm-global/bin/codex" ]]; then
         ok "Codex CLI found at ~/.npm-global/bin/codex"
     else
-        warn "Codex CLI not found — /ask-codex, /code-review will not work"
+        warn "Codex CLI not found — /pi-ask-codex, /pi-code-review will not work"
         info "Install: npm install -g @openai/codex"
         PREREQ_OK=false
     fi
@@ -140,6 +140,22 @@ for script in "$SCRIPT_DIR"/scripts/*.sh; do
     ok "$(basename "$script")"
 done
 
+# ─── Clean up legacy (pre-v0.7) unprefixed commands ───
+LEGACY_COMMANDS=(ask-codex ask-gemini code-review multi-review research ui-design ui-review)
+legacy_removed=0
+for cmd in "${LEGACY_COMMANDS[@]}"; do
+    target="$CLAUDE_DIR/commands/$cmd.md"
+    if [[ -f "$target" ]]; then
+        rm "$target"
+        info "Removed legacy /$cmd (replaced by /pi-$cmd)"
+        ((legacy_removed++)) || true
+    fi
+done
+if [[ $legacy_removed -gt 0 ]]; then
+    ok "Cleaned up $legacy_removed legacy command(s)"
+    echo ""
+fi
+
 # ─── Install commands ───
 echo ""
 echo "Installing commands..."
@@ -157,13 +173,15 @@ echo "────────────────────────�
 echo -e "${GREEN}Installation complete!${NC}"
 echo ""
 echo "Available commands in Claude Code:"
-echo "  /ask-codex      — Ask Codex a question"
-echo "  /ask-gemini     — Ask Gemini a question"
-echo "  /code-review    — Cross-provider code review via Codex"
-echo "  /ui-design      — HTML mockup from design spec via Gemini"
-echo "  /ui-review      — UI/UX review via Gemini"
-echo "  /research       — Technical research via Gemini"
-echo "  /multi-review   — Triple-provider adversarial review"
+echo "  /pi-ask-codex     — Ask Codex a question"
+echo "  /pi-ask-gemini    — Ask Gemini a question"
+echo "  /pi-code-review   — Cross-provider code review via Codex"
+echo "  /pi-ui-design     — HTML mockup from design spec via Gemini"
+echo "  /pi-ui-review     — UI/UX review via Gemini"
+echo "  /pi-research      — Technical research via Gemini"
+echo "  /pi-multi-review  — Triple-provider adversarial review (with smart routing)"
+echo "  /pi-plan          — Generate structured implementation plan"
+echo "  /pi-exec          — Execute a plan file step by step"
 echo ""
 echo "Utilities:"
 echo "  usage-summary    — View API usage stats (today/--week/--all)"

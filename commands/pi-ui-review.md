@@ -1,5 +1,5 @@
 ---
-command: ui-review
+command: pi-ui-review
 description: UI/UX review via Gemini — accessibility, responsive design, component structure
 ---
 

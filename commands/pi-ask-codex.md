@@ -1,5 +1,5 @@
 ---
-command: ask-codex
+command: pi-ask-codex
 description: Ask Codex CLI a question — get OpenAI's perspective alongside Claude's
 ---
 

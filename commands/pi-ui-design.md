@@ -1,5 +1,5 @@
 ---
-command: ui-design
+command: pi-ui-design
 description: HTML mockup generation via Gemini — from design spec to previewable prototype
 ---
 
@@ -7,7 +7,7 @@ description: HTML mockup generation via Gemini — from design spec to previewab
 
 Use Gemini CLI to generate a previewable HTML mockup from a design specification document. The mockup is a single self-contained HTML file (Tailwind CDN) that can be opened in a browser for visual confirmation before implementation.
 
-**Workflow**: `Design spec → /ui-design → Browser preview → Confirm → Claude Code implements`
+**Workflow**: `Design spec → /pi-ui-design → Browser preview → Confirm → Claude Code implements`
 
 ## Execution
 
@@ -101,5 +101,5 @@ Save the HTML file next to the design spec (or in a user-specified location). Th
 Open the HTML file in a browser to preview. When you're happy with the design:
 1. **Adjust** — Tell me what to change in the mockup
 2. **Implement** — I can implement this design into your project (Next.js / React / etc.)
-3. **Run `/ui-review`** — Have Gemini audit the mockup for accessibility and UX
+3. **Run `/pi-ui-review`** — Have Gemini audit the mockup for accessibility and UX
 ```

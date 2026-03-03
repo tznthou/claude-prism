@@ -45,7 +45,7 @@ done
 if [[ ! -f "$INSIGHTS_FILE" ]]; then
     echo -e "${YELLOW}No review insights found.${NC}"
     echo ""
-    echo "Run /multi-review or /code-review first — insights are recorded automatically."
+    echo "Run /pi-multi-review or /pi-code-review first — insights are recorded automatically."
     echo "Expected file: $INSIGHTS_FILE"
     exit 0
 fi
@@ -53,7 +53,7 @@ fi
 LINE_COUNT=$(wc -l < "$INSIGHTS_FILE" | tr -d ' ')
 if [[ "$LINE_COUNT" -eq 0 ]]; then
     echo -e "${YELLOW}Review insights file is empty.${NC}"
-    echo "Run /multi-review or /code-review to start recording insights."
+    echo "Run /pi-multi-review or /pi-code-review to start recording insights."
     exit 0
 fi
 

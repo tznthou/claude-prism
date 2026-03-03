@@ -1,5 +1,5 @@
 ---
-command: code-review
+command: pi-code-review
 description: Cross-provider code review via Codex — eliminate same-source blind spots
 ---
 

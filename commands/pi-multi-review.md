@@ -1,5 +1,5 @@
 ---
-command: multi-review
+command: pi-multi-review
 description: Triple-provider adversarial review — Codex + Gemini + Claude synthesis
 ---
 
@@ -11,7 +11,7 @@ Send the same code to both Codex and Gemini for review, then Claude synthesizes 
 
 ### 1. Determine review scope
 
-Same as `/code-review`, based on `$ARGUMENTS`:
+Same as `/pi-code-review`, based on `$ARGUMENTS`:
 - No args → staged changes
 - File path → specified file
 - `--diff` → unstaged changes
@@ -20,6 +20,30 @@ Same as `/code-review`, based on `$ARGUMENTS`:
 ### 2. Get the code
 
 Use Bash / Read tool. **The same code goes to both providers.**
+
+### 2.5 Detect review domain (smart routing)
+
+Determine the domain of the changes to guide synthesis weighting in Step 6.
+
+Based on the review scope determined in Step 1, get the file list and pipe it to the domain detection script:
+
+```bash
+# For staged changes:
+git diff --cached --name-only | ~/.claude/scripts/detect-domain.sh
+
+# For file review:
+echo "<filepath>" | ~/.claude/scripts/detect-domain.sh
+
+# For unstaged changes:
+git diff --name-only | ~/.claude/scripts/detect-domain.sh
+
+# For PR diff:
+git diff main...HEAD --name-only | ~/.claude/scripts/detect-domain.sh
+```
+
+The script outputs one of: `frontend`, `backend`, or `fullstack`. Store this result for use in Step 6.
+
+If the script is not found or fails, default to `fullstack` (balanced weighting) and continue.
 
 ### 3. Call Codex + Gemini in parallel
 
@@ -64,7 +88,23 @@ External providers may not follow the requested format (no emoji severity, no 1-
 
 ### 6. Claude synthesis
 
-After receiving results (from however many providers succeeded), Claude performs integrated analysis:
+After receiving results (from however many providers succeeded), Claude performs integrated analysis using the domain detected in Step 2.5.
+
+#### Domain-aware weighting
+
+Apply provider authority based on the detected domain:
+
+| Domain | Gemini Weight | Codex Weight | Rationale |
+|--------|--------------|--------------|-----------|
+| `frontend` | **Higher authority** | Standard | Gemini excels at UI/UX, accessibility, design patterns |
+| `backend` | Standard | **Higher authority** | Codex excels at algorithms, security, API design |
+| `fullstack` | Equal | Equal | Balanced — default behavior |
+
+**How to apply weighting:**
+- When providers **agree** → domain weighting is irrelevant (consensus is consensus).
+- When providers **disagree** → the domain-authoritative provider's opinion gets the benefit of the doubt. Note: "Weighted toward [Provider] (domain: [domain])."
+- When the domain-authoritative provider raises an issue **alone** → treat it with higher confidence than a non-authoritative solo finding.
+- **Never discard** any provider's finding due to weighting. Weighting affects synthesis priority, not inclusion.
 
 #### 6.1 Consensus (multiple providers flagged)
 Issues that two or more reviewers identified — **high confidence, fix first**.
@@ -73,6 +113,7 @@ Issues that two or more reviewers identified — **high confidence, fix first**.
 Issues only one provider raised. Claude judges:
 - Whether it's a real issue
 - Why the others missed it (blind spot analysis)
+- **Apply domain weighting**: if the domain-authoritative provider raised it, lean toward treating it as valid.
 
 #### 6.3 Claude's independent perspective
 Issues no other provider caught but worth noting.
@@ -88,6 +129,11 @@ Issues no other provider caught but worth noting.
 | Codex | [available/unavailable — reason] |
 | Gemini | [available/unavailable — reason] |
 | Claude | available (always) |
+
+### Domain & Weighting
+| Domain | Provider Authority |
+|--------|-------------------|
+| [frontend/backend/fullstack] | [Gemini-weighted / Codex-weighted / Balanced] |
 
 ### Score Comparison
 | Provider | Score | Focus Area |
@@ -117,7 +163,7 @@ Issues no other provider caught but worth noting.
 After outputting the review, use the Bash tool to append a single-line JSON to the insights log:
 
 ```bash
-echo '{"date":"<ISO 8601 UTC>","project":"<repo or directory name>","scope":"<staged|file:path|diff|pr>","providers":["<list of providers that responded>"],"issues":[<issue objects>]}' >> ~/.claude/logs/review-insights.jsonl
+echo '{"date":"<ISO 8601 UTC>","project":"<repo or directory name>","scope":"<staged|file:path|diff|pr>","domain":"<frontend|backend|fullstack>","providers":["<list of providers that responded>"],"issues":[<issue objects>]}' >> ~/.claude/logs/review-insights.jsonl
 ```
 
 Each issue object in the `issues` array:

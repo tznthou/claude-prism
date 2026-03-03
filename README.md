@@ -31,72 +31,74 @@ Use Claude Code as the **orchestrator**, but dispatch review and research tasks 
 
 | Command | Provider | Description |
 |---------|----------|-------------|
-| `/ask-codex` | Codex | Direct Q&A — get OpenAI's perspective |
-| `/ask-gemini` | Gemini | Direct Q&A — get Google's perspective |
-| `/code-review` | Codex | Cross-provider code review |
-| `/ui-design` | Gemini | HTML mockup from design spec |
-| `/ui-review` | Gemini | UI/UX accessibility & design audit |
-| `/research` | Gemini | Structured technical research |
-| `/multi-review` | Codex + Gemini + Claude | Triple-provider adversarial review |
+| `/pi-ask-codex` | Codex | Direct Q&A — get OpenAI's perspective |
+| `/pi-ask-gemini` | Gemini | Direct Q&A — get Google's perspective |
+| `/pi-code-review` | Codex | Cross-provider code review |
+| `/pi-ui-design` | Gemini | HTML mockup from design spec |
+| `/pi-ui-review` | Gemini | UI/UX accessibility & design audit |
+| `/pi-research` | Gemini | Structured technical research |
+| `/pi-multi-review` | Codex + Gemini + Claude | Triple-provider adversarial review (with smart routing) |
+| `/pi-plan` | Codex + Gemini + Claude | Generate structured implementation plan |
+| `/pi-exec` | Claude | Execute a plan file step by step |
 
 All commands include **graceful degradation** — if a provider is unavailable, Claude continues with the remaining providers instead of failing.
 
-### `/ask-codex` — Ask OpenAI
+### `/pi-ask-codex` — Ask OpenAI
 
 Direct Q&A with Codex. Good for getting a second opinion on any technical question.
 
 ```
-/ask-codex What's the best way to handle optimistic updates in React Query v5?
+/pi-ask-codex What's the best way to handle optimistic updates in React Query v5?
 ```
 
-### `/ask-gemini` — Ask Google
+### `/pi-ask-gemini` — Ask Google
 
 Direct Q&A with Gemini. Leverages Google's broad ecosystem knowledge.
 
 ```
-/ask-gemini Compare Bun vs Deno vs Node.js for a new backend project in 2026
+/pi-ask-gemini Compare Bun vs Deno vs Node.js for a new backend project in 2026
 ```
 
-### `/code-review` — Cross-Provider Code Review
+### `/pi-code-review` — Cross-Provider Code Review
 
 Codex reviews code that Claude wrote. The core use case — **different AI, different blind spots**.
 
 ```
-/code-review                    # review staged changes
-/code-review src/auth.ts        # review specific file
-/code-review --diff             # review unstaged changes
-/code-review --pr               # review entire PR
+/pi-code-review                    # review staged changes
+/pi-code-review src/auth.ts        # review specific file
+/pi-code-review --diff             # review unstaged changes
+/pi-code-review --pr               # review entire PR
 ```
 
-### `/ui-design` — HTML Mockup from Design Spec
+### `/pi-ui-design` — HTML Mockup from Design Spec
 
 Gemini reads a design specification and generates a self-contained HTML mockup (Tailwind CDN) you can preview in a browser. Confirm the design visually, then let Claude Code implement it into your project.
 
 ```
-/ui-design design-spec.md              # generate HTML mockup from design spec
-/ui-design "a SaaS dashboard"          # no spec → Gemini drafts spec first, then mockup
+/pi-ui-design design-spec.md              # generate HTML mockup from design spec
+/pi-ui-design "a SaaS dashboard"          # no spec → Gemini drafts spec first, then mockup
 ```
 
-### `/ui-review` — UI/UX Audit
+### `/pi-ui-review` — UI/UX Audit
 
 Gemini reviews frontend code for accessibility, responsive design, component structure, and UX patterns.
 
 ```
-/ui-review src/components/Header.tsx
-/ui-review src/app/(public)/
-/ui-review --screenshot ./screenshot.png   # uses Claude's vision instead
+/pi-ui-review src/components/Header.tsx
+/pi-ui-review src/app/(public)/
+/pi-ui-review --screenshot ./screenshot.png   # uses Claude's vision instead
 ```
 
-### `/research` — Technical Research
+### `/pi-research` — Technical Research
 
 Gemini conducts structured technical research with comparison tables, recommendations, and resource links.
 
 ```
-/research Best authentication libraries for Next.js App Router
-/research Monorepo tooling: Turborepo vs Nx vs Moon
+/pi-research Best authentication libraries for Next.js App Router
+/pi-research Monorepo tooling: Turborepo vs Nx vs Moon
 ```
 
-### `/multi-review` — Triple-Provider Adversarial Review
+### `/pi-multi-review` — Triple-Provider Adversarial Review
 
 The flagship command. Sends the same code to **both** Codex and Gemini in parallel, then Claude synthesizes:
 
@@ -104,9 +106,30 @@ The flagship command. Sends the same code to **both** Codex and Gemini in parall
 2. **Divergence** — issues only one found (Claude judges validity)
 3. **Claude supplement** — issues neither caught
 
+**Smart Routing** (v0.7.0): Automatically detects the domain of changes (frontend/backend/fullstack) from file extensions and paths. During synthesis, the domain-authoritative provider gets higher weight — Gemini for frontend (UI/UX expertise), Codex for backend (security/algorithm expertise). Both providers are always called; weighting only affects how Claude resolves disagreements.
+
 ```
-/multi-review                   # review staged changes
-/multi-review --pr              # review entire PR
+/pi-multi-review                   # review staged changes
+/pi-multi-review --pr              # review entire PR
+```
+
+### `/pi-plan` — Structured Implementation Planning
+
+Analyze the codebase and generate a structured plan file with multi-provider perspectives. Optionally consults Codex and Gemini for independent technical analysis.
+
+Plans are saved to `.claude/pi-plans/` and include: context, multi-provider analysis, step-by-step implementation, key files, risks, and verification criteria. Plans persist across sessions.
+
+```
+/pi-plan Add JWT authentication to the API
+/pi-plan Refactor the payment module to support Stripe
+```
+
+### `/pi-exec` — Plan Execution with Resume
+
+Execute a plan file step by step, updating progress checkboxes as you go. If a session ends mid-execution, running `/pi-exec` again resumes from the last unchecked step.
+
+```
+/pi-exec .claude/pi-plans/add-jwt-authentication.md
 ```
 
 ---
@@ -116,8 +139,8 @@ The flagship command. Sends the same code to **both** Codex and Gemini in parall
 ```mermaid
 flowchart LR
     User["👤 You"] <--> Claude["🟣 Claude Code\n(Orchestrator)"]
-    Claude -->|"/ask-codex\n/code-review\n/multi-review"| Codex["🟢 Codex CLI"]
-    Claude -->|"/ask-gemini\n/ui-design\n/ui-review\n/research\n/multi-review"| Gemini["🔵 Gemini CLI"]
+    Claude -->|"/pi-ask-codex\n/pi-code-review\n/pi-multi-review\n/pi-plan"| Codex["🟢 Codex CLI"]
+    Claude -->|"/pi-ask-gemini\n/pi-ui-design\n/pi-ui-review\n/pi-research\n/pi-multi-review\n/pi-plan"| Gemini["🔵 Gemini CLI"]
     CI["⚙️ GitHub Actions"] -->|"ci-review.sh"| GeminiAPI["🔵 Gemini API"]
     CI -->|"ci-review.sh"| OpenAIAPI["🟢 OpenAI API"]
     CI -->|"synthesis"| ClaudeAPI["🟣 Claude API"]
@@ -125,7 +148,7 @@ flowchart LR
 
 ### How It Works
 
-1. User types a slash command in Claude Code (e.g., `/code-review src/auth.ts`)
+1. User types a slash command in Claude Code (e.g., `/pi-code-review src/auth.ts`)
 2. Claude Code reads the command definition (Markdown with instructions)
 3. Claude reads the relevant code, builds a prompt
 4. Claude calls the shell script via Bash tool → script invokes the external CLI
@@ -194,16 +217,19 @@ claude-prism/
 │   ├── ai-review.yml           # GitHub Actions workflow for CI review
 │   └── shellcheck.yml          # ShellCheck static analysis for shell scripts
 ├── commands/                   # Slash command definitions (Markdown)
-│   ├── ask-codex.md
-│   ├── ask-gemini.md
-│   ├── code-review.md
-│   ├── multi-review.md
-│   ├── research.md
-│   ├── ui-design.md
-│   └── ui-review.md
+│   ├── pi-ask-codex.md
+│   ├── pi-ask-gemini.md
+│   ├── pi-code-review.md
+│   ├── pi-exec.md
+│   ├── pi-multi-review.md
+│   ├── pi-plan.md
+│   ├── pi-research.md
+│   ├── pi-ui-design.md
+│   └── pi-ui-review.md
 ├── scripts/                    # CLI wrappers & utilities (Bash)
 │   ├── call-codex.sh           # Codex CLI wrapper
 │   ├── call-gemini.sh          # Gemini CLI wrapper
+│   ├── detect-domain.sh        # Domain detection for smart routing
 │   ├── ci-review.sh            # CI/CD review orchestrator (curl APIs)
 │   ├── usage-summary.sh        # API usage statistics
 │   └── review-insights.sh      # Review pattern analysis
@@ -225,6 +251,9 @@ Installed to:
 └── logs/
     ├── multi-ai.log            # Call logs (timestamps, prompt/response lengths)
     └── review-insights.jsonl   # Structured review history (auto-recorded)
+
+# Created at runtime by /pi-plan:
+.claude/pi-plans/               # ← plan files (project-local, cross-session)
 ```
 
 ---
@@ -304,7 +333,7 @@ Output includes per-provider call counts, success/error/dry-run breakdown, and a
 
 ### Review Insights
 
-After each `/code-review` or `/multi-review`, Claude automatically records structured issue data to `~/.claude/logs/review-insights.jsonl`. Analyze patterns over time:
+After each `/pi-code-review` or `/pi-multi-review`, Claude automatically records structured issue data to `~/.claude/logs/review-insights.jsonl`. Analyze patterns over time:
 
 ```bash
 ~/.claude/scripts/review-insights.sh              # full analysis
@@ -326,6 +355,7 @@ Each review record follows this schema:
   "date": "2026-02-24T10:30:00Z",
   "project": "my-app",
   "scope": "pr",
+  "domain": "backend",
   "providers": ["codex", "gemini", "claude"],
   "issues": [
     {
@@ -403,7 +433,7 @@ With logging enabled (default), check `~/.claude/logs/multi-ai.log` to verify. E
 
 **Q: What if I only have Gemini CLI installed?**
 
-That's fine. All commands include graceful degradation — if a provider is unavailable, Claude continues with the remaining providers. `/multi-review` will use Claude + Gemini (two perspectives instead of three). `/code-review` will fall back to a Claude-only review with a caveat note.
+That's fine. All commands include graceful degradation — if a provider is unavailable, Claude continues with the remaining providers. `/pi-multi-review` will use Claude + Gemini (two perspectives instead of three). `/pi-code-review` will fall back to a Claude-only review with a caveat note.
 
 **Q: What if a provider returns an unexpected format?**
 
@@ -432,6 +462,72 @@ So here we are. I hope this tool helps you too.
 ---
 
 ## Changelog
+
+### v0.7.0 (2026-03-04)
+
+**Smart Routing, Plan/Execute & Command Namespace** — domain-aware review weighting, persistent planning, and `pi-` prefix for all commands.
+
+#### Breaking: `pi-` command prefix
+
+All 9 commands are now prefixed with `pi-` (e.g., `/code-review` → `/pi-code-review`, `/research` → `/pi-research`).
+
+**Why?** Claude Code has a built-in `/plan` command (enters plan mode). Our new `/plan` command for persistent planning would collide with it. Rather than only prefixing the conflicting commands, we chose to prefix **all** commands uniformly for namespace safety and brand identity. The `pi-` prefix (from **P**rism **I**nitial) is short enough to type quickly while making it clear which commands belong to claude-prism.
+
+**Migration:** After updating, re-run `./install.sh`. The installer will overwrite the old command files. To clean up old (unprefixed) commands manually:
+
+```bash
+cd ~/.claude/commands
+rm -f ask-codex.md ask-gemini.md code-review.md multi-review.md \
+     research.md ui-design.md ui-review.md plan.md execute.md
+```
+
+#### Smart routing
+
+`/pi-multi-review` now auto-detects the **domain** of the code changes (frontend / backend / fullstack) and adjusts provider weight during synthesis.
+
+**How it works:**
+
+1. File paths from the review scope are piped to `detect-domain.sh`
+2. The script classifies each file by extension and path:
+   - Frontend signals: `.css`, `.tsx`, `.jsx`, `.vue`, `.svelte`, `.html`, `.svg` / `components/`, `pages/`, `styles/`, `ui/`
+   - Backend signals: `.go`, `.py`, `.rs`, `.java`, `.sql`, `.proto` / `api/`, `controllers/`, `models/`, `middleware/`, `migrations/`
+   - Neutral (not counted): `.ts`, `.js`, `.json`, `.yaml`, `.md`, `.sh`
+3. If ≥ 70% of classifiable files lean one way → that domain; otherwise → `fullstack`
+
+**During synthesis:**
+
+| Domain | Gemini weight | Codex weight | Rationale |
+|--------|-------------|------------|-----------|
+| frontend | Higher | Standard | Gemini excels at UI/UX, accessibility, design patterns |
+| backend | Standard | Higher | Codex excels at algorithms, security, API design |
+| fullstack | Equal | Equal | No domain advantage |
+
+**Design philosophy: "weight, don't route."** Both providers are **always** called. The domain only affects how Claude resolves disagreements — if both providers agree on an issue, it's reported regardless of weighting. This preserves graceful degradation: if one provider is down, the other still covers the full review.
+
+#### Plan/Execute
+
+Two new commands for persistent, cross-session task planning:
+
+**`/pi-plan <task description>`** — Analyze the codebase and generate a structured plan file:
+
+- Optionally consults Codex and Gemini in parallel for independent technical analysis
+- Detects domain via `detect-domain.sh` to contextualize recommendations
+- Outputs a markdown plan to `.claude/pi-plans/<slug>.md` with: context, multi-provider analysis, step-by-step implementation (with checkboxes), key files, risks, and verification criteria
+- **Does not auto-execute** — the plan is a proposal for the user to review
+
+**`/pi-exec <plan-file>`** — Execute a plan step by step:
+
+- Reads the plan, validates status (draft / approved / in-progress / completed)
+- Executes each step sequentially, updating `- [ ]` → `- [x]` as it goes
+- If a step fails, stops and asks the user how to proceed
+- **Resume support:** If a session ends mid-execution, running `/pi-exec` on the same file resumes from the first unchecked step — no progress is lost
+
+**Why not SESSION_ID?** Some planning tools use session IDs and a separate binary to track state. We use markdown checkboxes instead — the plan file itself **is** the state. This keeps the mechanism simple (no external dependencies), human-readable (you can edit the plan in any editor), and consistent with our zero-compile-dependency principle.
+
+#### Other changes
+
+- **Review insights enhanced** — `review-insights.jsonl` now includes a `domain` field for domain-aware trend analysis
+- **`detect-domain.sh`** — new standalone utility script (can be used outside of multi-review; reads file paths from stdin)
 
 ### v0.6.0 (2026-03-03)
 

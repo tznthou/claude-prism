@@ -1,5 +1,5 @@
 ---
-command: research
+command: pi-research
 description: Technical research via Gemini — leverage Google's search integration
 ---
 
