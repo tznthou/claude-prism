@@ -11,6 +11,11 @@
 
 set -euo pipefail
 
+# --- Dependencies ---
+for cmd in curl jq; do
+    command -v "$cmd" &>/dev/null || { echo "Error: $cmd is required but not found" >&2; exit 1; }
+done
+
 # --- Config ---
 MAX_DIFF_CHARS="${MAX_DIFF_CHARS:-32000}"
 GEMINI_MODEL="${GEMINI_MODEL:-gemini-2.0-flash}"
@@ -245,11 +250,11 @@ PIDS=()
 for provider in "${PROVIDERS[@]}"; do
     case "$provider" in
         gemini)
-            call_gemini_api "$REVIEW_PROMPT" > "$TMPDIR_REVIEW/gemini.txt" 2>/dev/null &
+            call_gemini_api "$REVIEW_PROMPT" > "$TMPDIR_REVIEW/gemini.txt" 2>"$TMPDIR_REVIEW/gemini.err" &
             PIDS+=($!)
             ;;
         openai)
-            call_openai_api "$REVIEW_PROMPT" > "$TMPDIR_REVIEW/openai.txt" 2>/dev/null &
+            call_openai_api "$REVIEW_PROMPT" > "$TMPDIR_REVIEW/openai.txt" 2>"$TMPDIR_REVIEW/openai.err" &
             PIDS+=($!)
             ;;
     esac
@@ -272,6 +277,7 @@ if [[ -f "$TMPDIR_REVIEW/gemini.txt" ]]; then
         _log INFO "gemini success response_len=${#GEMINI_RESULT}"
     else
         _log ERROR "gemini failed: ${GEMINI_RESULT:0:200}"
+        [[ -s "$TMPDIR_REVIEW/gemini.err" ]] && _log ERROR "gemini stderr: $(head -c 500 "$TMPDIR_REVIEW/gemini.err")"
     fi
 fi
 
@@ -282,6 +288,7 @@ if [[ -f "$TMPDIR_REVIEW/openai.txt" ]]; then
         _log INFO "openai success response_len=${#OPENAI_RESULT}"
     else
         _log ERROR "openai failed: ${OPENAI_RESULT:0:200}"
+        [[ -s "$TMPDIR_REVIEW/openai.err" ]] && _log ERROR "openai stderr: $(head -c 500 "$TMPDIR_REVIEW/openai.err")"
     fi
 fi
 
