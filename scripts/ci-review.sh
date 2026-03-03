@@ -25,9 +25,9 @@ DIFF_FILE=""
 DIFF=""
 
 # --- Logging ---
+mkdir -p "$LOG_DIR"
 _log() {
     local level="$1"; shift
-    mkdir -p "$LOG_DIR"
     echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [ci-review] [$level] $*" >> "$LOG_FILE"
 }
 
@@ -85,9 +85,11 @@ if [[ "$DRY_RUN" == true ]]; then
     exit 0
 fi
 
+# --- Resolve GH_TOKEN once ---
+GH_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+
 # --- Get diff ---
 if [[ -n "$PR_NUMBER" ]] && [[ -z "$DIFF_FILE" ]]; then
-    GH_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
     if [[ -z "$GH_TOKEN" ]]; then
         echo "Error: GH_TOKEN or GITHUB_TOKEN required for --pr mode" >&2
         exit 1
@@ -149,15 +151,21 @@ $DIFF"
 
 call_gemini_api() {
     local prompt="$1"
-    local response
+    local body
+    body=$(jq -n --arg p "$prompt" '{contents:[{parts:[{text:$p}]}]}') || {
+        echo "ERROR: Gemini JSON body construction failed"
+        return 1
+    }
+    local response rc=0
     response=$(curl -sS --max-time 120 \
         "https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent" \
         -H "x-goog-api-key: $GEMINI_API_KEY" \
         -H "Content-Type: application/json" \
-        -d "$(jq -n --arg p "$prompt" '{contents:[{parts:[{text:$p}]}]}')" 2>&1) || {
-        echo "ERROR: Gemini API call failed (curl exit $?)"
+        -d "$body") || rc=$?
+    if [[ $rc -ne 0 ]]; then
+        echo "ERROR: Gemini API call failed (curl exit $rc)"
         return 1
-    }
+    fi
     local text
     text=$(echo "$response" | jq -r '.candidates[0].content.parts[0].text // empty' 2>/dev/null)
     if [[ -z "$text" ]]; then
@@ -171,16 +179,22 @@ call_gemini_api() {
 
 call_openai_api() {
     local prompt="$1"
-    local response
+    local body
+    body=$(jq -n --arg p "$prompt" --arg m "$OPENAI_MODEL" \
+        '{model:$m,messages:[{role:"user",content:$p}]}') || {
+        echo "ERROR: OpenAI JSON body construction failed"
+        return 1
+    }
+    local response rc=0
     response=$(curl -sS --max-time 120 \
         "https://api.openai.com/v1/chat/completions" \
         -H "Authorization: Bearer $OPENAI_API_KEY" \
         -H "Content-Type: application/json" \
-        -d "$(jq -n --arg p "$prompt" --arg m "$OPENAI_MODEL" \
-            '{model:$m,messages:[{role:"user",content:$p}]}')" 2>&1) || {
-        echo "ERROR: OpenAI API call failed (curl exit $?)"
+        -d "$body") || rc=$?
+    if [[ $rc -ne 0 ]]; then
+        echo "ERROR: OpenAI API call failed (curl exit $rc)"
         return 1
-    }
+    fi
     local text
     text=$(echo "$response" | jq -r '.choices[0].message.content // empty' 2>/dev/null)
     if [[ -z "$text" ]]; then
@@ -194,17 +208,23 @@ call_openai_api() {
 
 call_claude_api() {
     local prompt="$1"
-    local response
+    local body
+    body=$(jq -n --arg p "$prompt" --arg m "$ANTHROPIC_MODEL" \
+        '{model:$m,max_tokens:4096,messages:[{role:"user",content:$p}]}') || {
+        echo "ERROR: Anthropic JSON body construction failed"
+        return 1
+    }
+    local response rc=0
     response=$(curl -sS --max-time 120 \
         "https://api.anthropic.com/v1/messages" \
         -H "x-api-key: $ANTHROPIC_API_KEY" \
         -H "anthropic-version: 2023-06-01" \
         -H "Content-Type: application/json" \
-        -d "$(jq -n --arg p "$prompt" --arg m "$ANTHROPIC_MODEL" \
-            '{model:$m,max_tokens:4096,messages:[{role:"user",content:$p}]}')" 2>&1) || {
-        echo "ERROR: Anthropic API call failed (curl exit $?)"
+        -d "$body") || rc=$?
+    if [[ $rc -ne 0 ]]; then
+        echo "ERROR: Anthropic API call failed (curl exit $rc)"
         return 1
-    }
+    fi
     local text
     text=$(echo "$response" | jq -r '.content[0].text // empty' 2>/dev/null)
     if [[ -z "$text" ]]; then
@@ -225,11 +245,11 @@ PIDS=()
 for provider in "${PROVIDERS[@]}"; do
     case "$provider" in
         gemini)
-            call_gemini_api "$REVIEW_PROMPT" > "$TMPDIR_REVIEW/gemini.txt" 2>&1 &
+            call_gemini_api "$REVIEW_PROMPT" > "$TMPDIR_REVIEW/gemini.txt" 2>/dev/null &
             PIDS+=($!)
             ;;
         openai)
-            call_openai_api "$REVIEW_PROMPT" > "$TMPDIR_REVIEW/openai.txt" 2>&1 &
+            call_openai_api "$REVIEW_PROMPT" > "$TMPDIR_REVIEW/openai.txt" 2>/dev/null &
             PIDS+=($!)
             ;;
     esac
@@ -237,7 +257,7 @@ done
 
 # Wait for all providers
 for pid in "${PIDS[@]}"; do
-    wait "$pid" || true
+    wait "$pid" || _log WARN "provider job $pid exited with $?"
 done
 
 # --- Collect results ---
@@ -246,7 +266,7 @@ OPENAI_RESULT=""
 RESPONDED=()
 
 if [[ -f "$TMPDIR_REVIEW/gemini.txt" ]]; then
-    GEMINI_RESULT=$(cat "$TMPDIR_REVIEW/gemini.txt")
+    GEMINI_RESULT=$(< "$TMPDIR_REVIEW/gemini.txt")
     if [[ "$GEMINI_RESULT" != ERROR:* ]]; then
         RESPONDED+=(gemini)
         _log INFO "gemini success response_len=${#GEMINI_RESULT}"
@@ -256,7 +276,7 @@ if [[ -f "$TMPDIR_REVIEW/gemini.txt" ]]; then
 fi
 
 if [[ -f "$TMPDIR_REVIEW/openai.txt" ]]; then
-    OPENAI_RESULT=$(cat "$TMPDIR_REVIEW/openai.txt")
+    OPENAI_RESULT=$(< "$TMPDIR_REVIEW/openai.txt")
     if [[ "$OPENAI_RESULT" != ERROR:* ]]; then
         RESPONDED+=(openai)
         _log INFO "openai success response_len=${#OPENAI_RESULT}"
@@ -363,9 +383,9 @@ echo "$OUTPUT"
 
 # --- Post PR comment ---
 if [[ -n "$PR_NUMBER" ]]; then
-    GH_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
     if [[ -n "$GH_TOKEN" ]]; then
-        GH_TOKEN="$GH_TOKEN" gh pr comment "$PR_NUMBER" --body "$OUTPUT" 2>&1 || {
+        echo "$OUTPUT" > "$TMPDIR_REVIEW/comment.md"
+        GH_TOKEN="$GH_TOKEN" gh pr comment "$PR_NUMBER" --body-file "$TMPDIR_REVIEW/comment.md" 2>&1 || {
             _log ERROR "failed to post PR comment"
             echo "Warning: failed to post PR comment" >&2
         }

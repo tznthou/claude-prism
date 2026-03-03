@@ -31,30 +31,31 @@ jobs:
   review:
     # For label trigger: only run when "ai-review" label is added
     # For auto trigger: remove this if condition
-    if: github.event.label.name == 'ai-review'
+    if: ${{ github.event.label.name == 'ai-review' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Get PR diff
         id: diff
         run: |
-          gh pr diff ${{ github.event.pull_request.number }} > /tmp/pr.diff
-          echo "lines=$(wc -l < /tmp/pr.diff | tr -d ' ')" >> "$GITHUB_OUTPUT"
+          gh pr diff "$PR_NUMBER" > "$RUNNER_TEMP/pr.diff"
+          echo "has_diff=$([ -s "$RUNNER_TEMP/pr.diff" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run AI review
-        if: steps.diff.outputs.lines != '0'
+        if: steps.diff.outputs.has_diff == 'true'
         run: |
-          chmod +x scripts/ci-review.sh
           scripts/ci-review.sh \
-            --diff /tmp/pr.diff \
-            --pr ${{ github.event.pull_request.number }}
+            --diff "$RUNNER_TEMP/pr.diff" \
+            --pr "$PR_NUMBER"
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -62,5 +63,5 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Skip empty diff
-        if: steps.diff.outputs.lines == '0'
+        if: steps.diff.outputs.has_diff == 'false'
         run: echo "No changes to review."

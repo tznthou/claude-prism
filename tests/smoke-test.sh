@@ -171,9 +171,9 @@ else
     fail "ci-review.sh missing or not executable"
 fi
 
-# Dry run (no API keys needed)
-DRY_CI=$(echo "fake diff" | "$SCRIPT_DIR/scripts/ci-review.sh" --dry-run 2>&1) || true
-if echo "$DRY_CI" | grep -q "\[DRY RUN\]"; then
+# Dry run (no API keys needed, --dry-run exits before reading input)
+DRY_CI=$("$SCRIPT_DIR/scripts/ci-review.sh" --dry-run 2>&1) || true
+if [[ "$DRY_CI" == *"[DRY RUN]"* ]]; then
     pass "ci-review.sh --dry-run works"
 else
     fail "ci-review.sh --dry-run unexpected output: $DRY_CI"

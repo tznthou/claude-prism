@@ -1,4 +1,4 @@
-# claude-prism v0.5.0
+# claude-prism
 
 <p align="center">
   <img src="assets/claude-prism-logo.png" alt="claude-prism" width="640">
@@ -272,6 +272,15 @@ export CODEX_MODEL="gpt-5.3-codex"
 
 編輯 `commands/` 下的 `.md` 檔案，prompt 模板內嵌其中，直接改就好。
 
+**輸出語言：**
+
+Command 的 prompt 預設英文。要改成繁體中文輸出：
+
+```diff
+- "You are a Senior Code Reviewer. Review the following code."
++ "你是資深 Code Reviewer，用繁體中文 review 以下程式碼。"
+```
+
 ---
 
 ## 可觀測性
@@ -382,17 +391,6 @@ cp path/to/claude-prism/scripts/ci-review.sh scripts/
 
 ---
 
-**輸出語言：**
-
-Command 的 prompt 預設英文。要改成繁體中文輸出：
-
-```diff
-- "You are a Senior Code Reviewer. Review the following code."
-+ "你是資深 Code Reviewer，用繁體中文 review 以下程式碼。"
-```
-
----
-
 ## FAQ
 
 **Q: Claude 真的有呼叫外部 CLI 嗎？還是自編自導？**
@@ -441,6 +439,9 @@ Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 emoji/score 格式
 - **大 diff 處理** — 自動截斷至 32K 字元（可透過 `MAX_DIFF_CHARS` 設定）
 - Smoke test 擴充至 24 項測試（原 20 項）
 
+<details>
+<summary>更早版本</summary>
+
 ### v0.4.0 (2026-02-24)
 
 **可靠性與可觀測性** — graceful degradation、使用量追蹤、review 趨勢分析：
@@ -478,6 +479,8 @@ Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 emoji/score 格式
 - 6 個 slash commands：`/ask-codex`、`/ask-gemini`、`/code-review`、`/ui-review`、`/research`、`/multi-review`
 - 模型預設值交由 CLI 內建（不寫死版本號）
 - dry-run 在 binary 檢查前退出（無需安裝 CLI 即可測試）
+
+</details>
 
 ---
 

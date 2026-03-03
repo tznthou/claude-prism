@@ -1,4 +1,4 @@
-# claude-prism v0.5.0
+# claude-prism
 
 <p align="center">
   <img src="assets/claude-prism-logo.png" alt="claude-prism" width="640">
@@ -272,6 +272,15 @@ Both wrapper scripts support:
 
 Edit the command `.md` files in `commands/`. The prompt templates are inline and easy to modify.
 
+**Changing the output language:**
+
+The command prompts default to English. To get responses in Traditional Chinese:
+
+```diff
+- "You are a Senior Code Reviewer. Review the following code."
++ "You are a Senior Code Reviewer. Review the following code. Respond in Traditional Chinese (繁體中文)."
+```
+
 ---
 
 ## Observability
@@ -382,17 +391,6 @@ cp path/to/claude-prism/scripts/ci-review.sh scripts/
 
 ---
 
-**Changing the output language:**
-
-The command prompts default to English. To get responses in Traditional Chinese:
-
-```diff
-- "You are a Senior Code Reviewer. Review the following code."
-+ "You are a Senior Code Reviewer. Review the following code. Respond in Traditional Chinese (繁體中文)."
-```
-
----
-
 ## FAQ
 
 **Q: Does Claude actually call the external CLIs, or does it fake the results?**
@@ -441,6 +439,9 @@ So here we are. I hope this tool helps you too.
 - **Large diff handling** — auto-truncation at 32K chars (configurable via `MAX_DIFF_CHARS`)
 - Smoke test expanded to 24 tests (from 20)
 
+<details>
+<summary>Earlier versions</summary>
+
 ### v0.4.0 (2026-02-24)
 
 **Reliability & Observability** — graceful degradation, usage tracking, and review insights:
@@ -478,6 +479,8 @@ So here we are. I hope this tool helps you too.
 - 6 slash commands: `/ask-codex`, `/ask-gemini`, `/code-review`, `/ui-review`, `/research`, `/multi-review`
 - Model defaults deferred to CLI built-in (no hardcoded versions)
 - Dry-run exits before binary check (works without CLI installed)
+
+</details>
 
 ---
 
