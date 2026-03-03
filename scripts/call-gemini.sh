@@ -77,16 +77,12 @@ if [[ -z "$GEMINI_BIN" ]]; then
 fi
 
 # --- Execute ---
-# Long prompts go via stdin to avoid ARG_MAX limits.
+# Always pipe prompt via stdin to avoid exposing content in `ps` output.
 # -p " " activates headless mode; Gemini appends it to stdin (harmless).
 CMD=("$GEMINI_BIN")
 [[ -n "$MODEL" ]] && CMD+=(-m "$MODEL")
 
-if [[ ${#PROMPT} -gt 4000 ]]; then
-    RESULT=$(printf '%s' "$PROMPT" | "${CMD[@]}" -p " " 2>&1)
-else
-    RESULT=$("${CMD[@]}" -p "$PROMPT" 2>&1)
-fi || {
+RESULT=$(printf '%s' "$PROMPT" | "${CMD[@]}" -p " " 2>&1) || {
     rc=$?
     _log ERROR "gemini call failed (exit $rc)"
     echo "$RESULT" >&2

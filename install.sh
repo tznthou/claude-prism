@@ -114,6 +114,23 @@ if [[ "$NEEDS_BACKUP" == true ]]; then
     info "Existing files backed up to $BACKUP_DIR"
 fi
 
+# ─── Verify integrity (if checksums available) ───
+CHECKSUM_FILE="$SCRIPT_DIR/checksums.sha256"
+if [[ -f "$CHECKSUM_FILE" ]]; then
+    echo "Verifying file integrity..."
+    if (cd "$SCRIPT_DIR" && shasum -a 256 -c "$CHECKSUM_FILE" --quiet 2>/dev/null); then
+        ok "All checksums verified"
+    else
+        fail "Checksum verification failed — files may have been tampered with"
+        echo "  Run 'shasum -a 256 -c checksums.sha256' in the repo root for details." >&2
+        exit 1
+    fi
+    echo ""
+else
+    info "No checksums.sha256 found — skipping integrity check"
+    echo ""
+fi
+
 # ─── Install scripts ───
 echo "Installing scripts..."
 mkdir -p "$CLAUDE_DIR/scripts"

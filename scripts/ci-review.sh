@@ -41,6 +41,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --pr)
             [[ $# -ge 2 ]] || { echo "Error: --pr requires a number" >&2; exit 1; }
+            [[ "$2" =~ ^[0-9]+$ ]] || { echo "Error: --pr must be a positive integer, got: $2" >&2; exit 1; }
             PR_NUMBER="$2"; shift 2 ;;
         --diff)
             [[ $# -ge 2 ]] || { echo "Error: --diff requires a file path" >&2; exit 1; }

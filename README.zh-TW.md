@@ -7,6 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Bash](https://img.shields.io/badge/Bash-4.0+-4EAA25.svg)](https://www.gnu.org/software/bash/)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-Plugin-7C3AED.svg)](https://claude.com/claude-code)
+[![ShellCheck](https://img.shields.io/badge/ShellCheck-Passing-4EAA25.svg)](https://www.shellcheck.net/)
 
 [English](README.md)
 
@@ -167,6 +168,7 @@ cd claude-prism
 
 安裝程式會：
 - 檢查前置需求並回報可用狀態
+- 透過 SHA256 checksum 驗證檔案完整性（若有 `checksums.sha256`）
 - 覆寫前自動備份現有檔案
 - 複製 commands 到 `~/.claude/commands/`，scripts 到 `~/.claude/scripts/`
 
@@ -189,7 +191,8 @@ cd claude-prism
 ```
 claude-prism/
 ├── .github/workflows/
-│   └── ai-review.yml           # GitHub Actions CI review workflow
+│   ├── ai-review.yml           # GitHub Actions CI review workflow
+│   └── shellcheck.yml          # ShellCheck 靜態分析
 ├── commands/                   # Slash command 定義（Markdown）
 │   ├── ask-codex.md
 │   ├── ask-gemini.md
@@ -206,6 +209,7 @@ claude-prism/
 │   └── review-insights.sh      # Review 趨勢分析
 ├── tests/
 │   └── smoke-test.sh
+├── checksums.sha256            # SHA256 checksum 完整性驗證
 ├── install.sh
 ├── uninstall.sh
 ├── README.md
@@ -428,6 +432,17 @@ Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 emoji/score 格式
 ---
 
 ## 更新紀錄
+
+### v0.6.0 (2026-03-03)
+
+**安全強化** — 全面安全審查與修復：
+
+- **暫存檔安全** — `review-insights.sh` 改用 `mktemp` 取代可預測的 `/tmp` 路徑（防止 symlink attack）
+- **輸入驗證** — `ci-review.sh` 驗證 `--pr` 參數為正整數
+- **程序可見性防護** — `call-codex.sh` 和 `call-gemini.sh` 統一用 stdin 傳遞 prompt（防止 `ps` 洩漏內容）
+- **安裝完整性驗證** — `install.sh` 安裝前驗證 SHA256 checksum（新增 `checksums.sha256`）
+- **ShellCheck CI** — 新增 GitHub Actions workflow 對所有 shell script 做靜態分析
+- **ShellCheck 修復** — 移除未使用變數、修正無效 `>=` 運算子、命令替換加雙引號
 
 ### v0.5.0 (2026-02-24)
 

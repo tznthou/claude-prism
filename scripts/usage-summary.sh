@@ -13,9 +13,6 @@ LOG_FILE="$LOG_DIR/multi-ai.log"
 
 # --- Colors ---
 CYAN='\033[0;36m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-RED='\033[0;31m'
 DIM='\033[2m'
 NC='\033[0m'
 
@@ -72,7 +69,7 @@ if [[ "$RANGE" == "week" ]]; then
     # For week range, filter by comparing dates
     LINES=$(while IFS= read -r line; do
         line_date="${line:0:10}"
-        if [[ "$line_date" >= "$WEEK_AGO" ]]; then
+        if [[ ! "$line_date" < "$WEEK_AGO" ]]; then
             echo "$line"
         fi
     done < "$LOG_FILE")
@@ -137,6 +134,6 @@ echo "  Gemini: $(fmt $GEMINI_PROMPT_CHARS) sent / $(fmt $GEMINI_RESP_CHARS) rec
 echo -e "  ${DIM}Total:  $(fmt $TOTAL_PROMPT) sent / $(fmt $TOTAL_RESP) received${NC}"
 echo ""
 echo -e "Estimated tokens ${DIM}(~4 chars/token, rough)${NC}:"
-echo "  ~$(fmt $(est_tokens $TOTAL_PROMPT)) input + ~$(fmt $(est_tokens $TOTAL_RESP)) output = ~$(fmt $(est_tokens $((TOTAL_PROMPT + TOTAL_RESP)))) total"
+echo "  ~$(fmt "$(est_tokens $TOTAL_PROMPT)") input + ~$(fmt "$(est_tokens $TOTAL_RESP)") output = ~$(fmt "$(est_tokens $((TOTAL_PROMPT + TOTAL_RESP)))") total"
 echo ""
 echo -e "${DIM}Log: $LOG_FILE${NC}"

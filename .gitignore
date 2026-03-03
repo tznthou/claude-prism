@@ -21,3 +21,9 @@ Thumbs.db
 
 # Logs (local only, not shipped)
 *.log
+
+# Internal analysis (not shipped)
+internal/
+
+# Security audit reports (local only)
+security-reports/

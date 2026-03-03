@@ -78,7 +78,9 @@ REVIEW_COUNT=$(echo "$LINES" | wc -l | tr -d ' ')
 # Using lightweight jq-free parsing with grep/sed
 # Each JSONL line has an "issues" array — extract individual issue fields
 
-ISSUES=""
+ISSUES_TMP=$(mktemp "${TMPDIR:-/tmp}/review-insights-XXXXXX.tmp")
+trap 'rm -f "$ISSUES_TMP"' EXIT
+
 while IFS= read -r line; do
     # Extract issues array content (between "issues":[ and ])
     issues_raw=$(echo "$line" | sed -n 's/.*"issues":\[\(.*\)\]}.*/\1/p')
@@ -93,11 +95,11 @@ while IFS= read -r line; do
         src=$(echo "$issue" | grep -oE '"source":"[^"]*"' | head -1 | cut -d'"' -f4)
         [[ -n "$cat" ]] && echo "${cat}|${sev}|${title}|${src}"
     done
-done <<< "$LINES" > /tmp/review-insights-issues.tmp 2>/dev/null
+done <<< "$LINES" > "$ISSUES_TMP" 2>/dev/null
 
 ISSUE_COUNT=0
-if [[ -f /tmp/review-insights-issues.tmp ]]; then
-    ISSUE_COUNT=$(wc -l < /tmp/review-insights-issues.tmp | tr -d ' ')
+if [[ -f "$ISSUES_TMP" ]]; then
+    ISSUE_COUNT=$(wc -l < "$ISSUES_TMP" | tr -d ' ')
 fi
 
 # --- Output header ---
@@ -108,14 +110,14 @@ echo ""
 
 if [[ "$ISSUE_COUNT" -eq 0 ]]; then
     echo "No issues recorded yet."
-    rm -f /tmp/review-insights-issues.tmp
+    rm -f $ISSUES_TMP
     exit 0
 fi
 
 # --- Category breakdown ---
 echo -e "${BOLD}Issues by Category${NC}"
 echo "─────────────────────────────────"
-cut -d'|' -f1 /tmp/review-insights-issues.tmp | sort | uniq -c | sort -rn | while read -r count cat; do
+cut -d'|' -f1 $ISSUES_TMP | sort | uniq -c | sort -rn | while read -r count cat; do
     # Color by category
     case "$cat" in
         security)        color="$RED" ;;
@@ -137,7 +139,7 @@ done
 echo ""
 echo -e "${BOLD}Issues by Severity${NC}"
 echo "─────────────────────────────────"
-cut -d'|' -f2 /tmp/review-insights-issues.tmp | sort | uniq -c | sort -rn | while read -r count sev; do
+cut -d'|' -f2 $ISSUES_TMP | sort | uniq -c | sort -rn | while read -r count sev; do
     case "$sev" in
         critical)   color="$RED";    icon="●" ;;
         medium)     color="$YELLOW"; icon="●" ;;
@@ -151,7 +153,7 @@ done
 echo ""
 echo -e "${BOLD}Issue Discovery Source${NC}"
 echo "─────────────────────────────────"
-cut -d'|' -f4 /tmp/review-insights-issues.tmp | sort | uniq -c | sort -rn | while read -r count src; do
+cut -d'|' -f4 $ISSUES_TMP | sort | uniq -c | sort -rn | while read -r count src; do
     printf "  %-16s %3d\n" "$src" "$count"
 done
 
@@ -159,7 +161,7 @@ done
 echo ""
 echo -e "${BOLD}Most Frequent Issues${NC}"
 echo "─────────────────────────────────"
-cut -d'|' -f3 /tmp/review-insights-issues.tmp | sort | uniq -c | sort -rn | head -10 | while read -r count title; do
+cut -d'|' -f3 $ISSUES_TMP | sort | uniq -c | sort -rn | head -10 | while read -r count title; do
     if [[ "$count" -gt 1 ]]; then
         printf "  ${YELLOW}%2dx${NC} %s\n" "$count" "$title"
     else
@@ -183,6 +185,3 @@ done
 
 echo ""
 echo -e "${DIM}Data: $INSIGHTS_FILE${NC}"
-
-# Cleanup
-rm -f /tmp/review-insights-issues.tmp

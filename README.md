@@ -7,6 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Bash](https://img.shields.io/badge/Bash-4.0+-4EAA25.svg)](https://www.gnu.org/software/bash/)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-Plugin-7C3AED.svg)](https://claude.com/claude-code)
+[![ShellCheck](https://img.shields.io/badge/ShellCheck-Passing-4EAA25.svg)](https://www.shellcheck.net/)
 
 [繁體中文](README.zh-TW.md)
 
@@ -167,6 +168,7 @@ cd claude-prism
 
 The installer:
 - Checks for prerequisites and reports what's available
+- Verifies file integrity via SHA256 checksums (if `checksums.sha256` is present)
 - Backs up any existing files before overwriting
 - Copies commands to `~/.claude/commands/` and scripts to `~/.claude/scripts/`
 
@@ -189,7 +191,8 @@ The installer:
 ```
 claude-prism/
 ├── .github/workflows/
-│   └── ai-review.yml           # GitHub Actions workflow for CI review
+│   ├── ai-review.yml           # GitHub Actions workflow for CI review
+│   └── shellcheck.yml          # ShellCheck static analysis for shell scripts
 ├── commands/                   # Slash command definitions (Markdown)
 │   ├── ask-codex.md
 │   ├── ask-gemini.md
@@ -206,6 +209,7 @@ claude-prism/
 │   └── review-insights.sh      # Review pattern analysis
 ├── tests/
 │   └── smoke-test.sh
+├── checksums.sha256            # SHA256 checksums for integrity verification
 ├── install.sh
 ├── uninstall.sh
 ├── README.md
@@ -428,6 +432,17 @@ So here we are. I hope this tool helps you too.
 ---
 
 ## Changelog
+
+### v0.6.0 (2026-03-03)
+
+**Security Hardening** — security audit and fixes across all shell scripts:
+
+- **Temp file safety** — `review-insights.sh` now uses `mktemp` instead of a predictable `/tmp` path (symlink attack prevention)
+- **Input validation** — `ci-review.sh` validates `--pr` argument as a positive integer
+- **Process visibility** — `call-codex.sh` and `call-gemini.sh` now always pipe prompts via stdin (prevents exposure in `ps` output)
+- **Install integrity** — `install.sh` verifies SHA256 checksums before installing (new `checksums.sha256` file)
+- **ShellCheck CI** — new GitHub Actions workflow for static analysis on all shell scripts
+- **ShellCheck fixes** — removed unused variables, fixed invalid `>=` operator, quoted command substitutions
 
 ### v0.5.0 (2026-02-24)
 
