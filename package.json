@@ -1,6 +1,6 @@
 {
   "name": "claud-prism-aireview",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Multi-AI provider toolkit for Claude Code — cross-provider code review, research, and UI design via Codex + Gemini",
   "bin": {
     "claud-prism-aireview": "./bin/claude-prism.js"
