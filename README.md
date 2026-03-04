@@ -4,6 +4,7 @@
   <img src="assets/claude-prism-logo.png" alt="claude-prism" width="640">
 </p>
 
+[![npm](https://img.shields.io/npm/v/claud-prism-aireview.svg)](https://www.npmjs.com/package/claud-prism-aireview)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Bash](https://img.shields.io/badge/Bash-4.0+-4EAA25.svg)](https://www.gnu.org/software/bash/)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-Plugin-7C3AED.svg)](https://claude.com/claude-code)
@@ -183,6 +184,21 @@ flowchart LR
 
 ### Install
 
+**Quick install (recommended)**
+
+```bash
+npx claud-prism-aireview
+```
+
+**Homebrew (macOS)**
+
+```bash
+brew tap tznthou/claude-prism
+brew install claud-prism-aireview
+```
+
+**Manual**
+
 ```bash
 git clone https://github.com/tznthou/claude-prism.git
 cd claude-prism
@@ -204,6 +220,8 @@ The installer:
 ### Uninstall
 
 ```bash
+npx claud-prism-aireview --uninstall
+# or manually:
 ./uninstall.sh
 ```
 
@@ -462,6 +480,15 @@ So here we are. I hope this tool helps you too.
 ---
 
 ## Changelog
+
+### v0.8.0 (2026-03-04)
+
+**Distribution** — added `npx` and Homebrew install support.
+
+- `npx claud-prism-aireview` for one-command install
+- `brew tap tznthou/claude-prism && brew install claud-prism-aireview` for macOS
+- Added GitHub Release workflow for automated npm publishing
+- Legacy command cleanup in install/uninstall scripts
 
 ### v0.7.0 (2026-03-04)
 

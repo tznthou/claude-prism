@@ -1,0 +1,11 @@
+.github/
+.claude/
+internal/
+security-reports/
+tests/
+assets/
+.DS_Store
+.gitignore
+.npmignore
+README.zh-TW.md
+*.log

@@ -4,6 +4,7 @@
   <img src="assets/claude-prism-logo.png" alt="claude-prism" width="640">
 </p>
 
+[![npm](https://img.shields.io/npm/v/claud-prism-aireview.svg)](https://www.npmjs.com/package/claud-prism-aireview)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Bash](https://img.shields.io/badge/Bash-4.0+-4EAA25.svg)](https://www.gnu.org/software/bash/)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-Plugin-7C3AED.svg)](https://claude.com/claude-code)
@@ -183,6 +184,21 @@ flowchart LR
 
 ### 安裝
 
+**快速安裝（推薦）**
+
+```bash
+npx claud-prism-aireview
+```
+
+**Homebrew (macOS)**
+
+```bash
+brew tap tznthou/claude-prism
+brew install claud-prism-aireview
+```
+
+**手動安裝**
+
 ```bash
 git clone https://github.com/tznthou/claude-prism.git
 cd claude-prism
@@ -204,6 +220,8 @@ cd claude-prism
 ### 移除
 
 ```bash
+npx claud-prism-aireview --uninstall
+# 或手動：
 ./uninstall.sh
 ```
 
@@ -462,6 +480,15 @@ Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 emoji/score 格式
 ---
 
 ## 更新紀錄
+
+### v0.8.0 (2026-03-04)
+
+**發佈管道** — 新增 `npx` 和 Homebrew 安裝方式。
+
+- `npx claud-prism-aireview` 一行安裝
+- `brew tap tznthou/claude-prism && brew install claud-prism-aireview` macOS 安裝
+- 新增 GitHub Release workflow 自動化 npm 發佈
+- install/uninstall 腳本新增舊版指令清理
 
 ### v0.7.0 (2026-03-04)
 

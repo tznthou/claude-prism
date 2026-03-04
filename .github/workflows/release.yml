@@ -1,0 +1,79 @@
+# Release — Create GitHub Release + publish to npm
+#
+# Triggered by pushing a version tag (e.g., v0.8.0).
+# 1. Verifies checksums and runs smoke tests
+# 2. Creates a GitHub Release with tarball
+# 3. Publishes to npm registry
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify checksums
+        run: shasum -a 256 -c checksums.sha256
+
+      - name: Run smoke tests (file existence only)
+        run: |
+          # Verify all distributable files exist
+          for f in install.sh uninstall.sh checksums.sha256 LICENSE README.md bin/claude-prism.js package.json; do
+            test -f "$f" || { echo "Missing: $f"; exit 1; }
+          done
+          for f in commands/*.md; do
+            test -f "$f" || { echo "Missing commands"; exit 1; }
+          done
+          for f in scripts/*.sh; do
+            test -f "$f" || { echo "Missing scripts"; exit 1; }
+          done
+          echo "All files present."
+
+      - name: Create release tarball
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+          tar czf "claude-prism-${VERSION}.tar.gz" \
+            commands/ scripts/ bin/ \
+            install.sh uninstall.sh checksums.sha256 \
+            package.json LICENSE README.md
+          shasum -a 256 "claude-prism-${VERSION}.tar.gz" > "claude-prism-${VERSION}.tar.gz.sha256"
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            claude-prism-${{ env.VERSION }}.tar.gz
+            claude-prism-${{ env.VERSION }}.tar.gz.sha256
+          generate_release_notes: true
+
+  npm-publish:
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish to npm
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

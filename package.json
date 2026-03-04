@@ -1,0 +1,37 @@
+{
+  "name": "claud-prism-aireview",
+  "version": "0.8.0",
+  "description": "Multi-AI provider toolkit for Claude Code — cross-provider code review, research, and UI design via Codex + Gemini",
+  "bin": {
+    "claud-prism-aireview": "./bin/claude-prism.js"
+  },
+  "files": [
+    "bin/",
+    "commands/",
+    "scripts/",
+    "install.sh",
+    "uninstall.sh",
+    "checksums.sha256",
+    "LICENSE"
+  ],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "gemini",
+    "codex",
+    "ai",
+    "code-review",
+    "multi-ai",
+    "adversarial-review"
+  ],
+  "author": "tznthou",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tznthou/claude-prism.git"
+  },
+  "homepage": "https://github.com/tznthou/claude-prism",
+  "engines": {
+    "node": ">=18"
+  }
+}

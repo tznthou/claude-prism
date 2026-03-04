@@ -27,3 +27,6 @@ internal/
 
 # Security audit reports (local only)
 security-reports/
+
+# Node.js (npx distribution wrapper only, no actual deps)
+node_modules/
