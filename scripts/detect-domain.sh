@@ -8,7 +8,8 @@
 # Output: "frontend", "backend", or "fullstack" (to stdout)
 # Exit code: always 0 (detection should never break the pipeline)
 
-set -euo pipefail
+set -uo pipefail
+# Note: intentionally no -e — this script guarantees exit 0
 
 LOG_DIR="${MULTI_AI_LOG_DIR:-$HOME/.claude/logs}"
 LOG_FILE="$LOG_DIR/multi-ai.log"
@@ -58,7 +59,7 @@ for file in "${FILES[@]}"; do
     # Frontend extensions
     case "$ext" in
         css|scss|sass|less|styl|tsx|jsx|vue|svelte|html|svg)
-            ((frontend++)) || true
+            frontend=$((frontend + 1))
             matched=true
             ;;
     esac
@@ -67,7 +68,7 @@ for file in "${FILES[@]}"; do
     if [[ "$matched" == false ]]; then
         case "$ext" in
             go|py|rs|java|rb|ex|exs|sql|prisma|proto)
-                ((backend++)) || true
+                backend=$((backend + 1))
                 matched=true
                 ;;
         esac
@@ -77,18 +78,12 @@ for file in "${FILES[@]}"; do
     if [[ "$matched" == false ]]; then
         case "$path" in
             *components/*|*pages/*|*views/*|*layouts/*|*styles/*|*ui/*|*public/*|*assets/*)
-                ((frontend++)) || true
-                matched=true
+                frontend=$((frontend + 1))
+                ;;
+            *api/*|*routes/*|*controllers/*|*models/*|*services/*|*middleware/*|*migrations/*|*db/*|*handlers/*|*cmd/*|*internal/*|*pkg/*)
+                backend=$((backend + 1))
                 ;;
         esac
-
-        if [[ "$matched" == false ]]; then
-            case "$path" in
-                *api/*|*routes/*|*controllers/*|*models/*|*services/*|*middleware/*|*migrations/*|*db/*|*handlers/*|*cmd/*|*internal/*|*pkg/*)
-                    ((backend++)) || true
-                    ;;
-            esac
-        fi
     fi
 done
 

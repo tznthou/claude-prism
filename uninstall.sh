@@ -12,7 +12,7 @@ NC='\033[0m'
 ok()   { echo -e "  ${GREEN}✓${NC} $*"; }
 warn() { echo -e "  ${YELLOW}⚠${NC} $*"; }
 
-COMMANDS=(pi-ask-codex pi-ask-gemini pi-code-review pi-exec pi-multi-review pi-plan pi-research pi-ui-design pi-ui-review)
+# Keep in sync with install.sh LEGACY_COMMANDS
 LEGACY_COMMANDS=(ask-codex ask-gemini code-review multi-review research ui-design ui-review)
 SCRIPTS=(call-codex.sh call-gemini.sh detect-domain.sh)
 
@@ -20,16 +20,17 @@ echo ""
 echo "Uninstalling claude-prism..."
 echo ""
 
+# Dynamically discover installed pi-* commands (avoids hardcoded list drift)
 echo "Removing commands..."
-for cmd in "${COMMANDS[@]}"; do
-    target="$CLAUDE_DIR/commands/$cmd.md"
-    if [[ -f "$target" ]]; then
-        rm "$target"
-        ok "Removed /$cmd"
-    else
-        warn "/$cmd not found (skipped)"
-    fi
+removed=0
+for target in "$CLAUDE_DIR"/commands/pi-*.md; do
+    [[ -f "$target" ]] || continue
+    name="$(basename "$target" .md)"
+    rm "$target"
+    ok "Removed /$name"
+    removed=$((removed + 1))
 done
+[[ $removed -eq 0 ]] && warn "No pi-* commands found"
 
 # Clean up legacy (pre-v0.7) unprefixed commands if present
 for cmd in "${LEGACY_COMMANDS[@]}"; do

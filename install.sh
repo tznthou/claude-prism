@@ -81,38 +81,29 @@ if [[ "$CHECK_ONLY" == true ]]; then
     exit 0
 fi
 
-# ─── Backup existing files ───
+# ─── Backup existing files (single pass: detect + copy) ───
 BACKUP_DIR="$CLAUDE_DIR/.multi-ai-backup-$(date +%Y%m%d%H%M%S)"
-NEEDS_BACKUP=false
+BACKED_UP=false
 
 for cmd in "$SCRIPT_DIR"/commands/*.md; do
     target="$CLAUDE_DIR/commands/$(basename "$cmd")"
     if [[ -f "$target" ]]; then
-        NEEDS_BACKUP=true
-        break
+        [[ "$BACKED_UP" == false ]] && mkdir -p "$BACKUP_DIR/commands" "$BACKUP_DIR/scripts"
+        cp "$target" "$BACKUP_DIR/commands/"
+        BACKED_UP=true
     fi
 done
 
 for script in "$SCRIPT_DIR"/scripts/*.sh; do
     target="$CLAUDE_DIR/scripts/$(basename "$script")"
     if [[ -f "$target" ]]; then
-        NEEDS_BACKUP=true
-        break
+        [[ "$BACKED_UP" == false ]] && mkdir -p "$BACKUP_DIR/commands" "$BACKUP_DIR/scripts"
+        cp "$target" "$BACKUP_DIR/scripts/"
+        BACKED_UP=true
     fi
 done
 
-if [[ "$NEEDS_BACKUP" == true ]]; then
-    mkdir -p "$BACKUP_DIR/commands" "$BACKUP_DIR/scripts"
-    for cmd in "$SCRIPT_DIR"/commands/*.md; do
-        target="$CLAUDE_DIR/commands/$(basename "$cmd")"
-        [[ -f "$target" ]] && cp "$target" "$BACKUP_DIR/commands/"
-    done
-    for script in "$SCRIPT_DIR"/scripts/*.sh; do
-        target="$CLAUDE_DIR/scripts/$(basename "$script")"
-        [[ -f "$target" ]] && cp "$target" "$BACKUP_DIR/scripts/"
-    done
-    info "Existing files backed up to $BACKUP_DIR"
-fi
+[[ "$BACKED_UP" == true ]] && info "Existing files backed up to $BACKUP_DIR"
 
 # ─── Verify integrity (if checksums available) ───
 CHECKSUM_FILE="$SCRIPT_DIR/checksums.sha256"
@@ -141,6 +132,7 @@ for script in "$SCRIPT_DIR"/scripts/*.sh; do
 done
 
 # ─── Clean up legacy (pre-v0.7) unprefixed commands ───
+# Keep in sync with uninstall.sh LEGACY_COMMANDS
 LEGACY_COMMANDS=(ask-codex ask-gemini code-review multi-review research ui-design ui-review)
 legacy_removed=0
 for cmd in "${LEGACY_COMMANDS[@]}"; do
@@ -148,7 +140,7 @@ for cmd in "${LEGACY_COMMANDS[@]}"; do
     if [[ -f "$target" ]]; then
         rm "$target"
         info "Removed legacy /$cmd (replaced by /pi-$cmd)"
-        ((legacy_removed++)) || true
+        legacy_removed=$((legacy_removed + 1))
     fi
 done
 if [[ $legacy_removed -gt 0 ]]; then
