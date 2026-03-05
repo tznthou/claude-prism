@@ -35,11 +35,11 @@ Use Claude Code as the **orchestrator**, but dispatch review and research tasks 
 |---------|----------|-------------|
 | `/pi-ask-codex` | Codex | Direct Q&A — get OpenAI's perspective |
 | `/pi-ask-gemini` | Gemini | Direct Q&A — get Google's perspective |
-| `/pi-code-review` | Codex | Cross-provider code review |
+| `/pi-code-review` | Codex | Cross-provider code review (with confidence scoring) |
 | `/pi-ui-design` | Gemini | HTML mockup from design spec |
-| `/pi-ui-review` | Gemini | UI/UX accessibility & design audit |
+| `/pi-ui-review` | Gemini | UI/UX accessibility & design audit (with confidence scoring) |
 | `/pi-research` | Gemini | Structured technical research |
-| `/pi-multi-review` | Codex + Gemini + Claude | Triple-provider adversarial review (with smart routing) |
+| `/pi-multi-review` | Codex + Gemini + Claude | Triple-provider adversarial review (smart routing + confidence scoring) |
 | `/pi-plan` | Codex + Gemini + Claude | Generate structured implementation plan |
 | `/pi-exec` | Claude | Execute a plan file step by step |
 
@@ -65,6 +65,8 @@ Direct Q&A with Gemini. Leverages Google's broad ecosystem knowledge.
 
 Codex reviews code that Claude wrote. The core use case — **different AI, different blind spots**.
 
+Each issue is scored 0–100 on evidence quality (line numbers, cited rules, reproducibility). Only issues scoring ≥ 80 are shown — noise filtered, signal preserved. If your project has `CLAUDE.md` or `Agents.md`, guideline compliance is checked automatically.
+
 ```
 /pi-code-review                    # review staged changes
 /pi-code-review src/auth.ts        # review specific file
@@ -83,7 +85,7 @@ Gemini reads a design specification and generates a self-contained HTML mockup (
 
 ### `/pi-ui-review` — UI/UX Audit
 
-Gemini reviews frontend code for accessibility, responsive design, component structure, and UX patterns.
+Gemini reviews frontend code for accessibility, responsive design, component structure, and UX patterns. Issues are confidence-scored with UI-specific factors (WCAG citations, user impact descriptions). Guideline compliance is checked if `CLAUDE.md` or `Agents.md` exists.
 
 ```
 /pi-ui-review src/components/Header.tsx
@@ -106,7 +108,10 @@ The flagship command. Sends the same code to **both** Codex and Gemini in parall
 
 1. **Consensus** — issues both providers flagged (high confidence, fix first)
 2. **Divergence** — issues only one found (Claude judges validity)
-3. **Claude supplement** — issues neither caught
+3. **Guideline compliance** — violations of `CLAUDE.md` / `Agents.md` project rules
+4. **Claude supplement** — issues neither caught
+
+**Confidence Scoring** (v0.9.0): Every issue from all providers is scored 0–100 based on evidence quality — not Claude's opinion. Only issues ≥ 80 make it to the output. Scoring is evidence-based: specific line numbers (+25), code introduced in this diff (+25), cited rules (+20), reproducible scenario (+15), multi-provider consensus (+20). This filters noise while preserving cross-provider blind spot elimination.
 
 **Smart Routing** (v0.7.0): Automatically detects the domain of changes (frontend/backend/fullstack) from file extensions and paths. During synthesis, the domain-authoritative provider gets higher weight — Gemini for frontend (UI/UX expertise), Codex for backend (security/algorithm expertise). Both providers are always called; weighting only affects how Claude resolves disagreements.
 
@@ -380,12 +385,15 @@ Each review record follows this schema:
     {
       "category": "security",
       "severity": "critical",
+      "confidence": 95,
       "title": "SQL injection in user input handler",
       "source": "consensus"
     }
   ]
 }
 ```
+
+Categories: `security`, `performance`, `design`, `logic`, `maintainability`, `guideline`, `accessibility`, `other`. The `guideline` category tracks violations of project-specific rules (`CLAUDE.md` / `Agents.md`).
 
 ---
 
@@ -422,10 +430,11 @@ cp path/to/claude-prism/scripts/ci-review.sh scripts/
 ### How It Works (CI)
 
 1. GitHub Actions checks out the PR and fetches the diff
-2. `ci-review.sh` sends the diff to available providers (Gemini API, OpenAI API) in parallel
-3. If `ANTHROPIC_API_KEY` is set, Claude synthesizes the results (consensus/divergence/supplements)
-4. If not, results are concatenated directly
-5. Output is posted as a PR comment
+2. `ci-review.sh` auto-discovers `CLAUDE.md` / `Agents.md` for guideline context
+3. Diff is sent to available providers (Gemini API, OpenAI API) in parallel, with false-positive exclusion rules
+4. If `ANTHROPIC_API_KEY` is set, Claude synthesizes with confidence scoring (only issues ≥ 80 posted)
+5. If not, results are concatenated directly
+6. Output is posted as a PR comment
 
 ### CI Environment Variables
 
@@ -481,6 +490,16 @@ So here we are. I hope this tool helps you too.
 ---
 
 ## Changelog
+
+### v0.9.0 (2026-03-05)
+
+**Confidence Scoring & Guideline Compliance** — evidence-based noise filtering and project rule enforcement across all review commands.
+
+- **Confidence scoring** — every review issue scored 0–100 on evidence quality (line numbers, cited rules, reproducibility, consensus). Only issues ≥ 80 shown. Scoring is evidence-based, not opinion-based — Claude cannot veto cross-provider findings with strong evidence
+- **Guideline compliance** — auto-discovers `CLAUDE.md` and `Agents.md` in the project, checks code against project-specific rules. Ready for the emerging `Agents.md` standard
+- **False positive filtering** — explicit exclusion rules in all review prompts: no pre-existing issues, no linter-detectable problems, no pedantic nitpicks, no lint-ignore lines
+- **Applied to**: `/pi-code-review`, `/pi-multi-review`, `/pi-ui-review`, `ci-review.sh`
+- **Review insights enhanced** — JSON schema adds `confidence` score and `guideline` category
 
 ### v0.8.0 (2026-03-04)
 

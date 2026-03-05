@@ -21,6 +21,20 @@ Same as `/pi-code-review`, based on `$ARGUMENTS`:
 
 Use Bash / Read tool. **The same code goes to both providers.**
 
+### 2.3 Gather project guidelines
+
+Search for project guideline files to use as compliance context:
+
+```bash
+# Check common locations for guideline files
+for f in CLAUDE.md .claude/CLAUDE.md Agents.md .claude/Agents.md; do
+  [ -f "$f" ] && echo "=== $f ===" && cat "$f"
+done
+```
+
+- If **any** guideline files are found, include them in both provider prompts (Step 3) and Claude synthesis (Step 6).
+- If **none** are found, skip the guideline compliance dimension entirely.
+
 ### 2.5 Detect review domain (smart routing)
 
 Determine the domain of the changes to guide synthesis weighting in Step 6.
@@ -53,8 +67,23 @@ Use **two parallel Bash tool calls**:
 ```bash
 ~/.claude/scripts/call-codex.sh "You are a Senior Code Reviewer.
 Focus: bugs, security vulnerabilities, performance, architecture issues.
+$(if guidelines found)Also check compliance with the project guidelines below.$(end if)
+
+DO NOT flag:
+- Pre-existing issues not introduced in this diff
+- Issues linters/formatters would catch
+- Pedantic nitpicks without guideline backing
+- Lines with lint-ignore/noqa/@ts-ignore comments
+
 Label each issue with severity (🔴/🟡/🟢) and line numbers.
 End with an overall score (1-10).
+
+$(if guidelines found)
+Project Guidelines:
+--- BEGIN GUIDELINES ---
+$(guideline content from Step 2.3)
+--- END GUIDELINES ---
+$(end if)
 
 Code:
 $(code)"
@@ -64,8 +93,23 @@ $(code)"
 ```bash
 ~/.claude/scripts/call-gemini.sh "You are a Senior Code Reviewer.
 Focus: design patterns, alternatives, maintainability, test coverage.
+$(if guidelines found)Also check compliance with the project guidelines below.$(end if)
+
+DO NOT flag:
+- Pre-existing issues not introduced in this diff
+- Issues linters/formatters would catch
+- Pedantic nitpicks without guideline backing
+- Lines with lint-ignore/noqa/@ts-ignore comments
+
 Label each issue with severity (🔴/🟡/🟢) and line numbers.
 End with an overall score (1-10).
+
+$(if guidelines found)
+Project Guidelines:
+--- BEGIN GUIDELINES ---
+$(guideline content from Step 2.3)
+--- END GUIDELINES ---
+$(end if)
 
 Code:
 $(code)"
@@ -90,6 +134,32 @@ External providers may not follow the requested format (no emoji severity, no 1-
 
 After receiving results (from however many providers succeeded), Claude performs integrated analysis using the domain detected in Step 2.5.
 
+#### Confidence scoring & filtering
+
+Before synthesis, Claude scores **every** issue from all providers on a 0–100 confidence scale. **Only issues scoring ≥ 80 enter the synthesis.**
+
+| Factor | Score Impact |
+|--------|-------------|
+| Issue references specific line numbers in the diff | +25 |
+| Issue is about code **introduced in this diff** (not pre-existing) | +25 |
+| Issue cites a concrete rule (OWASP, guideline, language spec) | +20 |
+| Issue describes a reproducible scenario (steps, input, consequence) | +15 |
+| Multiple providers flagged the same issue (consensus) | +20 |
+| Issue is about a pattern the diff **removes** or refactors away | −30 |
+| Issue is something a linter/formatter would catch | −20 |
+| Issue is a subjective style preference with no guideline backing | −20 |
+
+Start each issue at 50 (neutral), apply factors, clamp to 0–100.
+
+**Critical rule**: Scoring must be **evidence-based**, not opinion-based. If an issue has strong evidence (line numbers + concrete scenario + cited rule) but Claude "disagrees" with the finding, it still scores high. The goal is noise filtering, not Claude vetoing cross-provider insights.
+
+#### Guideline compliance (if guidelines found in Step 2.3)
+
+Score guideline violations separately:
+- Violation explicitly mentioned in guideline text → confidence +30
+- Violation inferred but not explicitly stated → confidence +10
+- Only include violations that reference a **specific rule** from the guideline files.
+
 #### Domain-aware weighting
 
 Apply provider authority based on the detected domain:
@@ -106,17 +176,23 @@ Apply provider authority based on the detected domain:
 - When the domain-authoritative provider raises an issue **alone** → treat it with higher confidence than a non-authoritative solo finding.
 - **Never discard** any provider's finding due to weighting. Weighting affects synthesis priority, not inclusion.
 
-#### 6.1 Consensus (multiple providers flagged)
+#### 6.1 Consensus (multiple providers flagged, ≥ 80 confidence)
 Issues that two or more reviewers identified — **high confidence, fix first**.
 
-#### 6.2 Divergence (only one flagged)
+#### 6.2 Divergence (only one flagged, ≥ 80 confidence)
 Issues only one provider raised. Claude judges:
 - Whether it's a real issue
 - Why the others missed it (blind spot analysis)
 - **Apply domain weighting**: if the domain-authoritative provider raised it, lean toward treating it as valid.
 
-#### 6.3 Claude's independent perspective
+#### 6.3 Guideline compliance (if guidelines found)
+Violations of project guidelines (`CLAUDE.md`, `Agents.md`) that passed confidence filtering. Group by source file.
+
+#### 6.4 Claude's independent perspective
 Issues no other provider caught but worth noting.
+
+#### 6.5 Filtered out (not shown by default)
+Issues that scored < 80 confidence are omitted. If the user runs with `--verbose`, include a collapsed summary of filtered issues with their scores.
 
 ### 7. Output format
 
@@ -148,8 +224,19 @@ Issues no other provider caught but worth noting.
 ### Divergent Issues (needs judgment)
 ...
 
+### Guideline Compliance
+(Only if guideline files were found in Step 2.3)
+...
+
 ### Claude Supplements
 ...
+
+### Confidence Summary
+| Tier | Count |
+|------|-------|
+| High (≥ 90) | N |
+| Solid (80–89) | N |
+| Filtered (< 80) | N |
 
 ### Action Items
 1. ...
@@ -169,17 +256,19 @@ echo '{"date":"<ISO 8601 UTC>","project":"<repo or directory name>","scope":"<st
 Each issue object in the `issues` array:
 ```json
 {
-  "category": "security|performance|design|logic|maintainability|accessibility|other",
+  "category": "security|performance|design|logic|maintainability|guideline|accessibility|other",
   "severity": "critical|medium|suggestion",
+  "confidence": 85,
   "title": "Brief one-line description of the issue",
   "source": "consensus|codex-only|gemini-only|claude-only"
 }
 ```
 
 Rules:
-- Only record **actionable issues** (skip praise and generic comments)
+- Only record issues that **passed the confidence filter** (≥ 80)
 - Map emoji severity to strings: 🔴→critical, 🟡→medium, 🟢→suggestion
 - If a provider didn't give structured severity, infer from context (e.g., "security vulnerability" → critical)
+- Use `"guideline"` category for project guideline violations (`CLAUDE.md` / `Agents.md`)
 - `source` reflects which providers flagged it: consensus (2+), or single-provider
 - Keep `title` under 80 chars — enough to identify the pattern, not a full description
 - Create the directory if it doesn't exist: `mkdir -p ~/.claude/logs`

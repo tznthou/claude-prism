@@ -133,6 +133,32 @@ fi
 
 _log INFO "diff_len=${#DIFF}"
 
+# --- Gather project guidelines ---
+GUIDELINES=""
+for f in CLAUDE.md .claude/CLAUDE.md Agents.md .claude/Agents.md; do
+    if [[ -f "$f" ]]; then
+        GUIDELINES+="=== $f ===
+$(cat "$f")
+
+"
+        _log INFO "found guideline file: $f"
+    fi
+done
+
+GUIDELINE_BLOCK=""
+if [[ -n "$GUIDELINES" ]]; then
+    GUIDELINE_BLOCK="
+Also check compliance with the project guidelines below.
+
+Project Guidelines:
+--- BEGIN GUIDELINES ---
+$GUIDELINES
+--- END GUIDELINES ---
+Flag any violations of these guidelines as separate issues.
+"
+    _log INFO "guideline context included in prompt"
+fi
+
 # --- Review prompt ---
 REVIEW_PROMPT="You are a senior code reviewer. Review the following code diff for:
 - Security vulnerabilities
@@ -140,6 +166,14 @@ REVIEW_PROMPT="You are a senior code reviewer. Review the following code diff fo
 - Logic errors
 - Design and maintainability concerns
 - Accessibility issues (if UI code)
+- Project guideline compliance (if guidelines provided below)
+$GUIDELINE_BLOCK
+DO NOT flag:
+- Pre-existing issues not introduced in this diff
+- Issues that linters or formatters would catch (eslint, prettier, etc.)
+- Pedantic nitpicks (naming style preferences without guideline backing)
+- Lines with explicit lint-ignore / noqa / @ts-ignore comments
+- General 'could be better' suggestions without concrete impact
 
 For each issue found, indicate severity:
 - 🔴 Critical — must fix before merge
@@ -301,10 +335,30 @@ if [[ "$HAS_CLAUDE" == true ]] && [[ ${#RESPONDED[@]} -gt 0 ]]; then
     SYNTHESIS_PROMPT="You are a senior code reviewer synthesizing multiple AI code reviews.
 
 Below are reviews from different AI providers for the same code diff. Your job:
+
+## Confidence Scoring (MANDATORY)
+Before synthesizing, score EVERY issue from all providers on a 0-100 confidence scale.
+Only include issues scoring >= 80 in the final output.
+
+Scoring factors:
+- Issue references specific line numbers in the diff: +25
+- Issue is about code INTRODUCED in this diff (not pre-existing): +25
+- Issue cites a concrete rule (OWASP, WCAG, language spec, project guideline): +20
+- Issue describes a reproducible scenario: +15
+- Multiple providers flagged the same issue: +20
+- Issue is about a pattern the diff REMOVES or refactors away: -30
+- Issue is something a linter/formatter would catch: -20
+- Issue is a subjective style preference with no guideline backing: -20
+
+Start each issue at 50, apply factors, clamp to 0-100.
+IMPORTANT: Score based on evidence quality, not whether you agree with the finding.
+
+## Synthesis Steps
 1. Identify **Consensus** — issues flagged by multiple providers (high confidence, fix first)
 2. Identify **Divergence** — issues only one provider found (judge validity)
 3. Add **Your Own Findings** — issues no provider caught
-4. Create a prioritized **Action Items** list
+4. Add a **Confidence Summary** table: High (>=90) count, Solid (80-89) count, Filtered (<80) count
+5. Create a prioritized **Action Items** list (only from issues that passed the filter)
 
 Format as clean Markdown suitable for a GitHub PR comment.
 Use 🔴 Critical / 🟡 Medium / 🟢 Suggestion severity markers.
