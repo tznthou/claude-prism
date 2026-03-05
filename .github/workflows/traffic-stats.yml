@@ -13,28 +13,44 @@ jobs:
   collect:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Collect stats
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Use TRAFFIC_TOKEN (PAT with repo scope) for traffic API if available,
+          # otherwise fall back to GITHUB_TOKEN (traffic endpoints will be skipped)
+          GH_TOKEN: ${{ secrets.TRAFFIC_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN_DEFAULT: ${{ secrets.GITHUB_TOKEN }}
+          HAS_TRAFFIC_TOKEN: ${{ secrets.TRAFFIC_TOKEN != '' }}
           REPO: ${{ github.repository }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           DATE=$(date -u +%Y-%m-%d)
 
-          # --- GitHub Traffic ---
-          CLONES=$(gh api "repos/$REPO/traffic/clones" --jq '{total: .count, unique: .uniques}')
-          VIEWS=$(gh api "repos/$REPO/traffic/views" --jq '{total: .count, unique: .uniques}')
-          REFERRERS=$(gh api "repos/$REPO/traffic/popular/referrers" --jq '[.[] | {referrer, count, uniques}]')
+          # --- GitHub Traffic (requires PAT with repo scope) ---
+          CLONES='null'
+          VIEWS='null'
+          REFERRERS='null'
+          if [[ "$HAS_TRAFFIC_TOKEN" == "true" ]]; then
+            CLONES=$(gh api "repos/$REPO/traffic/clones" --jq '{total: .count, unique: .uniques}' 2>/dev/null || echo 'null')
+            VIEWS=$(gh api "repos/$REPO/traffic/views" --jq '{total: .count, unique: .uniques}' 2>/dev/null || echo 'null')
+            REFERRERS=$(gh api "repos/$REPO/traffic/popular/referrers" --jq '[.[] | {referrer, count, uniques}]' 2>/dev/null || echo 'null')
+            echo "Traffic data collected via PAT"
+          else
+            echo "No TRAFFIC_TOKEN secret — skipping traffic endpoints (needs PAT with repo scope)"
+          fi
 
-          # --- GitHub Release downloads ---
-          RELEASES=$(gh api "repos/$REPO/releases" --jq '[.[] | {tag: .tag_name, assets: [.assets[] | {name, downloads: .download_count}]}]')
+          # --- GitHub Release downloads (works with GITHUB_TOKEN) ---
+          export GH_TOKEN="$GH_TOKEN_DEFAULT"
+          RELEASES=$(gh api "repos/$REPO/releases" --jq '[.[] | {tag: .tag_name, assets: [.assets[] | {name, downloads: .download_count}]}]' 2>/dev/null || echo '[]')
 
-          # --- GitHub stars & forks ---
-          REPO_INFO=$(gh api "repos/$REPO" --jq '{stars: .stargazers_count, forks: .forks_count, watchers: .subscribers_count}')
+          # --- GitHub stars & forks (works with GITHUB_TOKEN) ---
+          REPO_INFO=$(gh api "repos/$REPO" --jq '{stars: .stargazers_count, forks: .forks_count, watchers: .subscribers_count}' 2>/dev/null || echo '{"stars":0,"forks":0,"watchers":0}')
 
-          # --- npm downloads ---
-          NPM_WEEKLY=$(curl -sf "https://api.npmjs.org/downloads/point/last-week/claud-prism-aireview" | jq -r '.downloads // 0')
-          NPM_MONTHLY=$(curl -sf "https://api.npmjs.org/downloads/point/last-month/claud-prism-aireview" | jq -r '.downloads // 0')
+          # --- npm downloads (no auth needed) ---
+          NPM_WEEKLY=$(curl -sf "https://api.npmjs.org/downloads/point/last-week/claud-prism-aireview" | jq -r '.downloads // 0' || echo '0')
+          NPM_MONTHLY=$(curl -sf "https://api.npmjs.org/downloads/point/last-month/claud-prism-aireview" | jq -r '.downloads // 0' || echo '0')
 
           # --- Build JSON record ---
           RECORD=$(jq -nc \
@@ -68,8 +84,6 @@ jobs:
           echo "$RECORD" | jq .
 
       - name: Push to stats branch
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           DATE=$(date -u +%Y-%m-%d)
