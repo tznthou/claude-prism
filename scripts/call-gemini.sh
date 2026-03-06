@@ -82,10 +82,12 @@ fi
 CMD=("$GEMINI_BIN")
 [[ -n "$MODEL" ]] && CMD+=(-m "$MODEL")
 
-RESULT=$(printf '%s' "$PROMPT" | "${CMD[@]}" -p " " 2>&1) || {
+ERR_TMP=$(mktemp)
+trap 'rm -f "$ERR_TMP"' EXIT
+RESULT=$(printf '%s' "$PROMPT" | "${CMD[@]}" -p " " 2>"$ERR_TMP") || {
     rc=$?
-    _log ERROR "gemini call failed (exit $rc)"
-    echo "$RESULT" >&2
+    _log ERROR "gemini call failed (exit $rc): $(cat "$ERR_TMP")"
+    cat "$ERR_TMP" >&2
     exit $rc
 }
 

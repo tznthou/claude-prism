@@ -144,7 +144,7 @@ If Codex makes obvious misjudgments (e.g., misunderstanding language features), 
 After outputting the review, use the Bash tool to append a single-line JSON to the insights log:
 
 ```bash
-echo '{"date":"<ISO 8601 UTC>","project":"<repo or directory name>","scope":"<staged|file:path|diff|pr>","providers":["<list of providers that responded>"],"issues":[<issue objects>]}' >> ~/.claude/logs/review-insights.jsonl
+echo '{"date":"<ISO 8601 UTC>","project":"<repo or directory name>","scope":"<staged|file:path|diff|pr>","domain":"<frontend|backend|fullstack>","providers":["<list of providers that responded>"],"issues":[<issue objects>]}' >> ~/.claude/logs/review-insights.jsonl
 ```
 
 Each issue object in the `issues` array:

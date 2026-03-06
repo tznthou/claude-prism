@@ -29,6 +29,10 @@ while [[ $# -gt 0 ]]; do
             MODEL="$2"; shift 2 ;;
         --sandbox)
             [[ $# -ge 2 ]] || { echo "Error: --sandbox requires a mode" >&2; exit 1; }
+            case "$2" in
+                read-only|sandbox|none) : ;;
+                *) echo "Error: invalid sandbox mode '$2'. Valid: read-only, sandbox, none" >&2; exit 1 ;;
+            esac
             SANDBOX="$2"; shift 2 ;;
         --dry-run)    DRY_RUN=true; shift ;;
         *) break ;;
@@ -92,10 +96,12 @@ fi
 CMD=("$CODEX_BIN" exec --sandbox "$SANDBOX")
 [[ -n "$MODEL" ]] && CMD+=(--model "$MODEL")
 
-RESULT=$(printf '%s' "$PROMPT" | "${CMD[@]}" - 2>&1) || {
+ERR_TMP=$(mktemp)
+trap 'rm -f "$ERR_TMP"' EXIT
+RESULT=$(printf '%s' "$PROMPT" | "${CMD[@]}" - 2>"$ERR_TMP") || {
     rc=$?
-    _log ERROR "codex call failed (exit $rc)"
-    echo "$RESULT" >&2
+    _log ERROR "codex call failed (exit $rc): $(cat "$ERR_TMP")"
+    cat "$ERR_TMP" >&2
     exit $rc
 }
 

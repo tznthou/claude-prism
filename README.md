@@ -450,6 +450,18 @@ cp path/to/claude-prism/scripts/ci-review.sh scripts/
 - **Fork PRs**: The workflow uses `pull_request` (not `pull_request_target`), so fork PRs cannot access your secrets. This is intentional — fork PRs are skipped.
 - **API keys**: Use GitHub repository secrets. Never commit API keys to the repo.
 - **Concurrency**: Only one review runs per PR at a time; new pushes cancel in-progress reviews.
+- **Checksums**: `checksums.sha256` verifies file integrity against transit corruption or accidental modification. It does **not** protect against a compromised repository — for that, verify against the GitHub Release artifacts page.
+
+### CLI Version Compatibility
+
+The wrapper scripts depend on specific CLI behaviors that are not part of official stable APIs:
+
+| CLI | Behavior Used | Verified Range |
+|-----|---------------|----------------|
+| Gemini CLI | `-p " "` headless mode (stdin + prompt) | v0.1.x – v0.3.x |
+| Codex CLI | `codex exec - ` stdin mode | v0.100.x – v0.106.x |
+
+If a CLI update breaks functionality, pin the working version or open an issue.
 
 ---
 
@@ -490,6 +502,19 @@ So here we are. I hope this tool helps you too.
 ---
 
 ## Changelog
+
+### v0.9.1 (2026-03-06)
+
+**Security & Bug Fixes** — audit-driven hardening across all scripts.
+
+- **Prompt injection defense** — `ci-review.sh` now wraps both GUIDELINES and DIFF blocks with explicit data boundary markers to prevent LLM instruction injection
+- **stderr/stdout separation** — `call-gemini.sh` and `call-codex.sh` no longer mix stderr into AI responses; errors are logged and forwarded to stderr separately
+- **`gh` CLI dependency check** — `ci-review.sh --pr` mode now validates `gh` availability before attempting to fetch PR diff
+- **`--sandbox` whitelist** — `call-codex.sh` validates sandbox mode against allowed values (`read-only`, `sandbox`, `none`)
+- **`review-insights.sh` rewrite** — switched from fragile sed/grep JSON parsing to `jq`; added `jq` dependency check; fixed unquoted variable references
+- **Schema consistency** — `pi-code-review.md` logging schema now includes `domain` field (matching `pi-multi-review.md`)
+- **Domain detection tests** — 6 new test cases for `detect-domain.sh` (smoke test: 26 → 32)
+- **Docs** — added CLI version compatibility table and checksums trust model explanation to README
 
 ### v0.9.0 (2026-03-05)
 
@@ -576,6 +601,9 @@ Two new commands for persistent, cross-session task planning:
 - **Review insights enhanced** — `review-insights.jsonl` now includes a `domain` field for domain-aware trend analysis
 - **`detect-domain.sh`** — new standalone utility script (can be used outside of multi-review; reads file paths from stdin)
 
+<details>
+<summary>Earlier versions (v0.6.0 and before)</summary>
+
 ### v0.6.0 (2026-03-03)
 
 **Security Hardening** — security audit and fixes across all shell scripts:
@@ -596,9 +624,6 @@ Two new commands for persistent, cross-session task planning:
 - **Graceful degradation in CI** — works with any combination of API keys (1-3 providers)
 - **Large diff handling** — auto-truncation at 32K chars (configurable via `MAX_DIFF_CHARS`)
 - Smoke test expanded to 24 tests (from 20)
-
-<details>
-<summary>Earlier versions</summary>
 
 ### v0.4.0 (2026-02-24)
 

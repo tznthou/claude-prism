@@ -450,6 +450,18 @@ cp path/to/claude-prism/scripts/ci-review.sh scripts/
 - **Fork PR**：Workflow 使用 `pull_request`（不是 `pull_request_target`），fork PR 無法存取你的 secrets。這是設計如此——fork PR 會被跳過。
 - **API key**：使用 GitHub repository secrets，切勿將 API key commit 到 repo。
 - **Concurrency**：同一 PR 同時只跑一個 review；新 push 會取消進行中的 review。
+- **Checksums**：`checksums.sha256` 驗證檔案完整性，防止傳輸損壞或意外修改。但**無法**防禦 repo 本身被入侵——如需更強保護，請從 GitHub Release artifacts 頁面下載並比對。
+
+### CLI 版本相容性
+
+Wrapper scripts 依賴 CLI 的特定行為，這些行為不屬於官方穩定 API：
+
+| CLI | 使用的行為 | 已驗證範圍 |
+|-----|-----------|-----------|
+| Gemini CLI | `-p " "` headless 模式（stdin + prompt） | v0.1.x – v0.3.x |
+| Codex CLI | `codex exec - ` stdin 模式 | v0.100.x – v0.106.x |
+
+若 CLI 更新導致功能異常，請固定使用已驗證版本或開 issue 回報。
 
 ---
 
@@ -490,6 +502,19 @@ Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 emoji/score 格式
 ---
 
 ## 更新紀錄
+
+### v0.9.1 (2026-03-06)
+
+**安全與 Bug 修復** — 審查驅動的全面強化。
+
+- **Prompt injection 防禦** — `ci-review.sh` 的 GUIDELINES 和 DIFF 區塊加入明確資料邊界標記，防止 LLM 指令注入
+- **stderr/stdout 分離** — `call-gemini.sh` 和 `call-codex.sh` 不再將 stderr 混入 AI 回應；錯誤獨立 log 並轉送 stderr
+- **`gh` CLI 依賴檢查** — `ci-review.sh --pr` 模式會先驗證 `gh` 可用性
+- **`--sandbox` 白名單** — `call-codex.sh` 驗證 sandbox 模式為允許值（`read-only`、`sandbox`、`none`）
+- **`review-insights.sh` 重寫** — 從脆弱的 sed/grep JSON 解析改為 `jq`；加入 `jq` 依賴檢查；修復未加引號的變數引用
+- **Schema 一致性** — `pi-code-review.md` 的 logging schema 加入 `domain` 欄位（與 `pi-multi-review.md` 一致）
+- **Domain detection 測試** — 新增 6 個 `detect-domain.sh` 測試案例（smoke test：26 → 32）
+- **文件補充** — README 加入 CLI 版本相容性表格與 checksums 信任模型說明
 
 ### v0.9.0 (2026-03-05)
 
@@ -576,6 +601,9 @@ rm -f ask-codex.md ask-gemini.md code-review.md multi-review.md \
 - **Review insights 增強** — `review-insights.jsonl` 新增 `domain` 欄位，支援 domain 感知的趨勢分析
 - **`detect-domain.sh`** — 新增獨立工具腳本（可在 multi-review 之外使用；從 stdin 讀取檔案路徑）
 
+<details>
+<summary>更早版本（v0.6.0 及之前）</summary>
+
 ### v0.6.0 (2026-03-03)
 
 **安全強化** — 全面安全審查與修復：
@@ -596,9 +624,6 @@ rm -f ask-codex.md ask-gemini.md code-review.md multi-review.md \
 - **CI 環境的 graceful degradation** — 任意 API key 組合皆可運作（1-3 個 provider）
 - **大 diff 處理** — 自動截斷至 32K 字元（可透過 `MAX_DIFF_CHARS` 設定）
 - Smoke test 擴充至 24 項測試（原 20 項）
-
-<details>
-<summary>更早版本</summary>
 
 ### v0.4.0 (2026-02-24)
 

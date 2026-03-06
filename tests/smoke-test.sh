@@ -142,7 +142,7 @@ fi
 
 # Test with synthetic data
 TEMP_LOG=$(mktemp -d)
-echo '{"date":"2026-01-01T00:00:00Z","project":"test","scope":"staged","providers":["claude"],"issues":[{"category":"security","severity":"critical","title":"Test issue","source":"claude-only"}]}' > "$TEMP_LOG/review-insights.jsonl"
+echo '{"date":"2026-01-01T00:00:00Z","project":"test","scope":"staged","domain":"fullstack","providers":["claude"],"issues":[{"category":"security","severity":"critical","confidence":85,"title":"Test issue","source":"claude-only"}]}' > "$TEMP_LOG/review-insights.jsonl"
 INSIGHTS_OUT=$(MULTI_AI_LOG_DIR="$TEMP_LOG" "$SCRIPT_DIR/scripts/review-insights.sh" 2>&1) || true
 rm -rf "$TEMP_LOG"
 if echo "$INSIGHTS_OUT" | grep -q "Issues by Category"; then
@@ -197,9 +197,63 @@ else
     fail "ai-review.yml workflow missing"
 fi
 
-# ─── Test 10: Codex git repo check ───
+# ─── Test 10: Domain detection ───
 echo ""
-echo "10. Error handling..."
+echo "10. Domain detection..."
+
+if [[ -x "$SCRIPT_DIR/scripts/detect-domain.sh" ]]; then
+    pass "detect-domain.sh exists and is executable"
+else
+    fail "detect-domain.sh missing or not executable"
+fi
+
+# Pure frontend
+result=$(printf 'src/App.tsx\ncomponents/Header.tsx\nstyles/main.css\n' \
+    | "$SCRIPT_DIR/scripts/detect-domain.sh")
+if [[ "$result" == "frontend" ]]; then
+    pass "detect-domain: pure frontend → frontend"
+else
+    fail "detect-domain: pure frontend expected 'frontend', got '$result'"
+fi
+
+# Pure backend
+result=$(printf 'api/handler.go\nmodels/user.go\nmigrations/001.sql\n' \
+    | "$SCRIPT_DIR/scripts/detect-domain.sh")
+if [[ "$result" == "backend" ]]; then
+    pass "detect-domain: pure backend → backend"
+else
+    fail "detect-domain: pure backend expected 'backend', got '$result'"
+fi
+
+# Mixed → fullstack
+result=$(printf 'src/App.tsx\napi/handler.go\n' \
+    | "$SCRIPT_DIR/scripts/detect-domain.sh")
+if [[ "$result" == "fullstack" ]]; then
+    pass "detect-domain: mixed → fullstack"
+else
+    fail "detect-domain: mixed expected 'fullstack', got '$result'"
+fi
+
+# Empty input → fullstack
+result=$(echo "" | "$SCRIPT_DIR/scripts/detect-domain.sh")
+if [[ "$result" == "fullstack" ]]; then
+    pass "detect-domain: empty input → fullstack"
+else
+    fail "detect-domain: empty input expected 'fullstack', got '$result'"
+fi
+
+# Neutral extensions → fullstack
+result=$(printf 'utils/helper.ts\nconfig.json\nindex.js\n' \
+    | "$SCRIPT_DIR/scripts/detect-domain.sh")
+if [[ "$result" == "fullstack" ]]; then
+    pass "detect-domain: neutral files → fullstack"
+else
+    fail "detect-domain: neutral expected 'fullstack', got '$result'"
+fi
+
+# ─── Test 11: Codex git repo check ───
+echo ""
+echo "11. Error handling..."
 
 if command -v codex &>/dev/null || [[ -x "$HOME/.npm-global/bin/codex" ]]; then
     TEMP_DIR=$(mktemp -d)

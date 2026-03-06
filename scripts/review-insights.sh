@@ -7,6 +7,9 @@
 
 set -euo pipefail
 
+# --- Dependencies ---
+command -v jq &>/dev/null || { echo "Error: jq is required. Install: https://jqlang.github.io/jq/" >&2; exit 1; }
+
 LOG_DIR="${MULTI_AI_LOG_DIR:-$HOME/.claude/logs}"
 INSIGHTS_FILE="$LOG_DIR/review-insights.jsonl"
 
@@ -75,27 +78,17 @@ fi
 REVIEW_COUNT=$(echo "$LINES" | wc -l | tr -d ' ')
 
 # --- Extract all issues as flat lines: category|severity|title|source ---
-# Using lightweight jq-free parsing with grep/sed
-# Each JSONL line has an "issues" array — extract individual issue fields
-
 ISSUES_TMP=$(mktemp "${TMPDIR:-/tmp}/review-insights-XXXXXX.tmp")
 trap 'rm -f "$ISSUES_TMP"' EXIT
 
 while IFS= read -r line; do
-    # Extract issues array content (between "issues":[ and ])
-    issues_raw=$(echo "$line" | sed -n 's/.*"issues":\[\(.*\)\]}.*/\1/p')
-    [[ -z "$issues_raw" ]] && continue
-
-    # Split into individual issue objects and extract fields
-    # This is a simple parser for well-formed JSON from our own schema
-    echo "$issues_raw" | grep -oE '\{[^}]+\}' | while IFS= read -r issue; do
-        cat=$(echo "$issue" | grep -oE '"category":"[^"]*"' | head -1 | cut -d'"' -f4)
-        sev=$(echo "$issue" | grep -oE '"severity":"[^"]*"' | head -1 | cut -d'"' -f4)
-        title=$(echo "$issue" | grep -oE '"title":"[^"]*"' | head -1 | cut -d'"' -f4)
-        src=$(echo "$issue" | grep -oE '"source":"[^"]*"' | head -1 | cut -d'"' -f4)
+    echo "$line" | jq -r '
+        .issues[]? |
+        [.category, .severity, .title, .source] | @tsv
+    ' 2>/dev/null | while IFS=$'\t' read -r cat sev title src; do
         [[ -n "$cat" ]] && echo "${cat}|${sev}|${title}|${src}"
     done
-done <<< "$LINES" > "$ISSUES_TMP" 2>/dev/null
+done <<< "$LINES" > "$ISSUES_TMP"
 
 ISSUE_COUNT=0
 if [[ -f "$ISSUES_TMP" ]]; then
@@ -110,14 +103,14 @@ echo ""
 
 if [[ "$ISSUE_COUNT" -eq 0 ]]; then
     echo "No issues recorded yet."
-    rm -f $ISSUES_TMP
+    rm -f "$ISSUES_TMP"
     exit 0
 fi
 
 # --- Category breakdown ---
 echo -e "${BOLD}Issues by Category${NC}"
 echo "─────────────────────────────────"
-cut -d'|' -f1 $ISSUES_TMP | sort | uniq -c | sort -rn | while read -r count cat; do
+cut -d'|' -f1 "$ISSUES_TMP" | sort | uniq -c | sort -rn | while read -r count cat; do
     # Color by category
     case "$cat" in
         security)        color="$RED" ;;
@@ -139,7 +132,7 @@ done
 echo ""
 echo -e "${BOLD}Issues by Severity${NC}"
 echo "─────────────────────────────────"
-cut -d'|' -f2 $ISSUES_TMP | sort | uniq -c | sort -rn | while read -r count sev; do
+cut -d'|' -f2 "$ISSUES_TMP" | sort | uniq -c | sort -rn | while read -r count sev; do
     case "$sev" in
         critical)   color="$RED";    icon="●" ;;
         medium)     color="$YELLOW"; icon="●" ;;
@@ -153,7 +146,7 @@ done
 echo ""
 echo -e "${BOLD}Issue Discovery Source${NC}"
 echo "─────────────────────────────────"
-cut -d'|' -f4 $ISSUES_TMP | sort | uniq -c | sort -rn | while read -r count src; do
+cut -d'|' -f4 "$ISSUES_TMP" | sort | uniq -c | sort -rn | while read -r count src; do
     printf "  %-16s %3d\n" "$src" "$count"
 done
 
@@ -161,7 +154,7 @@ done
 echo ""
 echo -e "${BOLD}Most Frequent Issues${NC}"
 echo "─────────────────────────────────"
-cut -d'|' -f3 $ISSUES_TMP | sort | uniq -c | sort -rn | head -10 | while read -r count title; do
+cut -d'|' -f3 "$ISSUES_TMP" | sort | uniq -c | sort -rn | head -10 | while read -r count title; do
     if [[ "$count" -gt 1 ]]; then
         printf "  ${YELLOW}%2dx${NC} %s\n" "$count" "$title"
     else
@@ -174,13 +167,9 @@ echo ""
 echo -e "${BOLD}Recent Reviews${NC}"
 echo "─────────────────────────────────"
 echo "$LINES" | tail -5 | while IFS= read -r line; do
-    date=$(echo "$line" | grep -oE '"date":"[^"]*"' | head -1 | cut -d'"' -f4)
-    project=$(echo "$line" | grep -oE '"project":"[^"]*"' | head -1 | cut -d'"' -f4)
-    scope=$(echo "$line" | grep -oE '"scope":"[^"]*"' | head -1 | cut -d'"' -f4)
-    n_issues=$(echo "$line" | grep -oE '\{[^}]*"category"' | wc -l | tr -d ' ')
-    # Truncate date to just date+time
-    short_date="${date:0:16}"
-    printf "  ${DIM}%s${NC}  %-20s %-12s %d issues\n" "$short_date" "$project" "$scope" "$n_issues"
+    parsed=$(echo "$line" | jq -r '[.date[:16], .project, .scope, (.issues | length | tostring)] | @tsv' 2>/dev/null) || continue
+    IFS=$'\t' read -r short_date project scope n_issues <<< "$parsed"
+    printf "  ${DIM}%s${NC}  %-20s %-12s %s issues\n" "$short_date" "$project" "$scope" "$n_issues"
 done
 
 echo ""
