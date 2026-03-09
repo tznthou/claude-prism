@@ -163,6 +163,8 @@ flowchart LR
 6. Claude presents the results, adding its own perspective where relevant
 7. For review commands, structured insights are logged to `review-insights.jsonl` for trend analysis
 
+For details on what data crosses trust boundaries, see [Privacy & Data Flow](#privacy--data-flow).
+
 ---
 
 ## Tech Stack
@@ -468,6 +470,92 @@ If a CLI update breaks functionality, pin the working version or open an issue.
 
 ---
 
+## Cost Estimation
+
+claude-prism is a local wrapper — it does not process or bill tokens itself. Each command may trigger one or more API calls to external providers (Codex, Gemini) via their CLIs. Claude Code's own orchestration tokens (reading files, building prompts, synthesizing results) are separate and covered by your Claude subscription or API plan.
+
+### Token Consumption by Command
+
+| Command | External Calls | Typical Input Tokens | Typical Output Tokens | Notes |
+|---------|---------------|---------------------|----------------------|-------|
+| `/pi-ask-codex` | 1 (Codex) | 500–2K | 500–2K | Scales with question complexity |
+| `/pi-ask-gemini` | 1 (Gemini) | 500–2K | 500–2K | Scales with question complexity |
+| `/pi-code-review` | 1 (Codex) | 2K–10K | 1K–4K | Scales with diff size |
+| `/pi-ui-review` | 1 (Gemini) | 2K–10K | 1K–4K | Scales with file count |
+| `/pi-ui-design` | 1 (Gemini) | 1K–3K | 3K–8K | Output-heavy (HTML generation) |
+| `/pi-research` | 1 (Gemini) | 1K–3K | 2K–6K | Output-heavy (structured report) |
+| `/pi-multi-review` | 2 (Codex + Gemini) | Above ×2 | Above ×2 | Both providers called in parallel |
+| `/pi-plan` | 0–2 (optional) | 1K–5K each | 1K–4K each | Providers consulted only if available |
+| `/pi-exec` | 0 | — | — | Executes locally via Claude Code |
+
+Token ranges are approximate and vary with input size (diff length, file count, question complexity). Different providers use different tokenization methods — these figures are order-of-magnitude estimates, not billing-accurate counts.
+
+### Controlling Costs
+
+- **`--dry-run`** — test the request path without calling the provider (no tokens consumed)
+- **`usage-summary.sh`** — review historical call counts and rough token volume:
+  ```bash
+  ~/.claude/scripts/usage-summary.sh --week
+  ```
+- **Provider pricing** — check current rates at your provider's pricing page:
+  - [OpenAI API Pricing](https://openai.com/api/pricing/)
+  - [Google AI Pricing](https://ai.google.dev/pricing)
+
+---
+
+## Privacy & Data Flow
+
+claude-prism is a local Bash wrapper, not a hosted proxy or relay service. There is no intermediary server between your machine and the AI providers.
+
+### Data Flow
+
+```mermaid
+sequenceDiagram
+    participant L as Your Machine
+    participant C as Claude Code
+    participant S as claude-prism scripts
+    participant P as Provider API (Google / OpenAI)
+
+    L->>C: User runs /pi-command
+    C->>C: Reads files, builds prompt
+    C->>S: Passes prompt + code context
+    Note over S: Logs metadata locally (timestamps, lengths only)
+    S->>P: HTTPS via provider CLI
+    P-->>S: AI response
+    S-->>C: Returns output
+    C-->>L: Presents results
+```
+
+### What Gets Sent to External Providers
+
+- Code snippets, diffs, or file contents relevant to your command
+- The prompt assembled by Claude Code (review instructions, context)
+- Model selection metadata (model name, flags)
+
+### What Stays Local
+
+- **Logs**: `~/.claude/logs/multi-ai.log` records metadata only (timestamps, prompt/response byte lengths) — no code content
+- **Review history**: `~/.claude/logs/review-insights.jsonl` contains structured issue summaries (category, severity, confidence scores) — may include issue titles derived from AI responses
+- **Plans and research**: `.claude/pi-plans/` and `.claude/pi-research/` files stay on your machine
+- **No telemetry**: claude-prism has no analytics, no phone-home, no intermediary server
+
+### What We Don't Control
+
+Each provider's data handling is governed by their own API/business terms, not by claude-prism:
+
+- **Data retention** — whether and how long providers store your prompts/responses
+- **Model training** — whether your data is used to improve their models (API terms typically exclude this, but verify your specific tier)
+- **Sub-processors** — the cloud infrastructure providers use (AWS, Google Cloud, Azure)
+
+Provider terms:
+- [Anthropic Commercial Terms](https://www.anthropic.com/policies/commercial-terms)
+- [OpenAI API Terms](https://openai.com/policies/row-terms-of-use/)
+- [Google AI Terms](https://ai.google.dev/gemini-api/terms)
+
+> **For regulated or confidential projects**: If your codebase is subject to HIPAA, SOC 2, NDA, or similar compliance requirements, verify the full chain — Claude Code terms, provider API terms, data retention settings, and your organization's internal approval process — before sending code to external APIs.
+
+---
+
 ## FAQ
 
 **Q: Does Claude actually call the external CLIs, or does it fake the results?**
@@ -484,7 +572,7 @@ Claude handles it. If Codex or Gemini doesn't follow the requested emoji/score f
 
 **Q: How much does this cost?**
 
-Each command makes one API call to the external provider. Costs depend on your Gemini/OpenAI pricing tier. Use `--dry-run` on the scripts to test without consuming tokens. Run `~/.claude/scripts/usage-summary.sh` to see call counts and estimated token consumption over time.
+See the [Cost Estimation](#cost-estimation) section for per-command token consumption ranges and cost control tools.
 
 **Q: Can I use this with other Claude Code setups?**
 

@@ -163,6 +163,8 @@ flowchart LR
 6. Claude 呈現結果，適時加入自己的觀點
 7. Review 指令會自動將結構化 insights 記錄到 `review-insights.jsonl` 以供趨勢分析
 
+關於資料跨越信任邊界的細節，請參閱[隱私與資料流向](#隱私與資料流向)。
+
 ---
 
 ## 技術棧
@@ -468,6 +470,92 @@ Wrapper scripts 依賴 CLI 的特定行為，這些行為不屬於官方穩定 A
 
 ---
 
+## 成本估算
+
+claude-prism 是本地端 wrapper——它本身不處理也不計費 token。每個指令可能透過 CLI 觸發一或多次外部 provider（Codex、Gemini）的 API 呼叫。Claude Code 自身的調度 token（讀取檔案、組建 prompt、合成結果）是獨立計算的，由你的 Claude 訂閱方案或 API 方案承擔。
+
+### 各指令 Token 消耗
+
+| 指令 | 外部呼叫 | 典型 Input Tokens | 典型 Output Tokens | 備註 |
+|------|---------|-------------------|-------------------|------|
+| `/pi-ask-codex` | 1 (Codex) | 500–2K | 500–2K | 隨問題複雜度增減 |
+| `/pi-ask-gemini` | 1 (Gemini) | 500–2K | 500–2K | 隨問題複雜度增減 |
+| `/pi-code-review` | 1 (Codex) | 2K–10K | 1K–4K | 隨 diff 大小增減 |
+| `/pi-ui-review` | 1 (Gemini) | 2K–10K | 1K–4K | 隨檔案數量增減 |
+| `/pi-ui-design` | 1 (Gemini) | 1K–3K | 3K–8K | 產出較重（HTML 生成） |
+| `/pi-research` | 1 (Gemini) | 1K–3K | 2K–6K | 產出較重（結構化報告） |
+| `/pi-multi-review` | 2 (Codex + Gemini) | 上述 ×2 | 上述 ×2 | 兩個 provider 並行呼叫 |
+| `/pi-plan` | 0–2（可選） | 各 1K–5K | 各 1K–4K | 僅在 provider 可用時諮詢 |
+| `/pi-exec` | 0 | — | — | 透過 Claude Code 本地執行 |
+
+Token 範圍為近似值，隨輸入大小（diff 長度、檔案數、問題複雜度）變動。不同 provider 使用不同的 tokenization 方法——這些數字是數量級估算，非帳單精確值。
+
+### 控制成本
+
+- **`--dry-run`** — 測試請求路徑但不呼叫 provider（不消耗 token）
+- **`usage-summary.sh`** — 檢視歷史呼叫次數與粗估 token 用量：
+  ```bash
+  ~/.claude/scripts/usage-summary.sh --week
+  ```
+- **Provider 定價** — 至各 provider 定價頁面查詢目前費率：
+  - [OpenAI API Pricing](https://openai.com/api/pricing/)
+  - [Google AI Pricing](https://ai.google.dev/pricing)
+
+---
+
+## 隱私與資料流向
+
+claude-prism 是本地端 Bash wrapper，不是託管式代理或中繼服務。你的機器和 AI provider 之間沒有任何中介伺服器。
+
+### 資料流向
+
+```mermaid
+sequenceDiagram
+    participant L as 你的機器
+    participant C as Claude Code
+    participant S as claude-prism scripts
+    participant P as Provider API (Google / OpenAI)
+
+    L->>C: 使用者執行 /pi-command
+    C->>C: 讀取檔案、組建 prompt
+    C->>S: 傳遞 prompt + 程式碼 context
+    Note over S: 在本地記錄 metadata（時間戳、長度）
+    S->>P: 透過 provider CLI 發送 HTTPS 請求
+    P-->>S: AI 回應
+    S-->>C: 回傳輸出
+    C-->>L: 呈現結果
+```
+
+### 送出到外部 Provider 的內容
+
+- 與指令相關的程式碼片段、diff 或檔案內容
+- Claude Code 組建的 prompt（審查指令、context）
+- 模型選擇 metadata（模型名稱、flags）
+
+### 留在本地的內容
+
+- **Log 檔**：`~/.claude/logs/multi-ai.log` 僅記錄 metadata（時間戳、prompt/response 位元組長度）——不含程式碼內容
+- **Review 歷史**：`~/.claude/logs/review-insights.jsonl` 包含結構化的問題摘要（類別、嚴重度、信心度分數）——可能包含衍生自 AI 回應的問題標題
+- **計畫與研究**：`.claude/pi-plans/` 和 `.claude/pi-research/` 檔案留在你的機器上
+- **零遙測**：claude-prism 沒有分析服務、不會回傳資料、沒有中介伺服器
+
+### 我們無法控制的部分
+
+每個 provider 的資料處理方式由其自身的 API/商業條款規範，不受 claude-prism 控制：
+
+- **資料保留** — provider 是否及保留你的 prompt/回應多久
+- **模型訓練** — 你的資料是否被用於改善模型（API 條款通常排除此項，但請確認你的具體方案）
+- **子處理者** — provider 使用的雲端基礎設施（AWS、Google Cloud、Azure）
+
+Provider 條款：
+- [Anthropic 商業條款](https://www.anthropic.com/policies/commercial-terms)
+- [OpenAI API 條款](https://openai.com/policies/row-terms-of-use/)
+- [Google AI 條款](https://ai.google.dev/gemini-api/terms)
+
+> **合規或機密專案注意**：若你的程式碼受 HIPAA、SOC 2、NDA 或類似合規要求約束，請在將程式碼送至外部 API 前，確認完整鏈結——Claude Code 條款、provider API 條款、資料保留設定，以及你所屬組織的內部核准流程。
+
+---
+
 ## FAQ
 
 **Q: Claude 真的有呼叫外部 CLI 嗎？還是自編自導？**
@@ -484,7 +572,7 @@ Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 emoji/score 格式
 
 **Q: 費用多少？**
 
-每個指令對外部 provider 發一次 API call，費用取決於你的 Gemini/OpenAI 計費方案。用 script 的 `--dry-run` 可以測試但不消耗 token。執行 `~/.claude/scripts/usage-summary.sh` 可查看歷史呼叫次數和估算 token 消耗量。
+參閱[成本估算](#成本估算)段落，了解各指令的 token 消耗範圍和成本控制工具。
 
 **Q: 可以搭配其他 Claude Code 設定使用嗎？**
 
