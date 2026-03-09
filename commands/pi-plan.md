@@ -110,8 +110,8 @@ cat > ".claude/pi-plans/<slug>.md" << 'PLAN_EOF'
 <Where providers agree/disagree, Claude's judgment on conflicts, chosen approach>
 
 ## Steps
-1. [ ] <Step description> — <expected outcome>
-2. [ ] <Step description> — <expected outcome>
+- [ ] <Step description> — <expected outcome>
+- [ ] <Step description> — <expected outcome>
 ...
 
 ## Key Files

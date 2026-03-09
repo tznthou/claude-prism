@@ -19,12 +19,10 @@ Use `$ARGUMENTS` as the prompt. If the question involves project code, read rele
 ~/.claude/scripts/call-codex.sh "$ARGUMENTS"
 ```
 
-If code context is needed:
+If code context is needed, pipe it via stdin (avoids ARG_MAX limits):
 ```bash
-~/.claude/scripts/call-codex.sh "$ARGUMENTS
-
-Relevant code:
-$(code content)"
+echo "Relevant code:
+$(code content)" | ~/.claude/scripts/call-codex.sh "$ARGUMENTS"
 ```
 
 ### 3. Handle failures
@@ -41,3 +39,4 @@ If Claude disagrees with any part of Codex's answer, append Claude's own take so
 
 - Must be run inside a git repo (Codex CLI requirement)
 - Codex excels at code-related questions but can handle general technical queries
+- Keep injected code context under 4000 chars — summarize or extract relevant sections for larger files

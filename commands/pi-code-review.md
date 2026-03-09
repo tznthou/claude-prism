@@ -96,7 +96,7 @@ echo "prompt + code" | ~/.claude/scripts/call-codex.sh "review"
 
 **If Codex fails** (script exits non-zero or CLI not found):
 - Do NOT abort. Claude performs the review independently instead.
-- Note in output: "Codex unavailable — Claude solo review (same-source blind spot caveat applies)."
+- Note in output: "Codex unavailable — review conducted by Claude only (same-source blind spot caveat applies)."
 
 **If Codex output doesn't match requested format** (no emoji severity, no score, pure prose):
 - Extract actionable issues from the raw text. Do NOT discard the response.

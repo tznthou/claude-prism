@@ -95,7 +95,7 @@ Gemini reviews frontend code for accessibility, responsive design, component str
 
 ### `/pi-research` — Technical Research
 
-Gemini conducts structured technical research with comparison tables, recommendations, and resource links.
+Gemini conducts structured technical research with comparison tables, recommendations, and resource links. If the topic relates to the current project, relevant context (dependencies, existing patterns) is automatically included. Results can optionally be saved to `.claude/pi-research/` for future reference.
 
 ```
 /pi-research Best authentication libraries for Next.js App Router
@@ -278,8 +278,9 @@ Installed to:
     ├── multi-ai.log            # Call logs (timestamps, prompt/response lengths)
     └── review-insights.jsonl   # Structured review history (auto-recorded)
 
-# Created at runtime by /pi-plan:
+# Created at runtime by /pi-plan and /pi-research:
 .claude/pi-plans/               # ← plan files (project-local, cross-session)
+.claude/pi-research/            # ← saved research results (optional)
 ```
 
 ---
@@ -316,7 +317,7 @@ Both wrapper scripts support:
 | **Binary detection** | Searches multiple paths for the CLI binary |
 | **Logging** | Every call logged to `~/.claude/logs/multi-ai.log` with timestamps |
 | **`--dry-run`** | Test without calling the API (no tokens consumed) |
-| **Stdin piping** | `echo "code" \| call-gemini.sh "review"` for long inputs |
+| **Stdin piping** | `echo "code" \| call-gemini.sh "prompt"` for long inputs |
 | **Model override** | `-m model-name` to use a different model |
 
 ### Customization
@@ -504,6 +505,28 @@ So here we are. I hope this tool helps you too.
 ---
 
 ## Changelog
+
+### v0.9.6 (2026-03-09)
+
+**Prompt Quality & Consistency** — multi-provider review of all 9 command prompts, with fixes.
+
+- **Confidence scoring implemented** — evidence extraction, hallucination verification, and `--verbose` flag applied to all 3 review commands (`/pi-code-review`, `/pi-multi-review`, `/pi-ui-review`), aligned with [spec v1.0](spec/confidence-scoring-v1.md)
+- **Fix: pi-exec resume bug** — plan step checkbox syntax (`1. [ ]` vs `- [ ]`) mismatch between `/pi-plan` and `/pi-exec` caused resume detection to fail
+- **Fix: pi-ask-gemini "review" prefix** — code context invocation hardcoded `"review"` as the prompt, biasing Gemini's response
+- **Standardized stdin pipe invocation** — all commands with code context now use `echo "context" | call-xxx.sh "$ARGUMENTS"` pattern consistently (avoids ARG_MAX limits)
+- **`/pi-research` enhanced** — added project context awareness, optional save-to-file (`.claude/pi-research/`), and improved Claude supplement wording
+- **`/pi-ui-design` fixed** — resolved undefined variables (`$DESIGN_SPEC_CONTENT`, `$USER_INPUT`), standardized to `$ARGUMENTS` and stdin pipe
+- **Context budget** — all commands with code/context injection now enforce a 4000 char limit with summarization guidance
+- **Internationalization** — removed hardcoded Chinese text from command prompts; output language now follows user's own Claude Code language settings
+- **Failure message consistency** — standardized format across all commands: `"[Provider] unavailable — [action] by Claude only."`
+
+### v0.9.5 (2026-03-09)
+
+**Supply Chain Security** — improve [socket.dev](https://socket.dev) score and npm packaging.
+
+- **npm `files` precision** — excluded CI-only scripts (`ci-review.sh`, `review-insights.sh`, `usage-summary.sh`) from npm package; only runtime scripts shipped
+- **`bugs` field** — added `bugs.url` to `package.json` for npm metadata completeness
+- **npm OIDC Trusted Publishing** — CI uses Node 24 + OIDC for npm publish with provenance (no `NPM_TOKEN` secret needed)
 
 ### v0.9.1 (2026-03-06)
 

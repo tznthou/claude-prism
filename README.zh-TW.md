@@ -95,7 +95,7 @@ Gemini 審查前端程式碼的無障礙、響應式設計、元件結構和 UX 
 
 ### `/pi-research` — 技術研究
 
-Gemini 進行結構化技術研究，包含比較表、推薦方案和學習資源。
+Gemini 進行結構化技術研究，包含比較表、推薦方案和學習資源。若研究主題與當前專案相關，會自動帶入相關 context（依賴、既有模式）。研究結果可選擇存到 `.claude/pi-research/` 供日後參考。
 
 ```
 /pi-research Next.js App Router 最佳認證方案
@@ -278,8 +278,9 @@ claude-prism/
     ├── multi-ai.log            # 呼叫紀錄（時間戳、prompt/response 長度）
     └── review-insights.jsonl   # 結構化 review 歷史（自動記錄）
 
-# /pi-plan 執行時建立：
+# /pi-plan 和 /pi-research 執行時建立：
 .claude/pi-plans/               # ← 計畫檔（專案本地，跨 session 持久化）
+.claude/pi-research/            # ← 研究結果存檔（可選）
 ```
 
 ---
@@ -316,7 +317,7 @@ export CODEX_MODEL="gpt-5.3-codex"
 | **Binary 偵測** | 自動搜尋多個路徑找 CLI 執行檔 |
 | **Logging** | 每次呼叫記錄到 `~/.claude/logs/multi-ai.log`（含時間戳） |
 | **`--dry-run`** | 測試模式，不呼叫 API（不消耗 token） |
-| **Stdin 管線** | `echo "code" \| call-gemini.sh "review"` 處理長輸入 |
+| **Stdin 管線** | `echo "code" \| call-gemini.sh "prompt"` 處理長輸入 |
 | **Model 切換** | `-m model-name` 指定不同模型 |
 
 ### 自訂
@@ -504,6 +505,28 @@ Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 emoji/score 格式
 ---
 
 ## 更新紀錄
+
+### v0.9.6 (2026-03-09)
+
+**Prompt 品質與一致性** — 對全部 9 個 command prompt 進行多方 review 並修復。
+
+- **信心度評分實作** — evidence extraction、hallucination verification、`--verbose` flag 套用到全部 3 個 review 指令（`/pi-code-review`、`/pi-multi-review`、`/pi-ui-review`），對齊 [spec v1.0](spec/confidence-scoring-v1.md)
+- **修復：pi-exec 續跑 bug** — `/pi-plan` 與 `/pi-exec` 的 checkbox 語法不一致（`1. [ ]` vs `- [ ]`）導致續跑偵測失敗
+- **修復：pi-ask-gemini "review" 前綴** — code context 呼叫時硬編碼 `"review"` 作為 prompt，影響 Gemini 回應品質
+- **統一 stdin pipe 呼叫方式** — 所有有 code context 的指令統一使用 `echo "context" | call-xxx.sh "$ARGUMENTS"` 模式（避免 ARG_MAX 限制）
+- **`/pi-research` 增強** — 新增專案 context 感知、可選存檔到 `.claude/pi-research/`、改善 Claude supplement 措辭
+- **`/pi-ui-design` 修復** — 解決未定義變數（`$DESIGN_SPEC_CONTENT`、`$USER_INPUT`），統一使用 `$ARGUMENTS` 與 stdin pipe
+- **Context 預算** — 所有注入 code/context 的指令加入 4000 字元上限與摘要策略
+- **國際化** — 移除 command prompt 中硬編碼的中文；輸出語言改由使用者自己的 Claude Code 語言設定控制
+- **失敗訊息一致性** — 全部指令統一格式：`"[Provider] unavailable — [動作] by Claude only."`
+
+### v0.9.5 (2026-03-09)
+
+**供應鏈安全** — 改善 [socket.dev](https://socket.dev) 分數與 npm 打包。
+
+- **npm `files` 精確化** — 排除 CI-only scripts（`ci-review.sh`、`review-insights.sh`、`usage-summary.sh`），只打包 runtime scripts
+- **`bugs` 欄位** — `package.json` 新增 `bugs.url`，補齊 npm metadata
+- **npm OIDC Trusted Publishing** — CI 使用 Node 24 + OIDC 發佈 npm 套件（含 provenance，不需要 `NPM_TOKEN` secret）
 
 ### v0.9.1 (2026-03-06)
 

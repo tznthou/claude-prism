@@ -19,12 +19,10 @@ Use `$ARGUMENTS` as the prompt. If the question involves project code, read rele
 ~/.claude/scripts/call-gemini.sh "$ARGUMENTS"
 ```
 
-If code context is needed:
+If code context is needed, pipe it via stdin (avoids ARG_MAX limits):
 ```bash
-echo "$ARGUMENTS
-
-Relevant code:
-$(code content)" | ~/.claude/scripts/call-gemini.sh "review"
+echo "Relevant code:
+$(code content)" | ~/.claude/scripts/call-gemini.sh "$ARGUMENTS"
 ```
 
 ### 3. Handle failures
@@ -42,3 +40,4 @@ If Claude disagrees with any part of Gemini's answer, append Claude's own take s
 - Works in any directory (no git repo required)
 - Gemini excels at: broad ecosystem knowledge, alternative comparisons, Google-related tech
 - Image/screenshot analysis: Gemini CLI headless mode does not support images — use Claude's own multimodal capability instead
+- Keep injected code context under 4000 chars — summarize or extract relevant sections for larger files
