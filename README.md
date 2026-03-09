@@ -65,7 +65,7 @@ Direct Q&A with Gemini. Leverages Google's broad ecosystem knowledge.
 
 Codex reviews code that Claude wrote. The core use case — **different AI, different blind spots**.
 
-Each issue is scored 0–100 on evidence quality (line numbers, cited rules, reproducibility). Only issues scoring ≥ 80 are shown — noise filtered, signal preserved. If your project has `CLAUDE.md` or `Agents.md`, guideline compliance is checked automatically.
+Each issue is scored 0–100 using the [Confidence Scoring Framework](spec/confidence-scoring-v1.md) — evidence-based, deterministic noise filtering. Only issues scoring ≥ 80 are shown. If your project has `CLAUDE.md` or `Agents.md`, guideline compliance is checked automatically.
 
 ```
 /pi-code-review                    # review staged changes
@@ -111,7 +111,7 @@ The flagship command. Sends the same code to **both** Codex and Gemini in parall
 3. **Guideline compliance** — violations of `CLAUDE.md` / `Agents.md` project rules
 4. **Claude supplement** — issues neither caught
 
-**Confidence Scoring** (v0.9.0): Every issue from all providers is scored 0–100 based on evidence quality — not Claude's opinion. Only issues ≥ 80 make it to the output. Scoring is evidence-based: specific line numbers (+25), code introduced in this diff (+25), cited rules (+20), reproducible scenario (+15), multi-provider consensus (+20). This filters noise while preserving cross-provider blind spot elimination.
+**Confidence Scoring** ([spec](spec/confidence-scoring-v1.md)): Every issue from all providers is scored 0–100 based on evidence quality — not Claude's opinion. Only issues ≥ 80 make it to the output. Base score 40, with evidence-based factors: specific line numbers (+25), code introduced in this diff (+25), cited rules (+20), reproducible scenario (+15), multi-provider consensus (+20). Noise signals reduce the score: subjective style (-25), linter-catchable (-25), hallucinated references (-50). The framework is deterministic, model-agnostic, and [independently reusable](spec/confidence-scoring-v1.md).
 
 **Smart Routing** (v0.7.0): Automatically detects the domain of changes (frontend/backend/fullstack) from file extensions and paths. During synthesis, the domain-authoritative provider gets higher weight — Gemini for frontend (UI/UX expertise), Codex for backend (security/algorithm expertise). Both providers are always called; weighting only affects how Claude resolves disagreements.
 
@@ -240,6 +240,8 @@ claude-prism/
 ├── .github/workflows/
 │   ├── ai-review.yml           # GitHub Actions workflow for CI review
 │   └── shellcheck.yml          # ShellCheck static analysis for shell scripts
+├── spec/                       # Standalone specifications
+│   └── confidence-scoring-v1.md  # Evidence-based noise filtering framework
 ├── commands/                   # Slash command definitions (Markdown)
 │   ├── pi-ask-codex.md
 │   ├── pi-ask-gemini.md

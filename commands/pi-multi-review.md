@@ -136,7 +136,7 @@ After receiving results (from however many providers succeeded), Claude performs
 
 #### Confidence scoring & filtering
 
-Before synthesis, Claude scores **every** issue from all providers on a 0–100 confidence scale. **Only issues scoring ≥ 80 enter the synthesis.**
+Before synthesis, Claude scores **every** issue from all providers using the [Confidence Scoring Framework](../spec/confidence-scoring-v1.md). **Only issues scoring ≥ 80 enter the synthesis.**
 
 | Factor | Score Impact |
 |--------|-------------|
@@ -145,18 +145,19 @@ Before synthesis, Claude scores **every** issue from all providers on a 0–100 
 | Issue cites a concrete rule (OWASP, guideline, language spec) | +20 |
 | Issue describes a reproducible scenario (steps, input, consequence) | +15 |
 | Multiple providers flagged the same issue (consensus) | +20 |
-| Issue is about a pattern the diff **removes** or refactors away | −30 |
-| Issue is something a linter/formatter would catch | −20 |
-| Issue is a subjective style preference with no guideline backing | −20 |
+| Issue **solely** concerns code the diff removes, with no impact on remaining code | −30 |
+| Issue is something a linter/formatter would catch (and project has such tooling) | −25 |
+| Issue is a subjective style preference with no guideline backing | −25 |
+| Issue references a file, symbol, or API that does not exist in the codebase | −50 |
 
-Start each issue at 50 (neutral), apply factors, clamp to 0–100.
+Start each issue at 40, apply factors, clamp to 0–100.
 
 **Critical rule**: Scoring must be **evidence-based**, not opinion-based. If an issue has strong evidence (line numbers + concrete scenario + cited rule) but Claude "disagrees" with the finding, it still scores high. The goal is noise filtering, not Claude vetoing cross-provider insights.
 
 #### Guideline compliance (if guidelines found in Step 2.3)
 
-Score guideline violations separately:
-- Violation explicitly mentioned in guideline text → confidence +30
+Score guideline violations separately (no double-dip with "cites a rule" — use the higher bonus):
+- Violation explicitly mentioned in guideline text → confidence +30 (replaces +20 rule citation if both apply)
 - Violation inferred but not explicitly stated → confidence +10
 - Only include violations that reference a **specific rule** from the guideline files.
 
