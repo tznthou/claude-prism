@@ -161,6 +161,26 @@ Show the filtered review labeled **Codex**, grouped by confidence tier:
 - **Solid (80–89)**: Worth fixing
 - Issues below 80 are omitted by default.
 
+#### GitHub suggestion blocks
+
+When an issue has a **concrete code fix** (not just a description of the problem), include a GitHub suggestion block so the fix can be applied with one click in a PR:
+
+````
+**`src/utils/auth.ts:42`** 🔴 SQL injection via unsanitized input
+
+```suggestion
+const result = await db.query('SELECT * FROM users WHERE id = $1', [userId]);
+```
+````
+
+Rules:
+- Only use suggestion blocks when the replacement code is **unambiguous** — if there are multiple valid fixes, describe the options in prose instead.
+- Include the **file path and line number** as a bold header before the block.
+- The content inside ` ```suggestion ``` ` must be the **exact replacement** for the referenced line(s) — no surrounding context, no line numbers, no diff markers.
+- When reviewing a diff (`--diff`, `--pr`), match the line numbers to the **new file** side of the diff.
+- If the fix spans multiple lines, include all lines in a single suggestion block.
+- Issues without a concrete fix (e.g., architectural concerns, design questions) should remain as prose descriptions — do NOT force a suggestion block.
+
 If `--verbose` was specified, add a **Filtered Issues** section after the main results:
 ```
 ### Filtered Issues (< 80 confidence)

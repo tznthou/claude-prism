@@ -439,7 +439,7 @@ cp path/to/claude-prism/scripts/ci-review.sh scripts/
 3. Diff is sent to available providers (Gemini API, OpenAI API) in parallel, with false-positive exclusion rules
 4. If `ANTHROPIC_API_KEY` is set, Claude synthesizes with confidence scoring (only issues ≥ 80 posted)
 5. If not, results are concatenated directly
-6. Output is posted as a PR comment
+6. If the review includes concrete code fixes, they are posted as **inline PR review comments** with GitHub suggestion blocks (one-click accept). Remaining output is posted as the review body. Falls back to a regular PR comment if the Reviews API is unavailable
 
 ### CI Environment Variables
 
@@ -593,6 +593,14 @@ So here we are. I hope this tool helps you too.
 ---
 
 ## Changelog
+
+### v0.9.7 (2026-03-09)
+
+**GitHub Suggestion Blocks** — review commands now output one-click fixable code suggestions.
+
+- **Suggestion block output** — `/pi-code-review`, `/pi-multi-review`, `/pi-ui-review` now include GitHub `suggestion` blocks for issues with concrete, unambiguous code fixes
+- **Inline PR review comments** — `ci-review.sh` parses suggestion blocks and posts them as inline review comments via the GitHub Reviews API, enabling one-click "Apply suggestion" in PRs
+- **Graceful fallback** — if the Reviews API fails or no suggestions are found, falls back to regular PR comment (fully backward-compatible)
 
 ### v0.9.6 (2026-03-09)
 

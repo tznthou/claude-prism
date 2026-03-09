@@ -439,7 +439,7 @@ cp path/to/claude-prism/scripts/ci-review.sh scripts/
 3. Diff 並行送給可用 provider（Gemini API、OpenAI API），含 false positive 排除規則
 4. 若有設定 `ANTHROPIC_API_KEY`，Claude 進行信心度評分綜合分析（只有 ≥ 80 分的 issue 會被貼出）
 5. 若無，直接串接各方結果
-6. 結果以 PR comment 形式呈現
+6. 若 review 包含具體修正建議，會以 **inline PR review comment** 搭配 GitHub suggestion block 發佈（一鍵接受修改）。其餘內容作為 review body。若 Reviews API 不可用，退回一般 PR comment
 
 ### CI 環境變數
 
@@ -593,6 +593,14 @@ Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 emoji/score 格式
 ---
 
 ## 更新紀錄
+
+### v0.9.7 (2026-03-09)
+
+**GitHub Suggestion Blocks** — review 指令現在輸出可一鍵修正的程式碼建議。
+
+- **Suggestion block 輸出** — `/pi-code-review`、`/pi-multi-review`、`/pi-ui-review` 對有具體明確修正方案的 issue 輸出 GitHub `suggestion` block
+- **Inline PR review comments** — `ci-review.sh` 解析 suggestion blocks 並透過 GitHub Reviews API 發佈 inline review comment，在 PR 中可一鍵「Apply suggestion」
+- **Graceful fallback** — Reviews API 失敗或無 suggestion 時，退回一般 PR comment（完全向下相容）
 
 ### v0.9.6 (2026-03-09)
 

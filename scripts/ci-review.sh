@@ -376,6 +376,23 @@ IMPORTANT: Score based on evidence quality, not whether you agree with the findi
 Format as clean Markdown suitable for a GitHub PR comment.
 Use 🔴 Critical / 🟡 Medium / 🟢 Suggestion severity markers.
 
+## GitHub Suggestion Blocks
+When an issue has a concrete, unambiguous code fix, output it as a GitHub suggestion block.
+Use this EXACT format (the parser depends on it):
+
+**\`filepath:line\`** 🔴 Issue description
+
+\`\`\`suggestion
+replacement code here
+\`\`\`
+
+Rules:
+- filepath must be relative to repo root (e.g. src/utils/auth.ts)
+- line must be a single number referring to the NEW file side of the diff
+- The suggestion content must be the exact replacement for the referenced line(s)
+- Only use suggestion blocks when the fix is unambiguous — use prose for open-ended issues
+- Do NOT put suggestion blocks inside other markdown structures (tables, blockquotes, etc.)
+
 "
     for provider in "${RESPONDED[@]}"; do
         case "$provider" in
@@ -456,15 +473,112 @@ OUTPUT+="
 # --- Output ---
 echo "$OUTPUT"
 
+# --- Parse suggestion blocks from OUTPUT ---
+# Format: **`filepath:line`** severity description\n```suggestion\ncode\n```
+# Note: nested code fences inside suggestion blocks (e.g. suggesting a fenced block)
+# will break the parser. This is a known limitation — keep suggestions simple.
+parse_suggestions() {
+    local text="$1"
+    local suggestions_json="[]"
+    local in_suggestion=false
+    local current_path="" current_line="" current_body="" current_desc=""
+    local suggestion_code=""
+
+    while IFS= read -r raw_line; do
+        if [[ "$in_suggestion" == false ]]; then
+            # Match: **`filepath:line`** severity description
+            if [[ "$raw_line" =~ ^\*\*\`([^:]+):([0-9]+)\`\*\*[[:space:]]+(.*) ]]; then
+                current_path="${BASH_REMATCH[1]}"
+                current_line="${BASH_REMATCH[2]}"
+                current_desc="${BASH_REMATCH[3]}"
+                current_body=""
+                suggestion_code=""
+            elif [[ "$raw_line" == '```suggestion' ]] && [[ -n "$current_path" ]]; then
+                in_suggestion=true
+                suggestion_code=""
+            fi
+        else
+            if [[ "$raw_line" == '```' ]]; then
+                in_suggestion=false
+                # Build the comment body: description + suggestion block
+                current_body="${current_desc}
+
+\`\`\`suggestion
+${suggestion_code}
+\`\`\`"
+                suggestions_json=$(echo "$suggestions_json" | jq \
+                    --arg path "$current_path" \
+                    --arg sline "$current_line" \
+                    --arg body "$current_body" \
+                    '. + [{"path": $path, "line": ($sline | tonumber), "side": "RIGHT", "body": $body}]')
+                current_path=""
+                current_line=""
+            else
+                if [[ -n "$suggestion_code" ]]; then
+                    suggestion_code+=$'\n'"$raw_line"
+                else
+                    suggestion_code="$raw_line"
+                fi
+            fi
+        fi
+    done <<< "$text"
+
+    echo "$suggestions_json"
+}
+
+# --- Helper: post OUTPUT as a regular PR comment ---
+_post_plain_comment() {
+    echo "$OUTPUT" > "$TMPDIR_REVIEW/comment.md"
+    GH_TOKEN="$GH_TOKEN" gh pr comment "$PR_NUMBER" --body-file "$TMPDIR_REVIEW/comment.md" 2>&1 || {
+        _log ERROR "failed to post PR comment"
+        echo "Warning: failed to post PR comment" >&2
+    }
+}
+
 # --- Post PR comment ---
 if [[ -n "$PR_NUMBER" ]]; then
     if [[ -n "$GH_TOKEN" ]]; then
-        echo "$OUTPUT" > "$TMPDIR_REVIEW/comment.md"
-        GH_TOKEN="$GH_TOKEN" gh pr comment "$PR_NUMBER" --body-file "$TMPDIR_REVIEW/comment.md" 2>&1 || {
-            _log ERROR "failed to post PR comment"
-            echo "Warning: failed to post PR comment" >&2
-        }
-        _log INFO "PR comment posted to #$PR_NUMBER"
+        SUGGESTIONS=$(parse_suggestions "$OUTPUT")
+        SUGGESTION_COUNT=$(echo "$SUGGESTIONS" | jq 'length' 2>/dev/null) || SUGGESTION_COUNT=0
+
+        if [[ "$SUGGESTION_COUNT" -gt 0 ]]; then
+            # Post as PR review with inline suggestion comments
+            COMMIT_SHA=$(GH_TOKEN="$GH_TOKEN" gh pr view "$PR_NUMBER" --json headRefOid -q .headRefOid 2>/dev/null) || COMMIT_SHA=""
+
+            if [[ -n "$COMMIT_SHA" ]]; then
+                # Strip suggestion blocks from OUTPUT for the review body (they'll be inline).
+                # Only strip ```suggestion...``` fences and standalone header lines — preserve prose.
+                REVIEW_BODY=$(echo "$OUTPUT" | awk '
+                    /^\*\*`[^:]+:[0-9]+`\*\*/ { next }
+                    /^```suggestion$/         { skip=1; next }
+                    skip && /^```$/           { skip=0; next }
+                    skip                      { next }
+                    { print }
+                ')
+
+                REVIEW_PAYLOAD=$(jq -n \
+                    --arg body "$REVIEW_BODY" \
+                    --arg commit "$COMMIT_SHA" \
+                    --argjson comments "$SUGGESTIONS" \
+                    '{body: $body, event: "COMMENT", commit_id: $commit, comments: $comments}')
+
+                if GH_TOKEN="$GH_TOKEN" gh api "repos/{owner}/{repo}/pulls/$PR_NUMBER/reviews" \
+                    --method POST \
+                    --input - <<< "$REVIEW_PAYLOAD" > /dev/null 2>&1; then
+                    _log INFO "PR review posted to #$PR_NUMBER with $SUGGESTION_COUNT inline suggestion(s)"
+                else
+                    _log WARN "PR review API failed, falling back to regular comment"
+                    _post_plain_comment
+                fi
+            else
+                _log WARN "could not get commit SHA, falling back to regular comment"
+                _post_plain_comment
+            fi
+        else
+            # No suggestions found — post as regular comment
+            _post_plain_comment
+            _log INFO "PR comment posted to #$PR_NUMBER (no inline suggestions)"
+        fi
     else
         _log INFO "no GH_TOKEN, skipping PR comment"
     fi
