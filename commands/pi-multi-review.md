@@ -16,6 +16,7 @@ Same as `/pi-code-review`, based on `$ARGUMENTS`:
 - File path → specified file
 - `--diff` → unstaged changes
 - `--pr` → PR diff
+- `--verbose` → also show issues that were filtered out (< 80 confidence) with their scores
 
 ### 2. Get the code
 
@@ -138,19 +139,46 @@ After receiving results (from however many providers succeeded), Claude performs
 
 Before synthesis, Claude scores **every** issue from all providers using the [Confidence Scoring Framework](../spec/confidence-scoring-v1.md). **Only issues scoring ≥ 80 enter the synthesis.**
 
+##### Evidence extraction
+
+For each issue from every provider, extract these fields:
+
+1. **line_numbers** — Does the issue reference specific line numbers in the diff? (not vague "around line X")
+2. **is_new_code** — Is the issue about code **introduced in this diff**? (not pre-existing code)
+3. **rule_citation** — Does it cite a concrete rule (OWASP, language spec, project guideline, linter rule name)?
+4. **has_reproduction** — Does it describe a reproducible scenario with steps, input, and expected vs actual outcome?
+5. **flagged_by_providers** — Which providers flagged this issue? Match by semantic similarity (same underlying problem, regardless of wording). Two or more independent providers = consensus.
+6. **references_removed_code_only** — Does it **solely** concern code the diff removes, with no impact on remaining code?
+7. **is_linter_catchable** — Would a linter/formatter catch this? (only applies if the project has such tooling configured)
+8. **is_subjective_style** — Is it a subjective style preference with no guideline backing? (distinguish from: readability backed by language idioms, maintainability with concrete impact, documented team conventions)
+9. **references_exist_in_codebase** — Do all files, symbols, and APIs referenced in the issue actually exist? **Verify using Glob/Grep tools** — do not assume.
+
+Each field is binary: applies or doesn't. When evidence is ambiguous, treat the factor as **not applicable**.
+
+##### Hallucination verification
+
+If an issue references a specific file, function, class, or API:
+- Use Glob/Grep to verify the reference exists in the codebase
+- If any referenced symbol does not exist → mark `references_exist_in_codebase = false`
+- This check is mandatory — hallucinated references are the strongest noise signal
+
+##### Score calculation
+
 | Factor | Score Impact |
 |--------|-------------|
-| Issue references specific line numbers in the diff | +25 |
-| Issue is about code **introduced in this diff** (not pre-existing) | +25 |
-| Issue cites a concrete rule (OWASP, guideline, language spec) | +20 |
-| Issue describes a reproducible scenario (steps, input, consequence) | +15 |
+| References specific line numbers in the diff | +25 |
+| Code **introduced in this diff** (not pre-existing) | +25 |
+| Cites a concrete rule (OWASP, guideline, language spec) | +20 |
+| Describes a reproducible scenario (steps, input, consequence) | +15 |
 | Multiple providers flagged the same issue (consensus) | +20 |
-| Issue **solely** concerns code the diff removes, with no impact on remaining code | −30 |
-| Issue is something a linter/formatter would catch (and project has such tooling) | −25 |
-| Issue is a subjective style preference with no guideline backing | −25 |
-| Issue references a file, symbol, or API that does not exist in the codebase | −50 |
+| **Solely** concerns code the diff removes, with no impact on remaining code | −30 |
+| Linter/formatter would catch it (and project has such tooling) | −25 |
+| Subjective style preference with no guideline backing | −25 |
+| References a file, symbol, or API that **does not exist** in the codebase | −50 |
 
-Start each issue at 40, apply factors, clamp to 0–100.
+```
+score = clamp(40 + sum(applicable_factors), 0, 100)
+```
 
 **Critical rule**: Scoring must be **evidence-based**, not opinion-based. If an issue has strong evidence (line numbers + concrete scenario + cited rule) but Claude "disagrees" with the finding, it still scores high. The goal is noise filtering, not Claude vetoing cross-provider insights.
 
@@ -193,7 +221,17 @@ Violations of project guidelines (`CLAUDE.md`, `Agents.md`) that passed confiden
 Issues no other provider caught but worth noting.
 
 #### 6.5 Filtered out (not shown by default)
-Issues that scored < 80 confidence are omitted. If the user runs with `--verbose`, include a collapsed summary of filtered issues with their scores.
+Issues that scored < 80 confidence are omitted by default.
+
+If `--verbose` was specified, add a **Filtered Issues** section after the main results:
+```
+### Filtered Issues (< 80 confidence)
+| # | Issue | Score | Provider | Reason filtered |
+|---|-------|-------|----------|-----------------|
+| 1 | Brief description | 65 | Codex | subjective style (-25) |
+| 2 | Brief description | 40 | Gemini | no line numbers, no evidence |
+| 3 | Brief description | 0 | Codex | hallucinated reference (-50) |
+```
 
 ### 7. Output format
 
@@ -237,7 +275,10 @@ Issues that scored < 80 confidence are omitted. If the user runs with `--verbose
 |------|-------|
 | High (≥ 90) | N |
 | Solid (80–89) | N |
-| Filtered (< 80) | N |
+| Filtered (< 80) | N (use --verbose to see) |
+
+### Filtered Issues (--verbose only)
+(Table of filtered issues with scores and filter reasons — omit this section if --verbose was not specified)
 
 ### Action Items
 1. ...

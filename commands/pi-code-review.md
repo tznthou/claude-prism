@@ -16,6 +16,7 @@ Based on `$ARGUMENTS`:
 - **File path**: review the specified file
 - **`--diff`**: review `git diff` (unstaged changes)
 - **`--pr`**: review full PR diff (`git diff main...HEAD`)
+- **`--verbose`**: also show issues that were filtered out (< 80 confidence) with their scores
 
 ### 1.5 Gather project guidelines
 
@@ -103,37 +104,71 @@ echo "prompt + code" | ~/.claude/scripts/call-codex.sh "review"
 
 ### 5. Confidence scoring & filtering
 
-Before presenting, Claude scores **each** issue from Codex on a 0–100 confidence scale. **Only issues scoring ≥ 80 are shown.**
+Before presenting, Claude scores **each** issue from Codex using the [Confidence Scoring Framework](../spec/confidence-scoring-v1.md). **Only issues scoring ≥ 80 enter the output.**
 
-#### Scoring criteria (evidence-based, not opinion-based)
+#### 5.1 Evidence extraction
+
+For each issue Codex raised, extract these fields:
+
+1. **line_numbers** — Does the issue reference specific line numbers in the diff? (not vague "around line X")
+2. **is_new_code** — Is the issue about code **introduced in this diff**? (not pre-existing code)
+3. **rule_citation** — Does it cite a concrete rule (OWASP, language spec, project guideline, linter rule name)?
+4. **has_reproduction** — Does it describe a reproducible scenario with steps, input, and expected vs actual outcome?
+5. **references_removed_code_only** — Does it **solely** concern code the diff removes, with no impact on remaining code?
+6. **is_linter_catchable** — Would a linter/formatter catch this? (only applies if the project has such tooling configured)
+7. **is_subjective_style** — Is it a subjective style preference with no guideline backing? (distinguish from: readability backed by language idioms, maintainability with concrete impact, documented team conventions)
+8. **references_exist_in_codebase** — Do all files, symbols, and APIs referenced in the issue actually exist? **Verify using Glob/Grep tools** — do not assume.
+
+Each field is binary: applies or doesn't. When evidence is ambiguous, treat the factor as **not applicable**.
+
+#### 5.2 Hallucination verification
+
+If an issue references a specific file, function, class, or API:
+- Use Glob/Grep to verify the reference exists in the codebase
+- If any referenced symbol does not exist → mark `references_exist_in_codebase = false`
+- This check is mandatory — hallucinated references are the strongest noise signal
+
+#### 5.3 Score calculation
 
 | Factor | Score Impact |
 |--------|-------------|
-| Issue references specific line numbers in the diff | +25 |
-| Issue is about code **introduced in this diff** (not pre-existing) | +25 |
-| Issue cites a concrete rule (OWASP, guideline, language spec) | +20 |
-| Issue describes a reproducible scenario (steps, input, consequence) | +15 |
-| Issue is about a pattern the diff **removes** or refactors away | −30 |
-| Issue is something a linter/formatter would catch | −20 |
-| Issue is a subjective style preference with no guideline backing | −20 |
+| References specific line numbers in the diff | +25 |
+| Code **introduced in this diff** (not pre-existing) | +25 |
+| Cites a concrete rule (OWASP, guideline, language spec) | +20 |
+| Describes a reproducible scenario (steps, input, consequence) | +15 |
+| **Solely** concerns code the diff removes, with no impact on remaining code | −30 |
+| Linter/formatter would catch it (and project has such tooling) | −25 |
+| Subjective style preference with no guideline backing | −25 |
+| References a file, symbol, or API that **does not exist** in the codebase | −50 |
 
-Start each issue at 50 (neutral), apply factors, clamp to 0–100.
+```
+score = clamp(40 + sum(applicable_factors), 0, 100)
+```
 
-**Important**: The goal is to filter noise, **not** to let Claude override cross-provider findings based on its own opinion. If an issue has strong evidence (line numbers + concrete scenario) but Claude "disagrees", it still scores high and gets shown.
+**Critical rule**: Scoring must be **evidence-based**, not opinion-based. If an issue has strong evidence (line numbers + concrete scenario + cited rule) but Claude "disagrees" with the finding, it still scores high. The goal is noise filtering, not Claude vetoing cross-provider insights.
 
-#### Guideline compliance issues
+#### 5.4 Guideline compliance scoring
 
-If project guidelines were found in Step 1.5, score guideline violations separately:
-- Violation explicitly mentioned in guideline text → confidence +30
+If project guidelines were found in Step 1.5, score guideline violations separately (no double-dip with "cites a rule" — use the higher bonus):
+- Violation explicitly mentioned in guideline text → confidence +30 (replaces +20 rule citation if both apply)
 - Violation inferred but not explicitly stated → confidence +10
-- Only show guideline violations that reference a **specific rule** from the guideline files.
+- Only include violations that reference a **specific rule** from the guideline files.
 
 ### 5.5 Present results
 
 Show the filtered review labeled **Codex**, grouped by confidence tier:
 - **High confidence (≥ 90)**: Definitely fix
 - **Solid (80–89)**: Worth fixing
-- Issues below 80 are omitted. If the user wants to see them, they can re-run with `--verbose`.
+- Issues below 80 are omitted by default.
+
+If `--verbose` was specified, add a **Filtered Issues** section after the main results:
+```
+### Filtered Issues (< 80 confidence)
+| # | Issue | Score | Reason filtered |
+|---|-------|-------|-----------------|
+| 1 | Brief description | 65 | subjective style (-25) |
+| 2 | Brief description | 40 | no line numbers, no evidence |
+```
 
 If Codex makes obvious misjudgments (e.g., misunderstanding language features), Claude adds corrections. If project guidelines were found, add a **Guideline Compliance** section summarizing violations.
 
