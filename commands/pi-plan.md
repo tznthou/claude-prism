@@ -135,7 +135,7 @@ PLAN_EOF
 After creating the file, tell the user:
 1. The plan file path
 2. A brief summary of the plan (key approach, step count, domain)
-3. Instruction: "Review the plan, then run `/pi-exec .claude/pi-plans/<slug>.md` to begin implementation."
+3. Instruction: "Review the plan, then ask Claude Code to implement it step by step."
 
 **CRITICAL: Do NOT auto-execute.** The plan command ends here. The user decides when to execute.
 

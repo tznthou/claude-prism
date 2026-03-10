@@ -40,7 +40,7 @@ done
 echo ""
 echo "2. Command files..."
 
-for cmd in pi-ask-codex pi-ask-gemini pi-code-review pi-exec pi-multi-review pi-plan pi-research pi-ui-design pi-ui-review; do
+for cmd in pi-ask-codex pi-ask-gemini pi-code-review pi-multi-review pi-plan pi-research pi-ui-design pi-ui-review; do
     if [[ -f "$SCRIPT_DIR/commands/$cmd.md" ]]; then
         pass "/$(basename "$cmd") command definition exists"
     else

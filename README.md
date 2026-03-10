@@ -54,7 +54,6 @@ Use Claude Code as the **orchestrator**, but dispatch review and research tasks 
 | `/pi-research` | Gemini | Structured technical research |
 | `/pi-multi-review` | Codex + Gemini + Claude | Triple-provider adversarial review (smart routing + confidence scoring) |
 | `/pi-plan` | Codex + Gemini + Claude | Generate structured implementation plan |
-| `/pi-exec` | Claude | Execute a plan file step by step |
 
 All commands include **graceful degradation** — if a provider is unavailable, Claude continues with the remaining providers instead of failing.
 
@@ -142,14 +141,6 @@ Plans are saved to `.claude/pi-plans/` and include: context, multi-provider anal
 ```
 /pi-plan Add JWT authentication to the API
 /pi-plan Refactor the payment module to support Stripe
-```
-
-### `/pi-exec` — Plan Execution with Resume
-
-Execute a plan file step by step, updating progress checkboxes as you go. If a session ends mid-execution, running `/pi-exec` again resumes from the last unchecked step.
-
-```
-/pi-exec .claude/pi-plans/add-jwt-authentication.md
 ```
 
 ---
@@ -261,7 +252,6 @@ claude-prism/
 │   ├── pi-ask-codex.md
 │   ├── pi-ask-gemini.md
 │   ├── pi-code-review.md
-│   ├── pi-exec.md
 │   ├── pi-multi-review.md
 │   ├── pi-plan.md
 │   ├── pi-research.md
@@ -499,8 +489,6 @@ claude-prism is a local wrapper — it does not process or bill tokens itself. E
 | `/pi-research` | 1 (Gemini) | 1K–3K | 2K–6K | Output-heavy (structured report) |
 | `/pi-multi-review` | 2 (Codex + Gemini) | Above ×2 | Above ×2 | Both providers called in parallel |
 | `/pi-plan` | 0–2 (optional) | 1K–5K each | 1K–4K each | Providers consulted only if available |
-| `/pi-exec` | 0 | — | — | Executes locally via Claude Code |
-
 Token ranges are approximate and vary with input size (diff length, file count, question complexity). Different providers use different tokenization methods — these figures are order-of-magnitude estimates, not billing-accurate counts.
 
 ### Controlling Costs
