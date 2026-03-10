@@ -595,6 +595,11 @@ Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 emoji/score 格式
 
 ## 更新紀錄
 
+### 未發佈
+
+- **移除 `/pi-exec`** — Claude Code 本身已是強大的 agentic executor，內建任務追蹤（TodoWrite）和跨 session 續跑（RESUME.md）。`/pi-exec` 重複了這些原生能力，且缺少跨 provider 的差異化價值。請直接用 Claude Code 執行 `/pi-plan` 產生的計畫。
+- **重新定位核心敘事** — 新增「為什麼選 claude-prism？」比較表，對比跨 provider 審查與單一 provider 多 agent 審查
+
 ### v0.9.7 (2026-03-09)
 
 **GitHub Suggestion Blocks** — review 指令現在輸出可一鍵修正的程式碼建議。
