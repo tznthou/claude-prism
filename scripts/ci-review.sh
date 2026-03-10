@@ -526,6 +526,72 @@ ${suggestion_code}
     echo "$suggestions_json"
 }
 
+# --- Build valid diff line map ---
+# Parses unified diff to extract valid RIGHT-side (new file) line numbers.
+# Populates global associative array VALID_DIFF_LINES with keys "filepath:line".
+build_valid_lines_map() {
+    local diff_text="$1"
+    declare -gA VALID_DIFF_LINES=()
+    local current_file=""
+    local new_line=0
+
+    while IFS= read -r line; do
+        # File boundary: use "diff --git" to extract path
+        # Avoids confusion with added lines starting with +++ inside hunks
+        if [[ "$line" =~ ^diff\ --git\ a/.+\ b/(.+)$ ]]; then
+            current_file="${BASH_REMATCH[1]}"
+            new_line=0
+            continue
+        fi
+
+        # Hunk header: @@ -old,count +new_start,count @@
+        if [[ "$line" =~ ^@@[[:space:]]+-[0-9]+(,[0-9]+)?[[:space:]]+\+([0-9]+)(,[0-9]+)?[[:space:]]@@ ]]; then
+            new_line="${BASH_REMATCH[2]}"
+            continue
+        fi
+
+        [[ -z "$current_file" ]] && continue
+        [[ "$new_line" -eq 0 ]] && continue
+
+        case "${line:0:1}" in
+            ' '|'+')  # context or added line → RIGHT side (new file)
+                VALID_DIFF_LINES["${current_file}:${new_line}"]=1
+                ((new_line++))
+                ;;
+            '-')  # removed line → LEFT side only, don't increment new_line
+                ;;
+        esac
+    done <<< "$diff_text"
+}
+
+# --- Filter suggestions against valid diff lines ---
+# Removes suggestions whose path:line is not in a diff hunk.
+# Returns filtered JSON array on stdout.
+filter_suggestions() {
+    local suggestions_json="$1"
+    local count path sline
+    count=$(jq 'length' <<< "$suggestions_json")
+    local filtered="[]"
+    local dropped=0
+
+    for ((i = 0; i < count; i++)); do
+        path=$(jq -r ".[$i].path" <<< "$suggestions_json")
+        sline=$(jq -r ".[$i].line" <<< "$suggestions_json")
+
+        if [[ "${VALID_DIFF_LINES["${path}:${sline}"]:-}" == "1" ]]; then
+            filtered=$(jq --argjson item "$(jq ".[$i]" <<< "$suggestions_json")" '. + [$item]' <<< "$filtered")
+        else
+            ((dropped++))
+            _log WARN "filtered suggestion: ${path}:${sline} not in diff hunk"
+        fi
+    done
+
+    if [[ $dropped -gt 0 ]]; then
+        _log INFO "filtered $dropped/$count suggestion(s) with invalid line numbers"
+    fi
+    echo "$filtered"
+}
+
 # --- Helper: post OUTPUT as a regular PR comment ---
 _post_plain_comment() {
     echo "$OUTPUT" > "$TMPDIR_REVIEW/comment.md"
@@ -541,7 +607,18 @@ if [[ -n "$PR_NUMBER" ]]; then
         SUGGESTIONS=$(parse_suggestions "$OUTPUT")
         SUGGESTION_COUNT=$(echo "$SUGGESTIONS" | jq 'length' 2>/dev/null) || SUGGESTION_COUNT=0
 
+        # Filter suggestions: remove any whose line number is not in a diff hunk
         if [[ "$SUGGESTION_COUNT" -gt 0 ]]; then
+            build_valid_lines_map "$DIFF"
+            FILTERED_SUGGESTIONS=$(filter_suggestions "$SUGGESTIONS")
+            FILTERED_COUNT=$(echo "$FILTERED_SUGGESTIONS" | jq 'length' 2>/dev/null) || FILTERED_COUNT=0
+            _log INFO "suggestions: $SUGGESTION_COUNT parsed, $FILTERED_COUNT valid for API"
+        else
+            FILTERED_SUGGESTIONS="[]"
+            FILTERED_COUNT=0
+        fi
+
+        if [[ "$FILTERED_COUNT" -gt 0 ]]; then
             # Post as PR review with inline suggestion comments
             COMMIT_SHA=$(GH_TOKEN="$GH_TOKEN" gh pr view "$PR_NUMBER" --json headRefOid -q .headRefOid 2>/dev/null) || COMMIT_SHA=""
 
@@ -559,13 +636,13 @@ if [[ -n "$PR_NUMBER" ]]; then
                 REVIEW_PAYLOAD=$(jq -n \
                     --arg body "$REVIEW_BODY" \
                     --arg commit "$COMMIT_SHA" \
-                    --argjson comments "$SUGGESTIONS" \
+                    --argjson comments "$FILTERED_SUGGESTIONS" \
                     '{body: $body, event: "COMMENT", commit_id: $commit, comments: $comments}')
 
                 if GH_TOKEN="$GH_TOKEN" gh api "repos/{owner}/{repo}/pulls/$PR_NUMBER/reviews" \
                     --method POST \
                     --input - <<< "$REVIEW_PAYLOAD" > /dev/null 2>&1; then
-                    _log INFO "PR review posted to #$PR_NUMBER with $SUGGESTION_COUNT inline suggestion(s)"
+                    _log INFO "PR review posted to #$PR_NUMBER with $FILTERED_COUNT inline suggestion(s) ($((SUGGESTION_COUNT - FILTERED_COUNT)) filtered)"
                 else
                     _log WARN "PR review API failed, falling back to regular comment"
                     _post_plain_comment
@@ -575,7 +652,10 @@ if [[ -n "$PR_NUMBER" ]]; then
                 _post_plain_comment
             fi
         else
-            # No suggestions found — post as regular comment
+            if [[ "$SUGGESTION_COUNT" -gt 0 ]]; then
+                _log WARN "all $SUGGESTION_COUNT suggestions filtered (none in valid diff hunks), posting plain comment"
+            fi
+            # No valid suggestions — post as regular comment
             _post_plain_comment
             _log INFO "PR comment posted to #$PR_NUMBER (no inline suggestions)"
         fi
