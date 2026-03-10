@@ -23,9 +23,22 @@ Cross-provider AI orchestration for Claude Code — eliminate same-source blind 
 
 When Claude Code writes your code **and** reviews it, you get same-source blind spots. It's like grading your own exam — certain classes of bugs, design flaws, and security issues consistently slip through because the same model has the same knowledge gaps.
 
+Even multi-agent review within a single provider doesn't solve this: four Claude agents still share the same training data, the same architectural biases, and the same knowledge cutoff. More agents ≠ more perspectives — if the base model has a blind spot, spawning more instances of it won't find the bug.
+
 ### The Solution
 
-Use Claude Code as the **orchestrator**, but dispatch review and research tasks to **Gemini** and **Codex** via their CLIs. Three different AI providers, three different training datasets, three different perspectives.
+Use Claude Code as the **orchestrator**, but dispatch review and research tasks to **Gemini** and **Codex** via their CLIs. Three different AI providers, three different training datasets, three different perspectives. This is **cross-provider review orchestration** — structurally different from same-source multi-agent review.
+
+### Why claude-prism?
+
+| | claude-prism | Single-provider multi-agent review |
+|---|---|---|
+| **Provider diversity** | Codex + Gemini + Claude (3 independent models) | Multiple agents, same underlying model |
+| **Blind spot coverage** | Cross-training-data: each model catches what others miss | Same training data bias amplified across agents |
+| **Cost** | Near-zero (Codex CLI + Gemini CLI free tiers) | $15–25 per PR (official tools, Team/Enterprise plans) |
+| **Speed** | 1–2 minutes | ~20 minutes |
+| **Availability** | Anyone with CLI access | Paid team plans only |
+| **Scoring transparency** | [Open spec](spec/confidence-scoring-v1.md), deterministic, model-agnostic | Black-box confidence scoring |
 
 ---
 

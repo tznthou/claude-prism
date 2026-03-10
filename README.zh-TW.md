@@ -23,9 +23,22 @@ Claude Code 的跨 Provider AI 調度工具 — 消除同源盲點。
 
 當 Claude Code 寫你的程式碼**同時也** review 它時，你會得到同源盲點。就像自己改自己的考卷——同一個模型有相同的知識缺口，某些類型的 bug、設計缺陷和安全問題會持續漏掉。
 
+就算同一 provider 開多個 agent 來 review 也一樣：四個 Claude agent 仍然共享同一套訓練資料、同樣的架構偏好、同樣的知識截止點。更多 agent ≠ 更多觀點——如果底層模型有盲點，開再多分身也找不到那個 bug。
+
 ### 解法
 
-讓 Claude Code 當**調度者**，把 review 和研究任務分派給 **Gemini** 和 **Codex**。三個不同的 AI provider、三組不同的訓練資料、三種不同的視角。
+讓 Claude Code 當**調度者**，把 review 和研究任務分派給 **Gemini** 和 **Codex**。三個不同的 AI provider、三組不同的訓練資料、三種不同的視角。這是**跨 Provider 審查調度**——在結構上就與同源多 agent 審查截然不同。
+
+### 為什麼選 claude-prism？
+
+| | claude-prism | 單一 Provider 多 Agent 審查 |
+|---|---|---|
+| **Provider 多樣性** | Codex + Gemini + Claude（3 個獨立模型） | 多個 agent，同一底層模型 |
+| **盲點覆蓋** | 跨訓練資料：每個模型抓到其他模型漏掉的 | 同一訓練資料偏差在 agent 間放大 |
+| **成本** | 近乎零（Codex CLI + Gemini CLI 免費額度） | 每 PR $15–25（官方工具，Team/Enterprise 方案） |
+| **速度** | 1–2 分鐘 | ~20 分鐘 |
+| **可用性** | 任何有 CLI 的人 | 僅限付費團隊方案 |
+| **評分透明度** | [公開 spec](spec/confidence-scoring-v1.md)，deterministic，model-agnostic | 黑盒信心度評分 |
 
 ---
 
