@@ -77,7 +77,7 @@ Claude Code 的跨 Provider AI 調度工具 — 消除同源盲點。
 
 Codex review Claude 寫的程式碼。核心用例——**不同 AI 寫、不同 AI 審**。
 
-每個 issue 都會使用 [Confidence Scoring Framework](spec/confidence-scoring-v1.md) 打 0–100 分——evidence-based、deterministic 的雜訊過濾。只有 ≥ 80 分的 issue 會顯示。若專案有 `CLAUDE.md` 或 `Agents.md`，會自動檢查規範合規性。
+每個 issue 都會使用 [Confidence Scoring Framework](spec/confidence-scoring-v1.md) 打 0–100 分——evidence-based、deterministic 的雜訊過濾。只有 ≥ 80 分的 issue 會顯示。Review 同時檢查 inline annotation 合規性（`IMPORTANT`/`WARNING`/`TODO` 註解），`--pr` 模式下還會查詢同檔案的歷史 PR 評論，浮現反覆出現的問題。
 
 ```
 /pi-code-review                    # review staged changes
@@ -439,10 +439,11 @@ cp path/to/claude-prism/scripts/ci-review.sh scripts/
 
 1. GitHub Actions checkout PR 並取得 diff
 2. `ci-review.sh` 自動偵測 `CLAUDE.md` / `Agents.md` 作為規範 context
-3. Diff 並行送給可用 provider（Gemini API、OpenAI API），含 false positive 排除規則
-4. 若有設定 `ANTHROPIC_API_KEY`，Claude 進行信心度評分綜合分析（只有 ≥ 80 分的 issue 會被貼出）
-5. 若無，直接串接各方結果
-6. 若 review 包含具體修正建議，會以 **inline PR review comment** 搭配 GitHub suggestion block 發佈（一鍵接受修改）。其餘內容作為 review body。若 Reviews API 不可用，退回一般 PR comment
+3. 透過 GraphQL（單次 API 呼叫）查詢同檔案的歷史 PR 評論，作為反覆問題的 context
+4. Diff 並行送給可用 provider（Gemini API、OpenAI API），含 inline annotation 合規檢查和 false positive 排除規則
+5. 若有設定 `ANTHROPIC_API_KEY`，Claude 進行信心度評分綜合分析（只有 ≥ 80 分的 issue 會被貼出）
+6. 若無，直接串接各方結果
+7. 若 review 包含具體修正建議，會以 **inline PR review comment** 搭配 GitHub suggestion block 發佈（一鍵接受修改）。其餘內容作為 review body。若 Reviews API 不可用，退回一般 PR comment
 
 ### CI 環境變數
 

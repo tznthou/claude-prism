@@ -77,7 +77,7 @@ Direct Q&A with Gemini. Leverages Google's broad ecosystem knowledge.
 
 Codex reviews code that Claude wrote. The core use case — **different AI, different blind spots**.
 
-Each issue is scored 0–100 using the [Confidence Scoring Framework](spec/confidence-scoring-v1.md) — evidence-based, deterministic noise filtering. Only issues scoring ≥ 80 are shown. If your project has `CLAUDE.md` or `Agents.md`, guideline compliance is checked automatically.
+Each issue is scored 0–100 using the [Confidence Scoring Framework](spec/confidence-scoring-v1.md) — evidence-based, deterministic noise filtering. Only issues scoring ≥ 80 are shown. Reviews also check inline annotation compliance (`IMPORTANT`/`WARNING`/`TODO` comments) and, in `--pr` mode, surface recurring issues from historical PR comments on the same files.
 
 ```
 /pi-code-review                    # review staged changes
@@ -439,10 +439,11 @@ cp path/to/claude-prism/scripts/ci-review.sh scripts/
 
 1. GitHub Actions checks out the PR and fetches the diff
 2. `ci-review.sh` auto-discovers `CLAUDE.md` / `Agents.md` for guideline context
-3. Diff is sent to available providers (Gemini API, OpenAI API) in parallel, with false-positive exclusion rules
-4. If `ANTHROPIC_API_KEY` is set, Claude synthesizes with confidence scoring (only issues ≥ 80 posted)
-5. If not, results are concatenated directly
-6. If the review includes concrete code fixes, they are posted as **inline PR review comments** with GitHub suggestion blocks (one-click accept). Remaining output is posted as the review body. Falls back to a regular PR comment if the Reviews API is unavailable
+3. Historical PR comments on the same files are queried via GraphQL (single API call) and included as recurring-issue context
+4. Diff is sent to available providers (Gemini API, OpenAI API) in parallel, with inline annotation compliance checks and false-positive exclusion rules
+5. If `ANTHROPIC_API_KEY` is set, Claude synthesizes with confidence scoring (only issues ≥ 80 posted)
+6. If not, results are concatenated directly
+7. If the review includes concrete code fixes, they are posted as **inline PR review comments** with GitHub suggestion blocks (one-click accept). Remaining output is posted as the review body. Falls back to a regular PR comment if the Reviews API is unavailable
 
 ### CI Environment Variables
 
