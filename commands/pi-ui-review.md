@@ -47,7 +47,10 @@ Review focus:
 3. 🧩 Component Structure — reusability, props design, separation of concerns
 4. 🎨 UX Improvements — interaction feedback, loading states, error states
 5. ⚡ Frontend Performance — unnecessary re-renders, bundle size, lazy loading
-6. 📏 Project guideline compliance (if guidelines provided below)
+6. 📝 Inline annotation compliance — check if changes violate nearby code comments (IMPORTANT, WARNING, FIXME, TODO, NOTE annotations, or any comment that constrains how surrounding code should behave)
+7. 📏 Project guideline compliance (if guidelines provided below)
+
+Scope constraint: Focus on the code/diff provided. Do not speculate about code outside the review scope unless directly referenced by the changed lines.
 
 $(if guideline files were found)
 Project Guidelines:

@@ -67,8 +67,10 @@ Use **two parallel Bash tool calls**:
 **Codex Review:**
 ```bash
 ~/.claude/scripts/call-codex.sh "You are a Senior Code Reviewer.
-Focus: bugs, security vulnerabilities, performance, architecture issues.
+Focus: bugs, security vulnerabilities, performance, architecture issues, inline annotation compliance (check if changes violate nearby IMPORTANT/WARNING/FIXME/TODO/NOTE comments).
 $(if guidelines found)Also check compliance with the project guidelines below.$(end if)
+
+Scope constraint: Focus on the diff provided. Do not speculate about code outside the diff unless directly referenced by the changed lines.
 
 DO NOT flag:
 - Pre-existing issues not introduced in this diff
@@ -93,8 +95,10 @@ $(code)"
 **Gemini Review:**
 ```bash
 ~/.claude/scripts/call-gemini.sh "You are a Senior Code Reviewer.
-Focus: design patterns, alternatives, maintainability, test coverage.
+Focus: design patterns, alternatives, maintainability, test coverage, inline annotation compliance (check if changes violate nearby IMPORTANT/WARNING/FIXME/TODO/NOTE comments).
 $(if guidelines found)Also check compliance with the project guidelines below.$(end if)
+
+Scope constraint: Focus on the diff provided. Do not speculate about code outside the diff unless directly referenced by the changed lines.
 
 DO NOT flag:
 - Pre-existing issues not introduced in this diff

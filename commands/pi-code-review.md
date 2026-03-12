@@ -61,7 +61,10 @@ Review focus:
 3. Performance issues
 4. Maintainability and code smells
 5. Design patterns and architecture
-6. Project guideline compliance (if guidelines provided below)
+6. Inline annotation compliance — check if changes violate nearby code comments (IMPORTANT, WARNING, FIXME, TODO, NOTE annotations, or any comment that constrains how surrounding code should behave)
+7. Project guideline compliance (if guidelines provided below)
+
+Scope constraint: Focus on the diff provided. Do not speculate about code outside the diff unless directly referenced by the changed lines.
 
 $(if guideline files were found)
 Project Guidelines:
