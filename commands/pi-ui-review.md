@@ -32,6 +32,22 @@ done
 - If **any** guideline files are found, include them in the Gemini prompt and confidence scoring.
 - If **none** are found, skip the guideline compliance dimension.
 
+### 1.7 Gather historical PR comments (when reviewing PR-related changes)
+
+If the code being reviewed is part of a PR or recent branch work, search for recurring review patterns:
+
+1. Get recently changed files: `git diff main...HEAD --name-only` (or the files being reviewed)
+2. Find recent merged PRs: `gh pr list --state merged --limit 10 --json number,title`
+3. For each (up to 5), fetch review comments on the same files:
+   ```bash
+   gh api "repos/{owner}/{repo}/pulls/NUMBER/comments" \
+     --jq '.[] | select(.path == "TOUCHED_FILE") | {path, body}'
+   ```
+4. Include found comments as additional context in the Gemini prompt (Step 3), prefixed with:
+   "Historical Review Context (previous review comments on the same files — recurring issues are high-confidence signals):"
+
+If no historical comments exist, `gh` is not available, or the review scope is a single file (not PR-related), skip silently.
+
 ### 2. Get the code
 
 Read frontend files with the Read tool. For directories, first Glob for `*.tsx`, `*.vue`, `*.svelte`, `*.css` etc.

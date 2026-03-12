@@ -36,6 +36,22 @@ done
 - If **any** guideline files are found, include them in both provider prompts (Step 3) and Claude synthesis (Step 6).
 - If **none** are found, skip the guideline compliance dimension entirely.
 
+### 2.4 Gather historical PR comments (--pr mode only)
+
+When using `--pr` mode, search for recurring review patterns on the same files:
+
+1. Get files in this PR: `git diff main...HEAD --name-only`
+2. Find recent merged PRs: `gh pr list --state merged --limit 10 --json number,title`
+3. For each (up to 5), fetch review comments on the same files:
+   ```bash
+   gh api "repos/{owner}/{repo}/pulls/NUMBER/comments" \
+     --jq '.[] | select(.path == "TOUCHED_FILE") | {path, body}'
+   ```
+4. Include found comments as additional context in **both** provider prompts (Step 3) and Claude synthesis (Step 6), prefixed with:
+   "Historical Review Context (previous review comments on the same files — recurring issues are high-confidence signals):"
+
+If no historical comments exist or `gh` is not available, skip silently.
+
 ### 2.5 Detect review domain (smart routing)
 
 Determine the domain of the changes to guide synthesis weighting in Step 6.
