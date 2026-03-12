@@ -51,12 +51,13 @@ jobs:
           echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            claude-prism-${{ env.VERSION }}.tar.gz
-            claude-prism-${{ env.VERSION }}.tar.gz.sha256
-          generate_release_notes: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$VERSION" \
+            "claude-prism-${VERSION}.tar.gz" \
+            "claude-prism-${VERSION}.tar.gz.sha256" \
+            --generate-notes
 
   npm-publish:
     needs: release
