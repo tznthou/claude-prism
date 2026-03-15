@@ -48,12 +48,13 @@ Use Claude Code as the **orchestrator**, but dispatch review and research tasks 
 |---------|----------|-------------|
 | `/pi-ask-codex` | Codex | Direct Q&A — get OpenAI's perspective |
 | `/pi-ask-gemini` | Gemini | Direct Q&A — get Google's perspective |
+| `/pi-askall` | Codex + Gemini + Claude | Ask all providers the same question — three perspectives with synthesis |
 | `/pi-code-review` | Codex | Cross-provider code review (with confidence scoring) |
 | `/pi-ui-design` | Gemini | HTML mockup from design spec |
 | `/pi-ui-review` | Gemini | UI/UX accessibility & design audit (with confidence scoring) |
 | `/pi-research` | Gemini | Structured technical research |
 | `/pi-multi-review` | Codex + Gemini + Claude | Triple-provider adversarial review (smart routing + confidence scoring) |
-| `/pi-plan` | Codex + Gemini + Claude | Generate structured implementation plan |
+| `/pi-plan` | Codex + Gemini + Claude | Multi-provider implementation planning for architectural decisions |
 
 All commands include **graceful degradation** — if a provider is unavailable, Claude continues with the remaining providers instead of failing.
 
@@ -71,6 +72,15 @@ Direct Q&A with Gemini. Leverages Google's broad ecosystem knowledge.
 
 ```
 /pi-ask-gemini Compare Bun vs Deno vs Node.js for a new backend project in 2026
+```
+
+### `/pi-askall` — Ask All Providers
+
+Ask Codex and Gemini the same question in parallel, then Claude synthesizes all three perspectives. Works with **any topic** — not limited to code. Each provider responds independently (no cross-contamination), then Claude compares consensus, flags divergence, and delivers an integrated take.
+
+```
+/pi-askall Should we use a monorepo or polyrepo for the new microservices?
+/pi-askall What's the best approach for real-time sync in a collaborative editor?
 ```
 
 ### `/pi-code-review` — Cross-Provider Code Review
@@ -132,15 +142,17 @@ The flagship command. Sends the same code to **both** Codex and Gemini in parall
 /pi-multi-review --pr              # review entire PR
 ```
 
-### `/pi-plan` — Structured Implementation Planning
+### `/pi-plan` — Multi-Provider Implementation Planning
 
-Analyze the codebase and generate a structured plan file with multi-provider perspectives. Optionally consults Codex and Gemini for independent technical analysis.
+For tasks with **multiple viable approaches** — architectural decisions, tech stack selection, migration strategies. Consults Codex and Gemini for independent architectural analysis, then Claude synthesizes into a structured plan file.
 
 Plans are saved to `.claude/pi-plans/` and include: context, multi-provider analysis, step-by-step implementation, key files, risks, and verification criteria. Plans persist across sessions.
 
+Best for complex decisions; for simple task breakdown, use Claude Code's built-in plan mode instead.
+
 ```
-/pi-plan Add JWT authentication to the API
-/pi-plan Refactor the payment module to support Stripe
+/pi-plan Migrate from REST to GraphQL — evaluate Apollo vs Relay vs urql
+/pi-plan Refactor the payment module to support multiple providers
 ```
 
 ---
@@ -150,8 +162,8 @@ Plans are saved to `.claude/pi-plans/` and include: context, multi-provider anal
 ```mermaid
 flowchart LR
     User["👤 You"] <--> Claude["🟣 Claude Code\n(Orchestrator)"]
-    Claude -->|"/pi-ask-codex\n/pi-code-review\n/pi-multi-review\n/pi-plan"| Codex["🟢 Codex CLI"]
-    Claude -->|"/pi-ask-gemini\n/pi-ui-design\n/pi-ui-review\n/pi-research\n/pi-multi-review\n/pi-plan"| Gemini["🔵 Gemini CLI"]
+    Claude -->|"/pi-ask-codex\n/pi-askall\n/pi-code-review\n/pi-multi-review\n/pi-plan"| Codex["🟢 Codex CLI"]
+    Claude -->|"/pi-ask-gemini\n/pi-askall\n/pi-ui-design\n/pi-ui-review\n/pi-research\n/pi-multi-review\n/pi-plan"| Gemini["🔵 Gemini CLI"]
     CI["⚙️ GitHub Actions"] -->|"ci-review.sh"| GeminiAPI["🔵 Gemini API"]
     CI -->|"ci-review.sh"| OpenAIAPI["🟢 OpenAI API"]
     CI -->|"synthesis"| ClaudeAPI["🟣 Claude API"]
@@ -251,6 +263,7 @@ claude-prism/
 ├── commands/                   # Slash command definitions (Markdown)
 │   ├── pi-ask-codex.md
 │   ├── pi-ask-gemini.md
+│   ├── pi-askall.md
 │   ├── pi-code-review.md
 │   ├── pi-multi-review.md
 │   ├── pi-plan.md
@@ -484,6 +497,7 @@ claude-prism is a local wrapper — it does not process or bill tokens itself. E
 |---------|---------------|---------------------|----------------------|-------|
 | `/pi-ask-codex` | 1 (Codex) | 500–2K | 500–2K | Scales with question complexity |
 | `/pi-ask-gemini` | 1 (Gemini) | 500–2K | 500–2K | Scales with question complexity |
+| `/pi-askall` | 2 (Codex + Gemini) | 500–2K each | 500–2K each | Both providers called in parallel |
 | `/pi-code-review` | 1 (Codex) | 2K–10K | 1K–4K | Scales with diff size |
 | `/pi-ui-review` | 1 (Gemini) | 2K–10K | 1K–4K | Scales with file count |
 | `/pi-ui-design` | 1 (Gemini) | 1K–3K | 3K–8K | Output-heavy (HTML generation) |
@@ -566,7 +580,7 @@ With logging enabled (default), check `~/.claude/logs/multi-ai.log` to verify. E
 
 **Q: What if I only have Gemini CLI installed?**
 
-That's fine. All commands include graceful degradation — if a provider is unavailable, Claude continues with the remaining providers. `/pi-multi-review` will use Claude + Gemini (two perspectives instead of three). `/pi-code-review` will fall back to a Claude-only review with a caveat note.
+That's fine. All commands include graceful degradation — if a provider is unavailable, Claude continues with the remaining providers. `/pi-multi-review` and `/pi-askall` will use Claude + the available provider (two perspectives instead of three). `/pi-code-review` will fall back to a Claude-only review with a caveat note.
 
 **Q: What if a provider returns an unexpected format?**
 

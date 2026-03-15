@@ -1,11 +1,11 @@
 ---
 command: pi-plan
-description: Generate a structured implementation plan — optionally consult Codex and Gemini for perspectives
+description: "Multi-provider implementation planning — consult Codex and Gemini for architectural perspectives. Trigger: when the task involves architectural decisions, tech stack selection, evaluating multiple approaches, migration strategy, or complex implementation with multiple viable paths. Do NOT trigger for simple task breakdown, step-by-step instructions, or when the user just wants to 'think through' something — use Claude's built-in plan mode for those."
 ---
 
 # Plan Generation
 
-Analyze the codebase and generate a structured implementation plan. Optionally consult external providers for multi-perspective analysis.
+Analyze the codebase and generate a structured implementation plan with cross-provider architectural consultation. Use this when **multiple viable approaches exist** and external perspectives add value — not for simple task breakdown.
 
 ## Execution
 

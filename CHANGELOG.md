@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v0.9.9 (2026-03-15)
+
+**New Command & Trigger Refinement**
+
+- **New `/pi-askall` command** — ask Codex and Gemini the same question in parallel, then Claude synthesizes all three perspectives. Works with any topic (code, architecture, strategy, writing, decisions) — not limited to code review
+- **Narrowed `/pi-plan` trigger scope** — now triggers only for architectural decisions, tech stack selection, and tasks with multiple viable approaches. Simple task breakdown is left to Claude Code's built-in plan mode
+
 ## v0.9.8 (2026-03-12)
 
 **Review Quality Improvements** — three new review dimensions inspired by analysis of Anthropic's official code-review plugin.
