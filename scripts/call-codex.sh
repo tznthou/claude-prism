@@ -54,6 +54,17 @@ if [[ ! -t 0 ]]; then
 ${STDIN_DATA}"
 fi
 
+# --- Git repo check (before dry-run so --dry-run reflects actual sandbox) ---
+# codex exec --sandbox read-only requires a git repo; if not in one,
+# downgrade to "none" so pure Q&A calls (e.g. pi-askall) still work.
+# Only downgrade "read-only" — if caller explicitly requested "sandbox",
+# respect that intent and let codex fail with its own error.
+if [[ "$SANDBOX" == "read-only" ]] && ! git rev-parse --is-inside-work-tree &>/dev/null; then
+    _log WARN "not inside a git repo — downgrading sandbox from 'read-only' to 'none'"
+    echo "Warning: not in a git repo — sandbox downgraded to 'none'" >&2
+    SANDBOX="none"
+fi
+
 _log INFO "model=${MODEL:-(default)} sandbox=$SANDBOX prompt_len=${#PROMPT} dry_run=$DRY_RUN"
 
 # --- Dry run mode (no binary or git repo needed) ---
@@ -82,19 +93,6 @@ if [[ -z "$CODEX_BIN" ]]; then
     _log ERROR "codex CLI not found"
     echo "Error: codex CLI not found. Install: npm install -g @openai/codex" >&2
     exit 1
-fi
-
-# --- Git repo check ---
-# codex exec --sandbox read-only requires a git repo; if not in one,
-# downgrade to "none" so pure Q&A calls (e.g. pi-askall) still work.
-# Only downgrade "read-only" — if caller explicitly requested "sandbox",
-# respect that intent and let codex fail with its own error.
-if ! git rev-parse --is-inside-work-tree &>/dev/null; then
-    if [[ "$SANDBOX" == "read-only" ]]; then
-        _log WARN "not inside a git repo — downgrading sandbox from 'read-only' to 'none'"
-        echo "Warning: not in a git repo — sandbox downgraded to 'none'" >&2
-        SANDBOX="none"
-    fi
 fi
 
 # --- Execute ---
