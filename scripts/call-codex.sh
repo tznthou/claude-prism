@@ -85,10 +85,16 @@ if [[ -z "$CODEX_BIN" ]]; then
 fi
 
 # --- Git repo check ---
+# codex exec --sandbox read-only requires a git repo; if not in one,
+# downgrade to "none" so pure Q&A calls (e.g. pi-askall) still work.
+# Only downgrade "read-only" — if caller explicitly requested "sandbox",
+# respect that intent and let codex fail with its own error.
 if ! git rev-parse --is-inside-work-tree &>/dev/null; then
-    _log ERROR "not inside a git repo"
-    echo "Error: codex exec requires a git repo. cd into one first." >&2
-    exit 1
+    if [[ "$SANDBOX" == "read-only" ]]; then
+        _log WARN "not inside a git repo — downgrading sandbox from 'read-only' to 'none'"
+        echo "Warning: not in a git repo — sandbox downgraded to 'none'" >&2
+        SANDBOX="none"
+    fi
 fi
 
 # --- Execute ---

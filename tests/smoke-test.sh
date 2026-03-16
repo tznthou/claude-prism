@@ -251,21 +251,21 @@ else
     fail "detect-domain: neutral expected 'fullstack', got '$result'"
 fi
 
-# ─── Test 11: Codex git repo check ───
+# ─── Test 11: Codex sandbox downgrade outside git repo ───
 echo ""
 echo "11. Error handling..."
 
 if command -v codex &>/dev/null || [[ -x "$HOME/.npm-global/bin/codex" ]]; then
     TEMP_DIR=$(mktemp -d)
-    NO_GIT_RESULT=$(cd "$TEMP_DIR" && "$SCRIPT_DIR/scripts/call-codex.sh" "test" 2>&1 || true)
+    NO_GIT_RESULT=$(cd "$TEMP_DIR" && "$SCRIPT_DIR/scripts/call-codex.sh" --dry-run "test" 2>&1 || true)
     rm -rf "$TEMP_DIR"
-    if echo "$NO_GIT_RESULT" | grep -q "requires a git repo"; then
-        pass "call-codex.sh reports clear error outside git repo"
+    if echo "$NO_GIT_RESULT" | grep -q "sandbox downgraded to 'none'"; then
+        pass "call-codex.sh downgrades sandbox outside git repo"
     else
-        fail "call-codex.sh no-git error message unexpected: $NO_GIT_RESULT"
+        fail "call-codex.sh no-git sandbox downgrade message unexpected: $NO_GIT_RESULT"
     fi
 else
-    skip "Codex no-git error test skipped (Codex CLI not installed)"
+    skip "Codex no-git sandbox test skipped (Codex CLI not installed)"
 fi
 
 # ─── Summary ───

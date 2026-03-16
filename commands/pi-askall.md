@@ -102,6 +102,6 @@ Claude's integrated conclusion. Not a vote count — weigh arguments by reasonin
 ### Notes
 
 - Works with any topic: code, architecture, strategy, writing, decisions, plans
-- Must be run inside a git repo if code context is needed (Codex CLI requirement)
+- Works outside git repos — Codex sandbox auto-downgrades to `none` for pure Q&A
 - Keep injected context under 4000 chars per provider — summarize larger content
 - For structured code review with confidence scoring, use `/pi-code-review` or `/pi-multi-review` instead
