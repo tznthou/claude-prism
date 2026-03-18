@@ -50,6 +50,7 @@ Claude Code 的跨 Provider AI 調度工具 — 消除同源盲點。
 | `/pi-ask-gemini` | Gemini | 直接提問 — 取得 Google 觀點 |
 | `/pi-askall` | Codex + Gemini + Claude | 同時詢問所有 provider — 三方觀點 + 綜合分析 |
 | `/pi-code-review` | Codex | 跨 Provider 程式碼審查（含信心度評分） |
+| `/pi-fact-check` | Gemini + Claude | 事實查核 — Gemini 搜尋來源，Claude 驗證 |
 | `/pi-ui-design` | Gemini | 從設計規格產生 HTML mockup |
 | `/pi-ui-review` | Gemini | UI/UX 無障礙與設計審查（含信心度評分） |
 | `/pi-research` | Gemini | 結構化技術研究 |
@@ -81,6 +82,16 @@ Claude Code 的跨 Provider AI 調度工具 — 消除同源盲點。
 ```
 /pi-askall 新的微服務該用 monorepo 還是 polyrepo？
 /pi-askall 協作編輯器的即時同步最佳方案？
+```
+
+### `/pi-fact-check` — 跨 Provider 事實查核
+
+使用 Gemini（Google 搜尋）尋找來源，Claude 進行分析驗證。四階段流程：聲明提取 → 來源搜尋 → 交叉驗證 → 結構化報告（含來源可信度分級與三角驗證）。
+
+```
+/pi-fact-check article.md
+/pi-fact-check https://example.com/blog-post
+/pi-fact-check "特斯拉 2024 年交付 180 萬輛，市場佔有率超過 50%"
 ```
 
 ### `/pi-code-review` — 跨 Provider Code Review
@@ -163,7 +174,7 @@ Gemini 進行結構化技術研究，包含比較表、推薦方案和學習資�
 flowchart LR
     User["👤 使用者"] <--> Claude["🟣 Claude Code\n(調度者)"]
     Claude -->|"/pi-ask-codex\n/pi-askall\n/pi-code-review\n/pi-multi-review\n/pi-plan"| Codex["🟢 Codex CLI"]
-    Claude -->|"/pi-ask-gemini\n/pi-askall\n/pi-ui-design\n/pi-ui-review\n/pi-research\n/pi-multi-review\n/pi-plan"| Gemini["🔵 Gemini CLI"]
+    Claude -->|"/pi-ask-gemini\n/pi-askall\n/pi-fact-check\n/pi-ui-design\n/pi-ui-review\n/pi-research\n/pi-multi-review\n/pi-plan"| Gemini["🔵 Gemini CLI"]
     CI["⚙️ GitHub Actions"] -->|"ci-review.sh"| GeminiAPI["🔵 Gemini API"]
     CI -->|"ci-review.sh"| OpenAIAPI["🟢 OpenAI API"]
     CI -->|"synthesis"| ClaudeAPI["🟣 Claude API"]
@@ -265,6 +276,7 @@ claude-prism/
 │   ├── pi-ask-gemini.md
 │   ├── pi-askall.md
 │   ├── pi-code-review.md
+│   ├── pi-fact-check.md
 │   ├── pi-multi-review.md
 │   ├── pi-plan.md
 │   ├── pi-research.md
@@ -498,6 +510,7 @@ claude-prism 是本地端 wrapper——它本身不處理也不計費 token。�
 | `/pi-ask-codex` | 1 (Codex) | 500–2K | 500–2K | 隨問題複雜度增減 |
 | `/pi-ask-gemini` | 1 (Gemini) | 500–2K | 500–2K | 隨問題複雜度增減 |
 | `/pi-askall` | 2 (Codex + Gemini) | 各 500–2K | 各 500–2K | 兩個 provider 並行呼叫 |
+| `/pi-fact-check` | 1 (Gemini) | 1K–5K | 2K–6K | 隨聲明數量增減 |
 | `/pi-code-review` | 1 (Codex) | 2K–10K | 1K–4K | 隨 diff 大小增減 |
 | `/pi-ui-review` | 1 (Gemini) | 2K–10K | 1K–4K | 隨檔案數量增減 |
 | `/pi-ui-design` | 1 (Gemini) | 1K–3K | 3K–8K | 產出較重（HTML 生成） |
@@ -580,7 +593,7 @@ Logging 預設開啟，檢查 `~/.claude/logs/multi-ai.log` 即可驗證。每�
 
 **Q: 如果我只裝了 Gemini CLI？**
 
-沒問題。所有指令都內建 graceful degradation——若 provider 不可用，Claude 會用剩餘的 provider 繼續。`/pi-multi-review` 和 `/pi-askall` 會使用 Claude + 可用的 provider（兩方觀點取代三方）。`/pi-code-review` 會退回 Claude 獨立審查並加註同源盲點警告。
+沒問題。所有指令都內建 graceful degradation——若 provider 不可用，Claude 會用剩餘的 provider 繼續。`/pi-multi-review` 和 `/pi-askall` 會使用 Claude + 可用的 provider（兩方觀點取代三方）。`/pi-code-review` 會退回 Claude 獨立審查並加註同源盲點警告。`/pi-fact-check` 會先退至 WebSearch，再退至 Claude 訓練資料。
 
 **Q: 如果 provider 回傳格式不符預期？**
 

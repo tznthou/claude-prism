@@ -50,6 +50,7 @@ Use Claude Code as the **orchestrator**, but dispatch review and research tasks 
 | `/pi-ask-gemini` | Gemini | Direct Q&A — get Google's perspective |
 | `/pi-askall` | Codex + Gemini + Claude | Ask all providers the same question — three perspectives with synthesis |
 | `/pi-code-review` | Codex | Cross-provider code review (with confidence scoring) |
+| `/pi-fact-check` | Gemini + Claude | Fact-check content — Gemini searches sources, Claude validates |
 | `/pi-ui-design` | Gemini | HTML mockup from design spec |
 | `/pi-ui-review` | Gemini | UI/UX accessibility & design audit (with confidence scoring) |
 | `/pi-research` | Gemini | Structured technical research |
@@ -81,6 +82,16 @@ Ask Codex and Gemini the same question in parallel, then Claude synthesizes all 
 ```
 /pi-askall Should we use a monorepo or polyrepo for the new microservices?
 /pi-askall What's the best approach for real-time sync in a collaborative editor?
+```
+
+### `/pi-fact-check` — Cross-Provider Fact Verification
+
+Verify factual claims using Gemini (Google search) for source discovery and Claude for analytical validation. 4-phase flow: claim extraction → source search → cross-verification → structured report with source credibility tiers and triangulation.
+
+```
+/pi-fact-check article.md
+/pi-fact-check https://example.com/blog-post
+/pi-fact-check "Tesla delivered 1.8M vehicles in 2024 and holds over 50% market share"
 ```
 
 ### `/pi-code-review` — Cross-Provider Code Review
@@ -163,7 +174,7 @@ Best for complex decisions; for simple task breakdown, use Claude Code's built-i
 flowchart LR
     User["👤 You"] <--> Claude["🟣 Claude Code\n(Orchestrator)"]
     Claude -->|"/pi-ask-codex\n/pi-askall\n/pi-code-review\n/pi-multi-review\n/pi-plan"| Codex["🟢 Codex CLI"]
-    Claude -->|"/pi-ask-gemini\n/pi-askall\n/pi-ui-design\n/pi-ui-review\n/pi-research\n/pi-multi-review\n/pi-plan"| Gemini["🔵 Gemini CLI"]
+    Claude -->|"/pi-ask-gemini\n/pi-askall\n/pi-fact-check\n/pi-ui-design\n/pi-ui-review\n/pi-research\n/pi-multi-review\n/pi-plan"| Gemini["🔵 Gemini CLI"]
     CI["⚙️ GitHub Actions"] -->|"ci-review.sh"| GeminiAPI["🔵 Gemini API"]
     CI -->|"ci-review.sh"| OpenAIAPI["🟢 OpenAI API"]
     CI -->|"synthesis"| ClaudeAPI["🟣 Claude API"]
@@ -265,6 +276,7 @@ claude-prism/
 │   ├── pi-ask-gemini.md
 │   ├── pi-askall.md
 │   ├── pi-code-review.md
+│   ├── pi-fact-check.md
 │   ├── pi-multi-review.md
 │   ├── pi-plan.md
 │   ├── pi-research.md
@@ -498,6 +510,7 @@ claude-prism is a local wrapper — it does not process or bill tokens itself. E
 | `/pi-ask-codex` | 1 (Codex) | 500–2K | 500–2K | Scales with question complexity |
 | `/pi-ask-gemini` | 1 (Gemini) | 500–2K | 500–2K | Scales with question complexity |
 | `/pi-askall` | 2 (Codex + Gemini) | 500–2K each | 500–2K each | Both providers called in parallel |
+| `/pi-fact-check` | 1 (Gemini) | 1K–5K | 2K–6K | Scales with number of claims |
 | `/pi-code-review` | 1 (Codex) | 2K–10K | 1K–4K | Scales with diff size |
 | `/pi-ui-review` | 1 (Gemini) | 2K–10K | 1K–4K | Scales with file count |
 | `/pi-ui-design` | 1 (Gemini) | 1K–3K | 3K–8K | Output-heavy (HTML generation) |
@@ -580,7 +593,7 @@ With logging enabled (default), check `~/.claude/logs/multi-ai.log` to verify. E
 
 **Q: What if I only have Gemini CLI installed?**
 
-That's fine. All commands include graceful degradation — if a provider is unavailable, Claude continues with the remaining providers. `/pi-multi-review` and `/pi-askall` will use Claude + the available provider (two perspectives instead of three). `/pi-code-review` will fall back to a Claude-only review with a caveat note.
+That's fine. All commands include graceful degradation — if a provider is unavailable, Claude continues with the remaining providers. `/pi-multi-review` and `/pi-askall` will use Claude + the available provider (two perspectives instead of three). `/pi-code-review` will fall back to a Claude-only review with a caveat note. `/pi-fact-check` falls back to WebSearch, then Claude's training data.
 
 **Q: What if a provider returns an unexpected format?**
 
