@@ -621,6 +621,12 @@ Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 emoji/score 格式
 
 ---
 
+## 致謝
+
+`/pi-fact-check` 最初受到 [newtype-os](https://github.com/anthropics/newtype-os) 的 `super-fact-checker` 方法論啟發。後來我們從頭重寫了整個指令——跨 provider 驗證架構、對抗性證據作為驗證維度、簡化的判定系統——但起點的功勞值得記上一筆。
+
+---
+
 ## 更新紀錄
 
 完整版本歷史請見 [CHANGELOG.md](CHANGELOG.md)。
