@@ -623,7 +623,7 @@ So here we are. I hope this tool helps you too.
 
 ## Acknowledgments
 
-`/pi-fact-check` started by referencing the `super-fact-checker` methodology from [newtype-os](https://github.com/newtype-01/newtype-os) (whose author is a YouTuber I really enjoy). We later realized borrowing someone else's framework didn't feel right, so we rewrote the whole thing from scratch with our own approach: cross-provider verification, adversarial evidence, and a simplified verdict system. But the starting point deserves its credit.
+`/pi-fact-check` started by referencing the `super-fact-checker` methodology from [newtype-os](https://github.com/newtype-01/newtype-os) (whose author is a YouTuber I really enjoy). We later realized borrowing someone else's framework didn't feel right, so we rewrote the whole thing from scratch with our own approach: cross-provider verification, adversarial evidence, and a simplified verdict system. Huge thanks for the starting point.
 
 ---
 
