@@ -86,7 +86,7 @@ Claude Code 的跨 Provider AI 調度工具 — 消除同源盲點。
 
 ### `/pi-fact-check` — 跨 Provider 事實查核
 
-使用 Gemini（Google 搜尋）尋找來源，Claude 進行分析驗證。四階段流程：聲明提取 → 來源搜尋 → 交叉驗證 → 結構化報告（含來源可信度分級與三角驗證）。
+Gemini 透過 Google 搜尋找證據，Claude 以獨立判斷交叉驗證。搜尋一手來源與對抗性證據（法院判決、監管文件），檢查來源品質、偵測矛盾，產出可行動的查核報告。
 
 ```
 /pi-fact-check article.md

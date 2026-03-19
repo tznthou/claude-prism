@@ -86,7 +86,7 @@ Ask Codex and Gemini the same question in parallel, then Claude synthesizes all 
 
 ### `/pi-fact-check` — Cross-Provider Fact Verification
 
-Verify factual claims using Gemini (Google search) for source discovery and Claude for analytical validation. 4-phase flow: claim extraction → source search → cross-verification → structured report with source credibility tiers and triangulation.
+Gemini finds evidence via Google search, Claude cross-verifies with independent judgment. Searches primary and adversarial sources (court filings, regulatory actions), checks source quality, detects inconsistencies, and produces an actionable report.
 
 ```
 /pi-fact-check article.md

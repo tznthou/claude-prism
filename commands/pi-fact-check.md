@@ -5,181 +5,130 @@ description: "Fact-check content via Gemini search + Claude verification — cro
 
 # Fact-Check via Cross-Provider Verification
 
-Verify factual claims using Gemini (Google search) for source discovery and Claude for analytical verification. **Evidence-based task — Gemini searches for sources, Claude validates against them.**
+Verify factual claims using Gemini (Google search) for source discovery and Claude for cross-verification. **Two providers, two roles: Gemini finds evidence, Claude judges it.**
 
 ## Execution
 
-### 1. Obtain content to fact-check
+### 1. Obtain content
 
-`$ARGUMENTS` is the content or reference to fact-check.
+Use `$ARGUMENTS` as the content to verify.
 
-**If `$ARGUMENTS` is inline text**: use it directly as the content to verify.
+- **File path**: Read the file and use its content
+- **URL**: Fetch with WebFetch
+- **Conversation reference**: Claude extracts relevant content from history
+- **Inline text**: Use directly
+- **Empty**: Ask what to fact-check
 
-**If `$ARGUMENTS` references a file path** (e.g., `article.md`, `./draft.txt`):
-- Read the file with the Read tool
-- Use the file content as the material to fact-check
+### 2. Extract claims (Claude)
 
-**If `$ARGUMENTS` references conversation context** (e.g., "the article we just discussed"):
-- Claude extracts the relevant content from conversation history
+Scan the content. Identify every factual claim — statements that can be verified against external sources (data, events, quotes, attributions).
 
-**If `$ARGUMENTS` is a URL**:
-- Fetch the content with WebFetch
-- Use the fetched content as material
+Skip opinions, predictions, and vague assertions ("many believe...").
 
-**If `$ARGUMENTS` is empty**, ask: "What content should I fact-check? Paste text, give a file path, or reference something from our conversation."
+For each claim, assess: **how important is it if this is wrong?** Focus effort on high-impact claims. Flag anything suspicious — too-precise numbers, vague sourcing, absolute language.
 
-### 2. Phase 1 — Extract and classify claims (Claude)
+Output a numbered list of claims to verify, each with the exact text and suggested search terms.
 
-Scan the content and extract ALL factual claims. For each claim:
+If no verifiable claims found, report and stop.
 
-**Classify**:
-- ✅ **Verifiable**: factual statements, data citations, historical events, quotes
-- ❌ **Not verifiable**: opinions, predictions, subjective feelings, vague assertions ("many people believe...")
+### 3. Source search (Gemini)
 
-**Prioritize** using the impact × suspicion matrix:
-
-|  | High suspicion | Low suspicion |
-|--|----------------|---------------|
-| **High impact** | 🔴 Must verify | 🟡 Should verify |
-| **Low impact** | 🟡 Should verify | 🟢 Optional |
-
-**Suspicion red flags** 🚩:
-- Numbers too precise or too round ("exactly 1 million")
-- Vague attribution ("studies show", "experts say")
-- Conflicts with common knowledge
-- Absolute language ("only", "first ever", "never")
-- Multi-hop retelling (3+ hand sources)
-
-Output a numbered list of verifiable claims (🔴 and 🟡 only), each with:
-- The exact claim text
-- Claim type: data / quote / event
-- Suggested search keywords (English AND Chinese if international topic)
-
-If **zero verifiable claims** are found, report "No verifiable factual claims found in the provided content" and stop — do not proceed to Phase 2.
-
-### 3. Phase 2 — Source search (Gemini)
-
-Bundle all claims from Phase 1 into a single Gemini call. If the claims list exceeds 12,000 chars, split into multiple calls.
+Bundle all claims into a single Gemini call (split if >12,000 chars):
 
 ```bash
 echo "$CLAIMS_PROMPT" | timeout 90 ~/.claude/scripts/call-gemini.sh "fact-check source search"
 ```
 
-The `$CLAIMS_PROMPT` sent via stdin:
+Prompt sent via stdin:
 
 ```
-You are a fact-checking research assistant. Find primary sources to verify or refute these claims.
+Fact-check these claims. For each, find the closest primary source.
 
 CLAIMS:
 $NUMBERED_CLAIMS_LIST
 
-FOR EACH CLAIM, provide:
+For each claim, return:
 1. Verdict: SUPPORTED / CONTRADICTED / UNVERIFIABLE
-2. Primary source found (official report, financial filing, court document, peer-reviewed paper)
+2. Best source found (prefer: official records > peer-reviewed > major media > other)
 3. Source URL
-4. Source tier: T1 (official primary) / T2 (peer-reviewed) / T3 (major media) / T4 (industry report) / T5 (general media) / T6 (social/blog — unreliable)
-5. Key finding (one sentence)
-6. Source date
-7. Contradicting evidence (if any)
+4. Key finding (one sentence)
+5. Source date
+6. Any contradicting evidence
 
-SEARCH STRATEGY:
-- Search BOTH English AND Chinese for international topics
-- Prioritize primary sources over media coverage
-- Find BOTH supporting AND contradicting evidence
-- For numbers: find the ORIGINAL data source
-- For quotes: find the ORIGINAL speech/interview/document
+Prioritize primary sources. Search both English and Chinese for international topics. Look for BOTH supporting and contradicting evidence. When available, search for adversarial sources (court filings, regulatory actions, competitor analyses) — facts confirmed under hostile scrutiny are strongest.
 
-Return a numbered list matching the input claims. Report only what sources say — no editorializing.
+Return numbered list matching input. No editorializing.
 ```
 
-**Timeout and fallback**:
+**Fallback** (if Gemini fails):
+1. WebSearch per claim. Note degradation.
+2. Claude's training data only. Note degradation.
 
-If Gemini fails (timeout after 90s, CLI not found, or non-zero exit):
-1. **First fallback**: Use WebSearch to search for each claim individually. Note in output: "Gemini unavailable — sources found via WebSearch (reduced depth)."
-2. **Second fallback**: If WebSearch also fails, use Claude's training data. Note: "No external search available — verification based on Claude's knowledge only (lower confidence)."
+**Never abort.** Always produce a report.
 
-**Never abort.** Always produce a report, with degradation clearly labeled.
+### 4. Cross-verification (Claude)
 
-### 4. Phase 3 — Cross-verification (Claude)
+This is where cross-provider adds value. Claude independently evaluates Gemini's findings — not re-searching, but applying judgment Gemini cannot:
 
-Claude adds what Gemini cannot: analytical judgment, inconsistency detection, and training-data cross-reference. Do NOT re-search — work from Gemini's results.
+**Source quality** — Is the cited source actually authoritative? A blog post cited as "official report" gets downgraded.
 
-For each claim, map Gemini's verdict to the final verdict:
+**Knowledge cross-check** — Does Claude's training data agree or conflict with Gemini's finding?
 
-| Gemini says | Claude assigns | When |
-|-------------|---------------|------|
-| SUPPORTED | ✅ Verified | Source is T1-T3 and matches claim |
-| SUPPORTED | ⚠️ Partially verified | Source supports the gist but details differ |
-| CONTRADICTED | ❌ Incorrect | T1-T3 source directly conflicts |
-| CONTRADICTED | ⚠️ Partially verified | Contradiction is minor (rounding, date range) |
-| UNVERIFIABLE | ❓ Unverifiable | No reliable source found |
-| UNVERIFIABLE | 🔍 Needs further checking | Claim is important, may need domain expertise |
+**Internal consistency** — Do independently verified claims contradict each other?
 
-**Claude's unique checks** (what Gemini can't do):
-- Does Gemini's cited source tier match the actual source? (e.g., claimed T1 but it's actually a blog)
-- Does Claude's training data contradict Gemini's finding?
-- Are there logical inconsistencies between claims that Gemini verified independently?
-- Single-source claims: label "single source, pending further verification"
-- Distinguish "factual error" from "imprecise wording" — do NOT treat "unverifiable" as "incorrect"
+**Precision check** — Is the claim wrong, or just imprecise? ("47% market share" reported as "about half" is imprecise, not incorrect.)
 
-### 5. Phase 4 — Report
+**Adversarial evidence** — Can the claim be confirmed through its opponents? Court rulings, regulatory filings, or competitor analyses that implicitly acknowledge a fact are high-confidence signals — they've survived hostile scrutiny.
 
-Output the structured report in this format:
+Assign final verdict per claim:
+
+| Verdict | Meaning |
+|---------|---------|
+| ✅ Verified | Reliable source confirms the claim |
+| ⚠️ Imprecise | Core idea correct, details off |
+| ❌ Incorrect | Reliable source directly contradicts |
+| ❓ Unverifiable | No reliable source found either way |
+
+Single-source claims: note "single source" regardless of verdict.
+
+### 5. Report
 
 ```markdown
-## 核查報告
+## Fact-Check Report
 
-### 總覽
-- 總聲明：X 條 | 可核查：X 條 | 已核查：X 條
-- ✅ 已驗證：X | ⚠️ 部分驗證：X | ❓ 無法驗證：X | ❌ 有誤：X
+**X claims checked** · ✅ X verified · ⚠️ X imprecise · ❌ X incorrect · ❓ X unverifiable
 
-### 核查結果
+### Results
 
-| # | 聲明 | 結果 | 來源層級 | 說明 |
-|---|------|------|----------|------|
+| # | Claim | Verdict | Source | Notes |
+|---|-------|---------|--------|-------|
 
-### 問題聲明詳析
+### Issues
 
-(Expand ONLY ⚠️/❓/❌/🔍 claims with full evidence chain)
+(Detail each ⚠️/❌/❓ claim)
 
-#### ⚠️ #N："[claim text]"
-- **Gemini 搜尋結果**：[source and finding]
-- **Claude 驗證**：[analysis]
-- **建議修改**：[suggested fix]
+#### [verdict] #N: "[claim]"
+- **Source**: [what Gemini found]
+- **Analysis**: [Claude's cross-verification]
+- **Fix**: [suggested correction]
 
-### 未核查聲明
-(Low-priority or not-verifiable claims, with classification reason)
+### Sources
 
-### 來源清單
+| # | Source | URL | Date |
+|---|--------|-----|------|
 
-| # | 來源 | 層級 | URL | 日期 |
-|---|------|------|-----|------|
-
-### 核查品質自評
-- 來源覆蓋度：X/Y 聲明有 T1-T3 來源
-- 三角驗證率：X/Y 聲明有 ≥2 獨立來源
-- 搜尋盲區：[areas where search was insufficient]
-- 降級說明：[if Gemini was unavailable, note fallback used]
+### Confidence
+- X/Y claims backed by primary sources
+- X/Y claims have 2+ independent sources
+- Gaps: [areas where search was insufficient]
 ```
 
-### 6. Save results (optional)
+### 6. Save (optional)
 
-After presenting the report, ask: **"Save the fact-check report?"**
-
-If yes, save to `.claude/pi-fact-check/<slug>.md` with a metadata header:
-
-```markdown
-# Fact-Check: <topic>
-- **Date**: <ISO 8601>
-- **Source**: <gemini+claude | websearch+claude | claude-only>
-- **Content**: <file path, URL, or "inline">
-```
-
-Create the directory if it doesn't exist.
+Ask: **"Save the report?"** If yes, save to `.claude/pi-fact-check/<slug>.md`.
 
 ### Notes
 
-- **Evidence-based task** — value comes from independent sources, not LLM opinions. No Codex (no web search = no verification value). For opinion-based review, use `/pi-multi-review`
-- Keep content sent to Gemini under 12,000 chars — summarize longer texts but preserve all factual claims verbatim
-- Works with any language; search strategy adapts to topic language
-- Pairs well with TZ-writer → TZ-editor → `/pi-fact-check` workflow
+- **No Codex** — fact-checking needs search, not more LLM opinions. For opinion-based review, use `/pi-multi-review`
+- Keep Gemini input under 12,000 chars
+- Works with any language
