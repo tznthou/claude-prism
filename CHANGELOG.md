@@ -4,15 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v0.10.1 (2026-03-19)
+
+**Fact-Check Rewrite** — original methodology, unified English.
+
+- **Rewritten `/pi-fact-check` prompt** — replaced external methodology with original cross-provider approach: natural language claim extraction, source preference ordering, 4 verdicts (Verified / Imprecise / Incorrect / Unverifiable), 5 cross-verification dimensions
+- **Adversarial evidence** — new verification dimension: court filings, regulatory actions, and competitor analyses that implicitly confirm facts carry highest confidence (survived hostile scrutiny)
+- **Unified English** — all prompt content now in English, consistent with other commands
+- **Simplified** — 186 → 121 lines without losing functionality
+
 ## v0.10.0 (2026-03-19)
 
 **New Command: Fact-Check**
 
-- **New `/pi-fact-check` command** — cross-provider fact verification using Gemini (Google search) for source discovery and Claude for analytical validation. 4-phase flow: claim extraction → source search → cross-verification → structured report. Includes source credibility 6-tier system, triangulation protocol, suspicion red flags, and mixed-format report with quality self-assessment
-- **Design origin** — adapted from newtype-os `super-fact-checker` methodology, fused with `pi-research` Gemini search. Cross-provider architecture naturally avoids same-source bias (Gemini searches, Claude validates)
+- **New `/pi-fact-check` command** — cross-provider fact verification using Gemini (Google search) for source discovery and Claude for cross-verification. Two providers, two roles: Gemini finds evidence, Claude judges it
 - **Gemini-only** — no Codex. Fact-checking is an evidence-based task; Codex has no web search and would not add verification value
 - **Graceful degradation** — Gemini timeout (90s) → WebSearch fallback → Claude training data. Never aborts
-- **Save results** — optional save to `.claude/pi-fact-check/<slug>.md` (same pattern as `/pi-research`)
+- **Save results** — optional save to `.claude/pi-fact-check/<slug>.md`
 
 ## v0.9.9 (2026-03-15)
 
