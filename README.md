@@ -217,6 +217,20 @@ For details on what data crosses trust boundaries, see [Privacy & Data Flow](#pr
 | [Gemini CLI](https://github.com/google-gemini/gemini-cli) | For Gemini commands | `npm install -g @google/gemini-cli` |
 | [Codex CLI](https://github.com/openai/codex) | For Codex commands | `npm install -g @openai/codex` |
 
+> **⚠️ Gemini CLI Service Update (effective March 25, 2026)**
+>
+> Google is [changing how Gemini CLI routes traffic](https://github.com/google-gemini/gemini-cli/discussions/22970). Free tier users will be limited to Flash models only (no Pro), and all users may experience rate limiting during peak hours. If you encounter timeouts:
+>
+> ```bash
+> # Option 1: Use Flash (faster, higher coding benchmark scores than Pro)
+> export GEMINI_MODEL="gemini-3-flash-preview"
+>
+> # Option 2: Use your own API key for self-managed quota
+> export GEMINI_API_KEY="your-key-from-ai-studio"
+> ```
+>
+> See [Environment Variables](#environment-variables) for details.
+
 ### Install
 
 **Quick install (recommended)**
@@ -321,8 +335,9 @@ Installed to:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GEMINI_MODEL` | (CLI default) | Override Gemini model (e.g. `gemini-3-pro-preview`) |
+| `GEMINI_MODEL` | (CLI default) | Override Gemini model (e.g. `gemini-3-flash-preview`) |
 | `CODEX_MODEL` | (CLI default) | Override Codex model (e.g. `gpt-5.3-codex`) |
+| `GEMINI_API_KEY` | (none) | Use your own AI Studio API key instead of OAuth ([get one](https://aistudio.google.com/apikey)) |
 | `GEMINI_BIN` | (auto-detect) | Path to gemini binary |
 | `CODEX_BIN` | (auto-detect) | Path to codex binary |
 | `MULTI_AI_LOG_DIR` | `~/.claude/logs` | Log directory |
@@ -331,8 +346,11 @@ By default, scripts defer to each CLI's built-in default model — no configurat
 
 ```bash
 # Shell profile (~/.zshrc or ~/.bashrc)
-export GEMINI_MODEL="gemini-3-pro-preview"
+export GEMINI_MODEL="gemini-3-flash-preview"   # Recommended: faster, avoids Pro rate limiting
 export CODEX_MODEL="gpt-5.3-codex"
+
+# Optional: use your own API key for direct quota control
+export GEMINI_API_KEY="your-key-from-ai-studio"
 
 # Or per-invocation via the -m flag
 ~/.claude/scripts/call-gemini.sh -m gemini-3-flash-preview "your prompt"
@@ -495,7 +513,7 @@ The wrapper scripts depend on specific CLI behaviors that are not part of offici
 | Gemini CLI | `-p " "` headless mode (stdin + prompt) | v0.1.x – v0.3.x |
 | Codex CLI | `codex exec - ` stdin mode | v0.100.x – v0.106.x |
 
-If a CLI update breaks functionality, pin the working version or open an issue.
+If a CLI update breaks functionality, pin the working version or open an issue. For the March 25, 2026 Gemini service update, see the [notice in Prerequisites](#prerequisites).
 
 ---
 
@@ -602,6 +620,10 @@ Claude handles it. If Codex or Gemini doesn't follow the requested emoji/score f
 **Q: How much does this cost?**
 
 See the [Cost Estimation](#cost-estimation) section for per-command token consumption ranges and cost control tools.
+
+**Q: Gemini CLI keeps timing out or responding very slowly?**
+
+Likely caused by Pro model rate limiting. Two fixes: (1) Set `GEMINI_MODEL="gemini-3-flash-preview"` — Flash is faster and scores higher on coding benchmarks (SWE-bench: Flash 78% vs Pro 76.2%). (2) Set `GEMINI_API_KEY` with your own [AI Studio](https://aistudio.google.com/apikey) key for self-managed quota. See [Gemini CLI Service Update](#prerequisites).
 
 **Q: Can I use this with other Claude Code setups?**
 

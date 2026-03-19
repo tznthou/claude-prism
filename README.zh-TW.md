@@ -217,6 +217,20 @@ flowchart LR
 | [Gemini CLI](https://github.com/google-gemini/gemini-cli) | Gemini 相關指令需要 | `npm install -g @google/gemini-cli` |
 | [Codex CLI](https://github.com/openai/codex) | Codex 相關指令需要 | `npm install -g @openai/codex` |
 
+> **⚠️ Gemini CLI 服務更新（2026-03-25 生效）**
+>
+> Google 正在[調整 Gemini CLI 的流量路由方式](https://github.com/google-gemini/gemini-cli/discussions/22970)。免費帳號將僅限 Flash 模型（不再支援 Pro），所有用戶在尖峰時段可能遇到限流。如果遇到 timeout：
+>
+> ```bash
+> # 方案一：使用 Flash（更快，coding benchmark 分數比 Pro 更高）
+> export GEMINI_MODEL="gemini-3-flash-preview"
+>
+> # 方案二：使用自己的 API key 取得獨立 quota
+> export GEMINI_API_KEY="your-key-from-ai-studio"
+> ```
+>
+> 詳見[環境變數](#環境變數)。
+
 ### 安裝
 
 **快速安裝（推薦）**
@@ -321,8 +335,9 @@ claude-prism/
 
 | 變數 | 預設值 | 說明 |
 |------|--------|------|
-| `GEMINI_MODEL` | （CLI 預設） | 覆蓋 Gemini 模型（如 `gemini-3-pro-preview`） |
+| `GEMINI_MODEL` | （CLI 預設） | 覆蓋 Gemini 模型（如 `gemini-3-flash-preview`） |
 | `CODEX_MODEL` | （CLI 預設） | 覆蓋 Codex 模型（如 `gpt-5.3-codex`） |
+| `GEMINI_API_KEY` | （無） | 使用自己的 AI Studio API key 取代 OAuth（[申請](https://aistudio.google.com/apikey)） |
 | `GEMINI_BIN` | （自動偵測） | Gemini 執行檔路徑 |
 | `CODEX_BIN` | （自動偵測） | Codex 執行檔路徑 |
 | `MULTI_AI_LOG_DIR` | `~/.claude/logs` | 紀錄檔目錄 |
@@ -331,8 +346,11 @@ claude-prism/
 
 ```bash
 # Shell 設定檔（~/.zshrc 或 ~/.bashrc）
-export GEMINI_MODEL="gemini-3-pro-preview"
+export GEMINI_MODEL="gemini-3-flash-preview"   # 建議：更快、避免 Pro 限流
 export CODEX_MODEL="gpt-5.3-codex"
+
+# 選用：使用自己的 API key 取得獨立 quota
+export GEMINI_API_KEY="your-key-from-ai-studio"
 
 # 或單次呼叫時用 -m flag
 ~/.claude/scripts/call-gemini.sh -m gemini-3-flash-preview "your prompt"
@@ -495,7 +513,7 @@ Wrapper scripts 依賴 CLI 的特定行為，這些行為不屬於官方穩定 A
 | Gemini CLI | `-p " "` headless 模式（stdin + prompt） | v0.1.x – v0.3.x |
 | Codex CLI | `codex exec - ` stdin 模式 | v0.100.x – v0.106.x |
 
-若 CLI 更新導致功能異常，請固定使用已驗證版本或開 issue 回報。
+若 CLI 更新導致功能異常，請固定使用已驗證版本或開 issue 回報。關於 2026-03-25 Gemini 服務更新，詳見[前置需求的注意事項](#前置需求)。
 
 ---
 
@@ -602,6 +620,10 @@ Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 emoji/score 格式
 **Q: 費用多少？**
 
 參閱[成本估算](#成本估算)段落，了解各指令的 token 消耗範圍和成本控制工具。
+
+**Q: Gemini CLI 一直 timeout 或回應很慢？**
+
+很可能是 Pro 模型限流。兩種解法：(1) 設定 `GEMINI_MODEL="gemini-3-flash-preview"`，Flash 更快，coding benchmark 分數也更高（SWE-bench：Flash 78% vs Pro 76.2%）。(2) 設定 `GEMINI_API_KEY`，用自己的 [AI Studio](https://aistudio.google.com/apikey) key 取得獨立 quota。詳見 [Gemini CLI 服務更新](#前置需求)。
 
 **Q: 可以搭配其他 Claude Code 設定使用嗎？**
 
