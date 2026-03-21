@@ -192,4 +192,31 @@ If `--verbose` was specified, add a **Filtered Issues** section after the main r
 | 2 | Brief description | 40 | no line reference, no evidence |
 ```
 
+#### Score transparency (Show Your Work)
+
+After presenting all results, end with this line:
+
+> 💡 Type `show scores` to see how each finding was scored. / 輸入 `show scores` 查看每個 finding 的分數計算過程。
+
+When the user responds with `show scores` (or similar intent like "show breakdown", "how was it scored", "分數怎麼算的"), present the factor breakdown for every finding:
+
+```
+### Score Breakdown
+
+**[issue title]** — Score: [score]
+├─ Base: 40
+├─ Specific line reference: +25
+├─ New code in this diff: +25
+├─ WCAG 2.1 AA citation: +20
+├─ Concrete user impact described: +15
+└─ Final: 100 (clamped)
+
+**[issue title]** — Score: [score]
+├─ Base: 40
+├─ Subjective aesthetic preference: −25
+└─ Final: 15
+```
+
+Include both shown (≥80) and filtered (<80) findings. For each finding, list only factors that actually applied (skip +0 factors). Show the arithmetic so the user can verify.
+
 Label source: **Gemini** or **Claude (multimodal screenshot analysis)**. If project guidelines were found, add a **Guideline Compliance** section.

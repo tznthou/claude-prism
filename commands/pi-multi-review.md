@@ -273,6 +273,34 @@ If `--verbose` was specified, add a **Filtered Issues** section after the main r
 | 3 | Brief description | 0 | Codex | hallucinated reference (-50) |
 ```
 
+#### Score transparency (Show Your Work)
+
+After presenting all results, end with this line:
+
+> 💡 Type `show scores` to see how each finding was scored. / 輸入 `show scores` 查看每個 finding 的分數計算過程。
+
+When the user responds with `show scores` (or similar intent like "show breakdown", "how was it scored", "分數怎麼算的"), present the factor breakdown for every finding:
+
+```
+### Score Breakdown
+
+**[issue title]** (Codex) — Score: [score]
+├─ Base: 40
+├─ Specific line numbers: +25
+├─ New code in this diff: +25
+├─ OWASP A03:2021 citation: +20
+├─ Multi-provider consensus: +20
+└─ Final: 100 (clamped)
+
+**[issue title]** (Gemini) — Score: [score]
+├─ Base: 40
+├─ Specific line numbers: +25
+├─ Subjective style preference: −25
+└─ Final: 40
+```
+
+Include both shown (≥80) and filtered (<80) findings. For each finding, list only factors that actually applied (skip +0 factors). Include the provider source. Show the arithmetic so the user can verify.
+
 ### 7. Output format
 
 ```

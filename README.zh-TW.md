@@ -21,13 +21,17 @@ Claude Code 的跨 Provider AI 調度工具 — 消除同源盲點。
 
 ### 問題
 
-當 Claude Code 寫你的程式碼**同時也** review 它時，你會得到同源盲點。就像自己改自己的考卷——同一個模型有相同的知識缺口，某些類型的 bug、設計缺陷和安全問題會持續漏掉。
+AI code review 很吵。市場上最好的工具 F1 score 大概也才 64%——大約三分之一的標記結果是假警報。多數工具的解法是讓 AI 自己評估信心度（「我 90% 確定這是 bug」），但這就是自己改自己的考卷。
 
-就算同一 provider 開多個 agent 來 review 也一樣：四個 Claude agent 仍然共享同一套訓練資料、同樣的架構偏好、同樣的知識截止點。更多 agent ≠ 更多觀點——如果底層模型有盲點，開再多分身也找不到那個 bug。
+還有一個更深層的結構性問題：當 Claude Code 寫你的程式碼**同時也** review 它時，你會得到**同源盲點**。同一個模型有相同的知識缺口，某些類型的 bug、設計缺陷和安全問題會持續漏掉。就算開四個 Claude agent 來 review 也一樣，因為底層訓練資料和偏好都相同。更多 agent ≠ 更多觀點。
 
 ### 解法
 
-讓 Claude Code 當**調度者**，把 review 和研究任務分派給 **Gemini** 和 **Codex**。三個不同的 AI provider、三組不同的訓練資料、三種不同的視角。這是**跨 Provider 審查調度**——在結構上就與同源多 agent 審查截然不同。
+**1. 跨 Provider 三角驗證**：Claude 負責調度，review 任務分派給 **Gemini** 和 **Codex**。三個 provider、三組訓練資料、三組互相抵消的盲點。
+
+**2. 證據導向信心度評分**：不問 AI「你有多確定」，而是用可驗證的證據算分：具體行號（+25）、規則引用（+20）、可重現場景（+15）、幻覺引用（-50）。核心公式是 deterministic——同樣的證據永遠得到同樣的分數。[公開 spec](spec/confidence-scoring-v1.md)，沒有黑盒。
+
+**3. Local-first**：程式碼直接送到各家 provider 的 API，中間沒有任何中繼伺服器、沒有第三方經手你的 code。
 
 ### 為什麼選 claude-prism？
 
@@ -38,7 +42,14 @@ Claude Code 的跨 Provider AI 調度工具 — 消除同源盲點。
 | **成本** | 近乎零（Codex CLI + Gemini CLI 免費額度） | 每 PR $15–25（官方工具，Team/Enterprise 方案） |
 | **速度** | 1–2 分鐘 | ~20 分鐘 |
 | **可用性** | 任何有 CLI 的人 | 僅限付費團隊方案 |
-| **評分透明度** | [公開 spec](spec/confidence-scoring-v1.md)，deterministic，model-agnostic | 黑盒信心度評分 |
+| **評分方式** | 證據導向公式（[公開 spec](spec/confidence-scoring-v1.md)），deterministic 核心，同樣證據 = 同樣分數 | LLM 自評，AI 給自己打信心分數 |
+| **資料路徑** | Local-first：直連 provider API，無中繼伺服器 | 依服務而異 |
+
+### 為什麼信任這些發現？
+
+多數 AI review 工具都用類似做法：讓 AI 對自己的發現打 0-100 信心分數，低於門檻就過濾。[Anthropic 官方 code review plugin](https://github.com/anthropics/claude-code/blob/main/plugins/code-review/README.md) 也使用 ≥80 門檻。問題是 LLM 產生的信心分數不穩定——同一份 review 跑兩次可能得到不同分數。
+
+claude-prism 的 [Confidence Scoring Framework](spec/confidence-scoring-v1.md) 做法不同：用**可驗證的證據**打分，不靠 AI 自我評估。comment 有指出具體行號？+25。有引用 OWASP 規則？+20。提到一個不存在的檔案？-50。公式是 deterministic、model-agnostic 的，你可以打開 spec 驗證每一分怎麼來的。
 
 ---
 

@@ -21,13 +21,17 @@ Cross-provider AI orchestration for Claude Code — eliminate same-source blind 
 
 ### The Problem
 
-When Claude Code writes your code **and** reviews it, you get same-source blind spots. It's like grading your own exam — certain classes of bugs, design flaws, and security issues consistently slip through because the same model has the same knowledge gaps.
+AI code review is noisy. The best tools on the market hit around 64% F1 score — meaning roughly a third of flagged issues are false positives. Most tools try to fix this by having AI self-assess its own confidence ("I'm 90% sure this is a real bug"), but that's grading your own exam.
 
-Even multi-agent review within a single provider doesn't solve this: four Claude agents still share the same training data, the same architectural biases, and the same knowledge cutoff. More agents ≠ more perspectives — if the base model has a blind spot, spawning more instances of it won't find the bug.
+There's a deeper structural issue: when Claude Code writes your code **and** reviews it, you get **same-source blind spots**. Certain classes of bugs, design flaws, and security issues consistently slip through because the same model has the same knowledge gaps. Even multi-agent review within a single provider doesn't help — four Claude agents still share the same training data and biases. More agents ≠ more perspectives.
 
 ### The Solution
 
-Use Claude Code as the **orchestrator**, but dispatch review and research tasks to **Gemini** and **Codex** via their CLIs. Three different AI providers, three different training datasets, three different perspectives. This is **cross-provider review orchestration** — structurally different from same-source multi-agent review.
+**1. Cross-provider triangulation** — Claude orchestrates, but dispatches review tasks to **Gemini** and **Codex** via their CLIs. Three providers, three training datasets, three sets of blind spots that cancel each other out.
+
+**2. Evidence-based confidence scoring** — Instead of asking AI "how confident are you?", each finding is scored by verifiable evidence: specific line numbers (+25), rule citations (+20), reproducible scenarios (+15), hallucinated references (-50). The core formula is deterministic — same evidence, same score. [Open spec](spec/confidence-scoring-v1.md), no black box.
+
+**3. Local-first** — Your code goes directly to each provider's API. No intermediary server, no relay, no third party touching your code.
 
 ### Why claude-prism?
 
@@ -38,7 +42,14 @@ Use Claude Code as the **orchestrator**, but dispatch review and research tasks 
 | **Cost** | Near-zero (Codex CLI + Gemini CLI free tiers) | $15–25 per PR (official tools, Team/Enterprise plans) |
 | **Speed** | 1–2 minutes | ~20 minutes |
 | **Availability** | Anyone with CLI access | Paid team plans only |
-| **Scoring transparency** | [Open spec](spec/confidence-scoring-v1.md), deterministic, model-agnostic | Black-box confidence scoring |
+| **Scoring method** | Evidence-based formula ([open spec](spec/confidence-scoring-v1.md)) — deterministic core, same evidence = same score | LLM self-assessment — AI grades its own confidence |
+| **Data path** | Local-first: direct to provider APIs, no intermediary server | Varies by service |
+
+### Why Trust the Findings?
+
+Most AI review tools use a similar approach: have the AI score its own findings on a 0–100 confidence scale, then filter below a threshold. [Anthropic's official code review plugin](https://github.com/anthropics/claude-code/blob/main/plugins/code-review/README.md), for example, uses a ≥80 threshold. The problem is that LLM-generated confidence scores are non-deterministic — run the same review twice, you may get different scores.
+
+claude-prism's [Confidence Scoring Framework](spec/confidence-scoring-v1.md) works differently: it scores findings by **verifiable evidence**, not AI self-assessment. Does the comment cite a specific line number? +25. Does it reference an OWASP rule? +20. Does it mention a file that doesn't exist? -50. The formula is deterministic, model-agnostic, and fully auditable — you can open the spec and verify exactly how every point was calculated.
 
 ---
 
