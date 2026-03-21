@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v0.10.2 (2026-03-22)
+
+**Score Transparency & README Rewrite** — show your work, sharpen claims.
+
+- **Score transparency (Show Your Work)** — all 3 review commands (`/pi-code-review`, `/pi-multi-review`, `/pi-ui-review`) now end with a `show scores` affordance. Users can request a full factor breakdown for every finding, showing exactly how each confidence score was calculated (base 40, applicable factors, arithmetic)
+- **README rewrite** — "The Problem" / "The Solution" sections rewritten with clearer narrative: F1 noise → cross-provider triangulation → evidence-based scoring → local-first. New "Why Trust the Findings?" section explains the difference between LLM self-assessment and deterministic evidence-based scoring
+- **Accuracy fixes** — F1-to-false-positive claim corrected (removed unsupported ratio), Anthropic plugin comparison softened to factual statement, determinism claims qualified to "core formula" per spec §2.2
+- **Bilingual affordance** — score transparency hint line now bilingual (EN/zh-TW) for international users
+- **Gemini CLI service update notice** — added Prerequisites notice about Google's March 25, 2026 changes (free accounts limited to Flash models)
+- **Acknowledgments section** — added to both READMEs, crediting newtype-os/super-fact-checker
+
 ## v0.10.1 (2026-03-19)
 
 **Fact-Check Rewrite** — original methodology, unified English.
