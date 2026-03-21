@@ -21,7 +21,7 @@ Cross-provider AI orchestration for Claude Code — eliminate same-source blind 
 
 ### The Problem
 
-AI code review is noisy. The best tools on the market hit around 64% F1 score — meaning roughly a third of flagged issues are false positives. Most tools try to fix this by having AI self-assess its own confidence ("I'm 90% sure this is a real bug"), but that's grading your own exam.
+AI code review is noisy. Even the best tools on the market only hit around 64% F1 score — a significant fraction of findings are either false positives or missed issues. Most tools try to fix this by having AI self-assess its own confidence ("I'm 90% sure this is a real bug"), but that's grading your own exam.
 
 There's a deeper structural issue: when Claude Code writes your code **and** reviews it, you get **same-source blind spots**. Certain classes of bugs, design flaws, and security issues consistently slip through because the same model has the same knowledge gaps. Even multi-agent review within a single provider doesn't help — four Claude agents still share the same training data and biases. More agents ≠ more perspectives.
 

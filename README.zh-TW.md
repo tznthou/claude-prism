@@ -21,7 +21,7 @@ Claude Code 的跨 Provider AI 調度工具 — 消除同源盲點。
 
 ### 問題
 
-AI code review 很吵。市場上最好的工具 F1 score 大概也才 64%——大約三分之一的標記結果是假警報。多數工具的解法是讓 AI 自己評估信心度（「我 90% 確定這是 bug」），但這就是自己改自己的考卷。
+AI code review 很吵。市場上最好的工具 F1 score 大概也才 64%——有相當比例的發現不是假警報就是漏網之魚。多數工具的解法是讓 AI 自己評估信心度（「我 90% 確定這是 bug」），但這就是自己改自己的考卷。
 
 還有一個更深層的結構性問題：當 Claude Code 寫你的程式碼**同時也** review 它時，你會得到**同源盲點**。同一個模型有相同的知識缺口，某些類型的 bug、設計缺陷和安全問題會持續漏掉。就算開四個 Claude agent 來 review 也一樣，因為底層訓練資料和偏好都相同。更多 agent ≠ 更多觀點。
 
@@ -47,7 +47,7 @@ AI code review 很吵。市場上最好的工具 F1 score 大概也才 64%——
 
 ### 為什麼信任這些發現？
 
-多數 AI review 工具都用類似做法：讓 AI 對自己的發現打 0-100 信心分數，低於門檻就過濾。[Anthropic 官方 code review plugin](https://github.com/anthropics/claude-code/blob/main/plugins/code-review/README.md) 也使用 ≥80 門檻。問題是 LLM 產生的信心分數不穩定——同一份 review 跑兩次可能得到不同分數。
+多數 AI review 工具都用類似做法：讓 AI 對自己的發現打 0–100 信心分數，低於門檻就過濾。[Anthropic 官方 code review plugin](https://github.com/anthropics/claude-code/blob/main/plugins/code-review/README.md) 也使用 ≥80 門檻。問題是 LLM 產生的信心分數不穩定——同一份 review 跑兩次可能得到不同分數。
 
 claude-prism 的 [Confidence Scoring Framework](spec/confidence-scoring-v1.md) 做法不同：用**可驗證的證據**打分，不靠 AI 自我評估。comment 有指出具體行號？+25。有引用 OWASP 規則？+20。提到一個不存在的檔案？-50。公式是 deterministic、model-agnostic 的，你可以打開 spec 驗證每一分怎麼來的。
 
