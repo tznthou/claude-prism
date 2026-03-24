@@ -1,7 +1,7 @@
 # claude-prism
 
 <p align="center">
-  <img src="assets/claude-prism-logo.png" alt="claude-prism" width="640">
+  <img src="assets/claude-prism-logo.webp" alt="claude-prism" width="640">
 </p>
 
 [![npm](https://img.shields.io/npm/v/claud-prism-aireview.svg)](https://www.npmjs.com/package/claud-prism-aireview)
