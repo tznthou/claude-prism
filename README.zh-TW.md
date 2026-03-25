@@ -61,7 +61,7 @@ claude-prism 的 [Confidence Scoring Framework](spec/confidence-scoring-v1.md) �
 | `/pi-ask-gemini` | Gemini | 直接提問 — 取得 Google 觀點 |
 | `/pi-askall` | Codex + Gemini + Claude | 同時詢問所有 provider — 三方觀點 + 綜合分析 |
 | `/pi-code-review` | Codex | 跨 Provider 程式碼審查（含信心度評分） |
-| `/pi-fact-check` | Gemini + Claude | 事實查核 — Gemini 搜尋來源，Claude 驗證 |
+| `/pi-fact-check` | Gemini + WebSearch + Claude | 事實查核 — 雙軌搜尋（Gemini + WebSearch 同步），Claude 以收斂度評分驗證 |
 | `/pi-ui-design` | Gemini | 從設計規格產生 HTML mockup |
 | `/pi-ui-review` | Gemini | UI/UX 無障礙與設計審查（含信心度評分） |
 | `/pi-research` | Gemini | 結構化技術研究 |
@@ -97,7 +97,7 @@ claude-prism 的 [Confidence Scoring Framework](spec/confidence-scoring-v1.md) �
 
 ### `/pi-fact-check` — 跨 Provider 事實查核
 
-Gemini 透過 Google 搜尋找證據，Claude 以獨立判斷交叉驗證。搜尋一手來源與對抗性證據（法院判決、監管文件），檢查來源品質、偵測矛盾，產出可行動的查核報告。
+雙軌搜尋：Gemini（search grounding）與 WebSearch 同步執行，消除等待時間。Claude 獨立交叉驗證、URL 存在性檢查、以來源收斂度評分信心（多少獨立來源一致）。包含來源層級排名（L1 官方紀錄到 L6 社群）、同源報導去重、對抗性證據檢查。
 
 ```
 /pi-fact-check article.md
@@ -539,7 +539,7 @@ claude-prism 是本地端 wrapper——它本身不處理也不計費 token。�
 | `/pi-ask-codex` | 1 (Codex) | 500–2K | 500–2K | 隨問題複雜度增減 |
 | `/pi-ask-gemini` | 1 (Gemini) | 500–2K | 500–2K | 隨問題複雜度增減 |
 | `/pi-askall` | 2 (Codex + Gemini) | 各 500–2K | 各 500–2K | 兩個 provider 並行呼叫 |
-| `/pi-fact-check` | 1 (Gemini) | 1K–5K | 2K–6K | 隨聲明數量增減 |
+| `/pi-fact-check` | 1 (Gemini) + N (WebSearch) | 1K–5K | 2K–8K | 隨聲明數量增減；WebSearch 平行執行 |
 | `/pi-code-review` | 1 (Codex) | 2K–10K | 1K–4K | 隨 diff 大小增減 |
 | `/pi-ui-review` | 1 (Gemini) | 2K–10K | 1K–4K | 隨檔案數量增減 |
 | `/pi-ui-design` | 1 (Gemini) | 1K–3K | 3K–8K | 產出較重（HTML 生成） |
@@ -622,7 +622,7 @@ Logging 預設開啟，檢查 `~/.claude/logs/multi-ai.log` 即可驗證。每�
 
 **Q: 如果我只裝了 Gemini CLI？**
 
-沒問題。所有指令都內建 graceful degradation——若 provider 不可用，Claude 會用剩餘的 provider 繼續。`/pi-multi-review` 和 `/pi-askall` 會使用 Claude + 可用的 provider（兩方觀點取代三方）。`/pi-code-review` 會退回 Claude 獨立審查並加註同源盲點警告。`/pi-fact-check` 會先退至 WebSearch，再退至 Claude 訓練資料。
+沒問題。所有指令都內建 graceful degradation——若 provider 不可用，Claude 會用剩餘的 provider 繼續。`/pi-multi-review` 和 `/pi-askall` 會使用 Claude + 可用的 provider（兩方觀點取代三方）。`/pi-code-review` 會退回 Claude 獨立審查並加註同源盲點警告。`/pi-fact-check` 採用雙軌搜尋（Gemini + WebSearch 同步）；若兩者皆失敗才退至 Claude 訓練資料。
 
 **Q: 如果 provider 回傳格式不符預期？**
 

@@ -61,7 +61,7 @@ claude-prism's [Confidence Scoring Framework](spec/confidence-scoring-v1.md) wor
 | `/pi-ask-gemini` | Gemini | Direct Q&A — get Google's perspective |
 | `/pi-askall` | Codex + Gemini + Claude | Ask all providers the same question — three perspectives with synthesis |
 | `/pi-code-review` | Codex | Cross-provider code review (with confidence scoring) |
-| `/pi-fact-check` | Gemini + Claude | Fact-check content — Gemini searches sources, Claude validates |
+| `/pi-fact-check` | Gemini + WebSearch + Claude | Fact-check content — dual-track search (Gemini + WebSearch), Claude validates with convergence scoring |
 | `/pi-ui-design` | Gemini | HTML mockup from design spec |
 | `/pi-ui-review` | Gemini | UI/UX accessibility & design audit (with confidence scoring) |
 | `/pi-research` | Gemini | Structured technical research |
@@ -97,7 +97,7 @@ Ask Codex and Gemini the same question in parallel, then Claude synthesizes all 
 
 ### `/pi-fact-check` — Cross-Provider Fact Verification
 
-Gemini finds evidence via Google search, Claude cross-verifies with independent judgment. Searches primary and adversarial sources (court filings, regulatory actions), checks source quality, detects inconsistencies, and produces an actionable report.
+Dual-track search: Gemini (search grounding) and WebSearch run simultaneously — no dead-wait time. Claude cross-verifies with independent judgment, validates URLs, and scores confidence using source convergence (how many independent sources agree). Includes source tier ranking (L1 official records through L6 community), editorial chain deduplication, and adversarial evidence checking.
 
 ```
 /pi-fact-check article.md
@@ -539,7 +539,7 @@ claude-prism is a local wrapper — it does not process or bill tokens itself. E
 | `/pi-ask-codex` | 1 (Codex) | 500–2K | 500–2K | Scales with question complexity |
 | `/pi-ask-gemini` | 1 (Gemini) | 500–2K | 500–2K | Scales with question complexity |
 | `/pi-askall` | 2 (Codex + Gemini) | 500–2K each | 500–2K each | Both providers called in parallel |
-| `/pi-fact-check` | 1 (Gemini) | 1K–5K | 2K–6K | Scales with number of claims |
+| `/pi-fact-check` | 1 (Gemini) + N (WebSearch) | 1K–5K | 2K–8K | Scales with number of claims; WebSearch runs in parallel |
 | `/pi-code-review` | 1 (Codex) | 2K–10K | 1K–4K | Scales with diff size |
 | `/pi-ui-review` | 1 (Gemini) | 2K–10K | 1K–4K | Scales with file count |
 | `/pi-ui-design` | 1 (Gemini) | 1K–3K | 3K–8K | Output-heavy (HTML generation) |
@@ -622,7 +622,7 @@ With logging enabled (default), check `~/.claude/logs/multi-ai.log` to verify. E
 
 **Q: What if I only have Gemini CLI installed?**
 
-That's fine. All commands include graceful degradation — if a provider is unavailable, Claude continues with the remaining providers. `/pi-multi-review` and `/pi-askall` will use Claude + the available provider (two perspectives instead of three). `/pi-code-review` will fall back to a Claude-only review with a caveat note. `/pi-fact-check` falls back to WebSearch, then Claude's training data.
+That's fine. All commands include graceful degradation — if a provider is unavailable, Claude continues with the remaining providers. `/pi-multi-review` and `/pi-askall` will use Claude + the available provider (two perspectives instead of three). `/pi-code-review` will fall back to a Claude-only review with a caveat note. `/pi-fact-check` uses dual-track (Gemini + WebSearch simultaneously); if both fail, falls back to Claude's training data.
 
 **Q: What if a provider returns an unexpected format?**
 
