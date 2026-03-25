@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v0.10.3 (2026-03-26)
+
+**Fact-Check Dual-Track** — Gemini + WebSearch race eliminates dead-wait time.
+
+- **Dual-track search architecture** — `/pi-fact-check` now launches Gemini (search grounding) and WebSearch simultaneously instead of sequential fallback. Whichever returns first is usable immediately; both results merge for stronger source convergence
+- **Batch size optimization** — Gemini batches reduced from 5 to 2 claims each (search grounding serializes internally; smaller batches complete within timeout)
+- **Timeout fix** — replaced `perl alarm` with Bash tool timeout parameter (fixes orphan process on macOS, removes permission allowlist dependency)
+- **Convergence-based confidence** — new report format with source convergence scoring (🟢 High/🟡 Medium/🟠 Single/🔴 Conflicting) and 6-tier source ranking (L1 official records through L6 community)
+- **URL validation** — Step 4.5 verifies Gemini-sourced URLs via WebFetch, downgrades verdict on hallucinated/fabricated sources, triggers full WebSearch fallback if >50% fail
+- **Editorial chain dedup** — same-origin sources (e.g., AP wire republished by 5 outlets) collapsed to 1 independent source for accurate convergence counting
+- **README updates** — bilingual documentation updated to reflect dual-track architecture, cost estimation, and degradation path
+
 ## v0.10.2 (2026-03-22)
 
 **Score Transparency & README Rewrite** — show your work, sharpen claims.
