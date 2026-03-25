@@ -31,48 +31,85 @@ Output a numbered list of claims to verify, each with the exact text and suggest
 
 If no verifiable claims found, report and stop.
 
-### 3. Source search (Gemini)
+### 3. Source search (dual-track)
 
-Bundle all claims into a single Gemini call (split if >12,000 chars):
+Launch **both tracks simultaneously** in a single response to eliminate dead-wait time:
+
+```
+                    ┌─ Track A: Gemini (search grounding) ─┐
+  Claims ──split──→│                                       │──merge──→ Step 4
+                    └─ Track B: WebSearch (reliable URLs)  ─┘
+```
+
+#### Track A — Gemini
+
+Split claims into batches of **max 2 claims** each. Each batch call uses the Bash tool's timeout parameter (90 seconds):
 
 ```bash
-echo "$CLAIMS_PROMPT" | timeout 90 ~/.claude/scripts/call-gemini.sh "fact-check source search"
+# Use Bash tool with timeout: 90000
+echo "$BATCH_PROMPT" | ~/.claude/scripts/call-gemini.sh "fact-check batch N"
 ```
 
-Prompt sent via stdin:
+Prompt sent via stdin. **Preserve original claim numbers** — if a batch contains claims #4, #5, Gemini must return results numbered 4, 5 (not 1, 2):
 
 ```
-Fact-check these claims. For each, find the closest primary source.
+Fact-check these claims. For each, find supporting and contradicting sources.
 
 CLAIMS:
-$NUMBERED_CLAIMS_LIST
+$NUMBERED_CLAIMS_IN_THIS_BATCH
 
 For each claim, return:
 1. Verdict: SUPPORTED / CONTRADICTED / UNVERIFIABLE
-2. Best source found (prefer: official records > peer-reviewed > major media > other)
-3. Source URL
-4. Key finding (one sentence)
-5. Source date
-6. Any contradicting evidence
+2. Sources found (list ALL relevant sources, not just the best one; prefer: official records > peer-reviewed > major media > other)
+3. Source URLs (one per line)
+4. Key finding per source (one sentence each)
+5. Source dates
+6. Any contradicting evidence with its own source URL
 
 Prioritize primary sources. Search both English and Chinese for international topics. Look for BOTH supporting and contradicting evidence. When available, search for adversarial sources (court filings, regulatory actions, competitor analyses) — facts confirmed under hostile scrutiny are strongest.
 
 Return numbered list matching input. No editorializing.
 ```
 
-**Fallback** (if Gemini fails):
-1. WebSearch per claim. Note degradation.
-2. Claude's training data only. Note degradation.
+#### Track B — WebSearch
 
-**Never abort.** Always produce a report.
+One WebSearch call per claim, all in parallel. Use the suggested search terms from Step 2 as query.
+
+#### Launch rules
+
+Issue **all** tool calls in a single response — no dependencies between them:
+- N Bash calls (one per Gemini batch, each with 2 claims)
+- N WebSearch calls (one per claim)
+
+#### Merge rules
+
+For each claim, collect sources from both tracks:
+
+| Gemini result | WebSearch result | Action |
+|---------------|-----------------|--------|
+| ✅ returned | ✅ returned | Merge both — more sources = stronger convergence |
+| ✅ returned | ❌ failed | Use Gemini only |
+| ❌ failed | ✅ returned | Use WebSearch only (note failure reason: timeout/auth/quota/CLI not found) |
+| ❌ failed | ❌ failed | Claude's training data only (note degradation) |
+| ⚠️ partial/malformed | ✅ returned | Extract usable parts from Gemini, supplement with WebSearch |
+
+"Failed" includes: timeout (exit 142), auth errors, quota exceeded, CLI not found, non-zero exit.
+"Partial" includes: truncated output, missing claims from batch, unparseable format.
+
+- Deduplicate sources pointing to the same article
+- Collapse same-editorial-chain sources (e.g., AP wire republished by 5 outlets = 1 independent source, not 5) — this affects convergence counting in Step 5
+- Gemini may find non-English sources WebSearch misses — keep both
+- WebSearch URLs are generally more reliable (no hallucination) — prefer them when conflicting
+
+**Never abort.** Always produce a report, even if both tracks fail for some claims.
 
 ### 4. Cross-verification (Claude)
 
-This is where cross-provider adds value. Claude independently evaluates Gemini's findings — not re-searching, but applying judgment Gemini cannot:
+This is where cross-provider adds value. Claude independently evaluates the merged search results (from Gemini and/or WebSearch) — not re-searching, but applying judgment the search tools cannot:
 
 **Source quality** — Is the cited source actually authoritative? A blog post cited as "official report" gets downgraded.
 
-**Knowledge cross-check** — Does Claude's training data agree or conflict with Gemini's finding?
+**Knowledge cross-check** — Does Claude's training data agree or conflict with the search findings?
 
 **Internal consistency** — Do independently verified claims contradict each other?
 
@@ -91,7 +128,63 @@ Assign final verdict per claim:
 
 Single-source claims: note "single source" regardless of verdict.
 
+### 4.5 Source validation
+
+Sample URLs from search results for existence and content verification. Focus on **Gemini-sourced URLs** (higher hallucination risk) and any unrecognized domains. WebSearch URLs from major outlets (CNN, Bloomberg, etc.) can be trusted without verification. **Prioritize ✅ verdict claims with high impact** — these are the ones readers will cite and click.
+
+**Sampling rules (cap: ~8 URLs per run):**
+- Priority 1: ❌ claims — verify contradicting sources (catching false contradictions is highest value)
+- Priority 2: ✅ high-impact claims — verify their primary URL (these get cited by readers)
+- Priority 3: ⚠️ claims with Gemini-only sources — spot-check for hallucination
+- Skip: ❓ (no URL to verify), WebSearch URLs from major outlets (already reliable)
+- If eligible URLs exceed cap, stop at the cap — lower-priority URLs appear as `(unverified)`
+
+**For each sampled URL:**
+
+1. **WebFetch** the URL
+2. **HTTP 4xx/5xx or unreachable** → mark source as `(unverified)` in the report, do NOT use it as evidence. If this was the claim's **only** source, downgrade verdict one level (✅→⚠️, ⚠️→❓, ❌→❓)
+3. **Page loads but content doesn't match** Gemini's description (wrong topic, different numbers, no mention of the claim) → downgrade the claim's verdict by one level and note the discrepancy
+4. **URL contains `(Simulated)` or is obviously fabricated** (e.g., slug too perfectly matches the query) → treat as hallucinated, discard entirely, downgrade verdict one level
+
+**Batch failure threshold:** If >50% of sampled URLs fail (4xx/5xx, fabricated, or content mismatch):
+- Mark ALL Gemini-sourced claims (including unsampled) as `(unverified)` in the report
+- Re-search **all** claims via WebSearch (not just the failed ones — the high failure rate indicates systemic hallucination)
+- Replace Gemini URLs with WebSearch results in the final report
+- Note in the report: `⚠️ Gemini source validation: X/Y URLs failed. Full WebSearch fallback triggered.`
+
+**URLs not sampled** (skipped due to cap or low priority) must appear with `(unverified)` in the Sources table.
+
+**After validation completes:** recompute verdicts, confidence markers, and source tier assignments before proceeding to Step 5. Validation may have downgraded verdicts or discarded sources — the report must reflect the post-validation state, not the pre-validation state.
+
 ### 5. Report
+
+> Fact-check aims for transparency, not authority. The report shows what evidence exists and where gaps remain — the reader decides.
+
+#### Source tier reference
+
+| Tier | Type | Examples |
+|------|------|----------|
+| L1 | Official records | IR reports, SEC filings, official announcements |
+| L2 | Adversarial sources | Court rulings, regulatory actions, competitor analyses |
+| L3 | Major media | Bloomberg, Reuters, WSJ, CNN (editorial review process) |
+| L4 | Industry analysis | Named analyst reports (Goldman Sachs, Cantor Fitzgerald) |
+| L5 | Tech media | TechCrunch, The Verge, Ars Technica |
+| L6 | Community/blogs | Medium, Substack, Reddit (signal, not evidence) |
+
+An L1 single source outweighs three L6 sources citing each other.
+
+#### Convergence-based confidence
+
+| Marker | Condition |
+|--------|-----------|
+| 🟢 High | 3+ independent sources (different outlets/authors) converge on the same conclusion |
+| 🟡 Medium | 2 independent sources agree |
+| 🟠 Single source | Only 1 source, or multiple sources that trace back to the same origin |
+| 🔴 Conflicting | Sources directly contradict each other |
+
+"Independent" means different editorial chains. Three articles all citing the same Reuters wire count as 🟠, not 🟢.
+
+#### Report format
 
 ```markdown
 ## Fact-Check Report
@@ -100,27 +193,35 @@ Single-source claims: note "single source" regardless of verdict.
 
 ### Results
 
-| # | Claim | Verdict | Source | Notes |
-|---|-------|---------|--------|-------|
+| # | Claim | Verdict | Confidence | Source tier | Notes |
+|---|-------|---------|------------|-------------|-------|
+| 1 | ... | ✅ | 🟢 3 sources | L3+L4 | ... |
+| 2 | ... | ⚠️ | 🟠 single source | L6 | ... |
+| 3 | ... | ❌ | 🔴 conflicting | L3 vs L5 | ... |
 
 ### Issues
 
 (Detail each ⚠️/❌/❓ claim)
 
 #### [verdict] #N: "[claim]"
-- **Source**: [what Gemini found]
+- **Source**: [what search found — note which track: Gemini / WebSearch / both]
 - **Analysis**: [Claude's cross-verification]
+- **Convergence**: [how many independent sources, what tiers, any same-origin chains detected]
 - **Fix**: [suggested correction]
 
 ### Sources
 
-| # | Source | URL | Date |
-|---|--------|-----|------|
+| # | Source | Tier | URL | Verified | Date |
+|---|--------|------|-----|----------|------|
 
-### Confidence
-- X/Y claims backed by primary sources
-- X/Y claims have 2+ independent sources
-- Gaps: [areas where search was insufficient]
+### Confidence Summary
+
+- **Strong claims** (🟢): X/Y — backed by 3+ independent sources
+- **Adequate claims** (🟡): X/Y — 2 independent sources
+- **Weak claims** (🟠): X/Y — single source or same-origin chain
+- **Disputed claims** (🔴): X/Y — sources contradict
+- **Highest tier reached**: LN ([type])
+- **Gaps**: [topics where only L5-L6 sources were found, or no sources at all]
 ```
 
 ### 6. Save (optional)
@@ -130,5 +231,5 @@ Ask: **"Save the report?"** If yes, save to `.claude/pi-fact-check/<slug>.md`.
 ### Notes
 
 - **No Codex** — fact-checking needs search, not more LLM opinions. For opinion-based review, use `/pi-multi-review`
-- Keep Gemini input under 12,000 chars
+- Gemini batches auto-split at 2 claims each (search grounding serializes internally — small batches finish faster). If a single batch exceeds ~10,000 chars, split further
 - Works with any language
