@@ -75,31 +75,12 @@ Return numbered list matching input. No editorializing.
 
 One WebSearch call per claim, all in parallel. Use the suggested search terms from Step 2 as query.
 
-#### Launch rules
-
-Issue **all** tool calls in a single response — no dependencies between them:
-- N Bash calls (one per Gemini batch, each with 2 claims)
-- N WebSearch calls (one per claim)
-
 #### Merge rules
 
-For each claim, collect sources from both tracks:
+For each claim, merge sources from both tracks. If one track fails (timeout, auth, quota, CLI not found, non-zero exit), use the other. If both fail, fall back to Claude's training data and note the degradation.
 
-| Gemini result | WebSearch result | Action |
-|---------------|-----------------|--------|
-| ✅ returned | ✅ returned | Merge both — more sources = stronger convergence |
-| ✅ returned | ❌ failed | Use Gemini only |
-| ❌ failed | ✅ returned | Use WebSearch only (note failure reason: timeout/auth/quota/CLI not found) |
-| ❌ failed | ❌ failed | Claude's training data only (note degradation) |
-| ⚠️ partial/malformed | ✅ returned | Extract usable parts from Gemini, supplement with WebSearch |
-
-"Failed" includes: timeout (exit 142), auth errors, quota exceeded, CLI not found, non-zero exit.
-"Partial" includes: truncated output, missing claims from batch, unparseable format.
-
-- Deduplicate sources pointing to the same article
 - Collapse same-editorial-chain sources (e.g., AP wire republished by 5 outlets = 1 independent source, not 5) — this affects convergence counting in Step 5
-- Gemini may find non-English sources WebSearch misses — keep both
-- WebSearch URLs are generally more reliable (no hallucination) — prefer them when conflicting
+- When Gemini and WebSearch URLs conflict, prefer WebSearch (lower hallucination risk)
 
 **Never abort.** Always produce a report, even if both tracks fail for some claims.
 
@@ -142,9 +123,7 @@ Sample URLs from search results for existence and content verification. Focus on
 **For each sampled URL:**
 
 1. **WebFetch** the URL
-2. **HTTP 4xx/5xx or unreachable** → mark source as `(unverified)` in the report, do NOT use it as evidence. If this was the claim's **only** source, downgrade verdict one level (✅→⚠️, ⚠️→❓, ❌→❓)
-3. **Page loads but content doesn't match** Gemini's description (wrong topic, different numbers, no mention of the claim) → downgrade the claim's verdict by one level and note the discrepancy
-4. **URL contains `(Simulated)` or is obviously fabricated** (e.g., slug too perfectly matches the query) → treat as hallucinated, discard entirely, downgrade verdict one level
+2. **Validation failure** — any of: unreachable/4xx/5xx, content doesn't match the claimed finding, or URL is obviously fabricated → mark source as `(unverified)`, do NOT use as evidence, downgrade the claim's verdict one level (✅→⚠️, ⚠️→❓, ❌→❓), and note the reason
 
 **Batch failure threshold:** If >50% of sampled URLs fail (4xx/5xx, fabricated, or content mismatch):
 - Mark ALL Gemini-sourced claims (including unsampled) as `(unverified)` in the report
@@ -153,8 +132,6 @@ Sample URLs from search results for existence and content verification. Focus on
 - Note in the report: `⚠️ Gemini source validation: X/Y URLs failed. Full WebSearch fallback triggered.`
 
 **URLs not sampled** (skipped due to cap or low priority) must appear with `(unverified)` in the Sources table.
-
-**After validation completes:** recompute verdicts, confidence markers, and source tier assignments before proceeding to Step 5. Validation may have downgraded verdicts or discarded sources — the report must reflect the post-validation state, not the pre-validation state.
 
 ### 5. Report
 
