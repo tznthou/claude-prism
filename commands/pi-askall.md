@@ -55,8 +55,8 @@ The CLI argument (`"perspective request"`) is a short label for the call — the
 
 ### 3. Handle partial failures
 
-- One provider fails → continue with the other + Claude. Note which is absent.
-- Both fail → Claude answers solo. Note: "External providers unavailable — single-perspective answer."
+- One provider fails → continue with the other + Claude. Note which provider is absent and the specific failure reason from stderr (TIMEOUT, RATE_LIMIT, AUTH_ERROR, etc.).
+- Both fail → Claude answers solo. Note: "⚠️ Both external providers unavailable ([Codex reason] / [Gemini reason]) — single-perspective answer."
 - **Never abort.** Always produce output.
 
 ### 4. Present provider responses

@@ -91,7 +91,7 @@ fi
 
 if [[ -z "$CODEX_BIN" ]]; then
     _log ERROR "codex CLI not found"
-    echo "Error: codex CLI not found. Install: npm install -g @openai/codex" >&2
+    echo "Error: CLI_NOT_FOUND: Codex CLI not installed. Install: npm install -g @openai/codex" >&2
     exit 1
 fi
 
@@ -104,8 +104,24 @@ ERR_TMP=$(mktemp)
 trap 'rm -f "$ERR_TMP"' EXIT
 RESULT=$(printf '%s' "$PROMPT" | "${CMD[@]}" - 2>"$ERR_TMP") || {
     rc=$?
-    _log ERROR "codex call failed (exit $rc): $(cat "$ERR_TMP")"
-    cat "$ERR_TMP" >&2
+    err_text=$(cat "$ERR_TMP")
+    # Classify the error for better diagnostics
+    if [[ $rc -eq 137 || $rc -eq 143 ]]; then
+        diag="TIMEOUT: Codex CLI was killed (signal $((rc - 128))). Likely capacity issue."
+    elif echo "$err_text" | grep -qi '429\|rate.limit\|quota\|capacity'; then
+        diag="RATE_LIMIT: Codex returned 429/quota error. Try again later."
+    elif echo "$err_text" | grep -qi 'sandbox\|permission denied\|EPERM'; then
+        diag="SANDBOX: Codex sandbox restriction. Try --sandbox none for Q&A."
+    elif echo "$err_text" | grep -qi 'auth\|token\|api.key\|credential\|403'; then
+        diag="AUTH_ERROR: Codex authentication failed. Check OPENAI_API_KEY."
+    elif echo "$err_text" | grep -qi 'network\|connect\|ECONNREFUSED\|ETIMEDOUT\|DNS'; then
+        diag="NETWORK: Cannot reach OpenAI API. Check internet connection."
+    else
+        diag="CLI_ERROR: Codex CLI exited with code $rc."
+    fi
+    _log ERROR "codex call failed ($diag): $err_text"
+    echo "Error: $diag" >&2
+    [[ -n "$err_text" ]] && echo "Details: $err_text" >&2
     exit $rc
 }
 

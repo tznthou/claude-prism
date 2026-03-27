@@ -72,7 +72,7 @@ fi
 
 if [[ -z "$GEMINI_BIN" ]]; then
     _log ERROR "gemini CLI not found"
-    echo "Error: gemini CLI not found. Install: npm install -g @google/gemini-cli" >&2
+    echo "Error: CLI_NOT_FOUND: Gemini CLI not installed. Install: npm install -g @google/gemini-cli" >&2
     exit 1
 fi
 
@@ -86,8 +86,22 @@ ERR_TMP=$(mktemp)
 trap 'rm -f "$ERR_TMP"' EXIT
 RESULT=$(printf '%s' "$PROMPT" | "${CMD[@]}" -p " " 2>"$ERR_TMP") || {
     rc=$?
-    _log ERROR "gemini call failed (exit $rc): $(cat "$ERR_TMP")"
-    cat "$ERR_TMP" >&2
+    err_text=$(cat "$ERR_TMP")
+    # Classify the error for better diagnostics
+    if [[ $rc -eq 137 || $rc -eq 143 ]]; then
+        diag="TIMEOUT: Gemini CLI was killed (signal $((rc - 128))). Likely capacity issue or search grounding delay."
+    elif echo "$err_text" | grep -qi '429\|rate.limit\|quota\|capacity'; then
+        diag="RATE_LIMIT: Gemini returned 429/quota error. Try again later or use an API key (GEMINI_API_KEY)."
+    elif echo "$err_text" | grep -qi 'auth\|oauth\|token\|credential\|permission\|403'; then
+        diag="AUTH_ERROR: Gemini authentication failed. Check OAuth session or API key."
+    elif echo "$err_text" | grep -qi 'network\|connect\|ECONNREFUSED\|ETIMEDOUT\|DNS'; then
+        diag="NETWORK: Cannot reach Gemini API. Check internet connection."
+    else
+        diag="CLI_ERROR: Gemini CLI exited with code $rc."
+    fi
+    _log ERROR "gemini call failed ($diag): $err_text"
+    echo "Error: $diag" >&2
+    [[ -n "$err_text" ]] && echo "Details: $err_text" >&2
     exit $rc
 }
 

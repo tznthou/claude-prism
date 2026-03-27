@@ -27,7 +27,10 @@ $(code content)" | ~/.claude/scripts/call-codex.sh "$ARGUMENTS"
 
 ### 3. Handle failures
 
-If Codex fails (script exits non-zero or CLI not found), Claude answers the question directly and notes: "Codex unavailable — answering with Claude only."
+If Codex fails (script exits non-zero or CLI not found):
+- Claude answers the question directly.
+- Include the specific failure reason from stderr (the script classifies errors as TIMEOUT, RATE_LIMIT, AUTH_ERROR, SANDBOX, NETWORK, or CLI_ERROR).
+- Note in output: "⚠️ Codex unavailable ([reason]) — answering with Claude only. For multi-provider perspectives, try `/pi-askall`."
 
 ### 4. Present results
 

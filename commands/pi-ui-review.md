@@ -93,7 +93,10 @@ $(frontend code content)"
 
 ### 4. Handle failures
 
-If Gemini fails (script exits non-zero or CLI not found), Claude performs the UI/UX review independently. Note in output: "Gemini unavailable — review conducted by Claude only."
+If Gemini fails (script exits non-zero or CLI not found):
+- Claude performs the UI/UX review independently.
+- Include the specific failure reason from stderr (TIMEOUT, RATE_LIMIT, AUTH_ERROR, NETWORK, or CLI_ERROR).
+- Note in output: "⚠️ Gemini unavailable ([reason]) — review conducted by Claude only. For cross-provider review with Codex, try `/pi-multi-review`."
 
 ### 5. Screenshot analysis (if provided)
 
