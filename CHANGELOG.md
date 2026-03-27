@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v0.11.1 (2026-03-27)
+
+**Model Tier Override** — two-tier model setup for heavy-reasoning commands.
+
+### Model tier override
+
+- **`GEMINI_MODEL_DEEP` env var** — new environment variable for selecting a higher-tier Gemini model on heavy-reasoning commands. Falls back to `GEMINI_MODEL`, then CLI default — zero behavioral change for existing setups
+- **Four commands upgraded** — `/pi-fact-check`, `/pi-research`, `/pi-multi-review`, and `/pi-plan` now use `GEMINI_MODEL_DEEP` when set, automatically routing to Gemini Pro for deep reasoning while keeping Flash as the fast default for other commands
+- **Nounset-safe** — parameter expansion uses `${GEMINI_MODEL_DEEP:-${GEMINI_MODEL:-}}` to avoid `set -u` breakage in strict shell environments
+
 ## v0.11.0 (2026-03-27)
 
 **Provider Resilience** — dual-track research, structured error diagnostics, and graceful degradation across all commands.
