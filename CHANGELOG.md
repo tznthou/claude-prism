@@ -4,6 +4,42 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v0.11.0 (2026-03-27)
+
+**Provider Resilience** — dual-track research, structured error diagnostics, and graceful degradation across all commands.
+
+Driven by Gemini CLI service degradation (Discussion [#22970](https://github.com/google-gemini/gemini-cli/discussions/22970): paid users hitting 429 errors, 7–10 min latency, 24hr+ outages post-March 25 update), this release hardens every command against provider instability.
+
+### Dual-track research
+
+- **`/pi-research` upgraded to dual-track** — now launches Gemini (search grounding) and WebSearch simultaneously, same architecture proven in `/pi-fact-check`. If Gemini times out or returns 429, WebSearch results cover the gap. Claude synthesizes all available sources with URL attribution
+- **Source URLs in research reports** — Gemini prompted to return source URLs; WebSearch URLs included in final report. Claims without sources marked as (unverified)
+- **Provider Status table** — research reports now begin with a track status table (Gemini ✅/⚠️, WebSearch ✅/⚠️, Claude ✅ always)
+
+### Structured error diagnostics
+
+- **Error classification in shell scripts** — `call-gemini.sh` and `call-codex.sh` now classify errors into 7 categories: `TIMEOUT`, `RATE_LIMIT`, `AUTH_ERROR`, `PERMISSION`, `SANDBOX` (Codex only), `NETWORK`, `CLI_ERROR`, plus `CLI_NOT_FOUND` for missing binaries
+- **Bash regex over grep** — error classification uses `[[ "${err_text,,}" =~ pattern ]]` instead of `echo | grep -qi`, eliminating subshell forks on the error path and avoiding a `set -euo pipefail` edge case
+- **PERMISSION class** — new error category for filesystem permission denied (previously misclassified as AUTH_ERROR in both scripts). `call-codex.sh` reordered: SANDBOX now matches before AUTH_ERROR, preventing "permission denied" from triggering wrong recovery guidance
+- **CLI_NOT_FOUND class** — binary resolution failures now emit the same structured `Error: CLI_NOT_FOUND:` prefix as runtime errors, so downstream commands can parse failure reason consistently
+
+### Unified failure handling across all commands
+
+All 10 commands updated with consistent failure handling:
+
+- **Specific failure reasons** — every failure message now includes the error classification from stderr (e.g., "⚠️ Gemini unavailable (RATE_LIMIT) — ...") instead of generic "unavailable"
+- **Alternative command suggestions** — when a provider fails, the message suggests a relevant alternative:
+  - `/pi-ask-codex` / `/pi-ask-gemini` → suggest `/pi-askall`
+  - `/pi-code-review` → suggest `/pi-multi-review`
+  - `/pi-ui-review` → suggest `/pi-multi-review`
+- **Full error category lists** — all command docs now list the complete set of error categories (no more "etc." shortcuts), matching the actual script output. Gemini commands include PERMISSION; Codex commands include SANDBOX
+- **Never abort** — consistent across all commands: always produce output, even if all providers fail
+
+### Analysis context
+
+- Gemini CLI log analysis (628 log entries, Feb 24 – Mar 27): average latency increased ~30% post-March 25 service update, 6 timeout incidents concentrated on API deployment dates (Mar 18: 60% failure rate, Mar 25: 22% failure rate)
+- `/pi-research` and `/pi-fact-check` confirmed as architecturally distinct (exploratory vs verification) — not merged, but `/pi-research` elevated to the same resilience tier
+
 ## v0.10.3 (2026-03-26)
 
 **Fact-Check Dual-Track** — Gemini + WebSearch race eliminates dead-wait time.
