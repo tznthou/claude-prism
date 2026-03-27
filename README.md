@@ -64,11 +64,11 @@ claude-prism's [Confidence Scoring Framework](spec/confidence-scoring-v1.md) wor
 | `/pi-fact-check` | Gemini + WebSearch + Claude | Fact-check content — dual-track search (Gemini + WebSearch), Claude validates with convergence scoring |
 | `/pi-ui-design` | Gemini | HTML mockup from design spec |
 | `/pi-ui-review` | Gemini | UI/UX accessibility & design audit (with confidence scoring) |
-| `/pi-research` | Gemini | Structured technical research |
+| `/pi-research` | Gemini + WebSearch + Claude | Structured technical research — dual-track search (Gemini + WebSearch parallel) |
 | `/pi-multi-review` | Codex + Gemini + Claude | Triple-provider adversarial review (smart routing + confidence scoring) |
 | `/pi-plan` | Codex + Gemini + Claude | Multi-provider implementation planning for architectural decisions |
 
-All commands include **graceful degradation** — if a provider is unavailable, Claude continues with the remaining providers instead of failing.
+All commands include **graceful degradation** — if a provider is unavailable, Claude continues with the remaining providers instead of failing. Every failure includes a **structured error diagnostic** (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, SANDBOX, NETWORK, CLI_ERROR, or CLI_NOT_FOUND) and suggests an alternative command.
 
 ### `/pi-ask-codex` — Ask OpenAI
 
@@ -139,7 +139,7 @@ Gemini reviews frontend code for accessibility, responsive design, component str
 
 ### `/pi-research` — Technical Research
 
-Gemini conducts structured technical research with comparison tables, recommendations, and resource links. If the topic relates to the current project, relevant context (dependencies, existing patterns) is automatically included. Results can optionally be saved to `.claude/pi-research/` for future reference.
+Dual-track search: Gemini (search grounding) and WebSearch run in parallel for structured technical research with comparison tables, recommendations, and source URLs. If one track fails, the other covers the gap — same resilience architecture as `/pi-fact-check`. If the topic relates to the current project, relevant context (dependencies, existing patterns) is automatically included. Results can optionally be saved to `.claude/pi-research/` for future reference.
 
 ```
 /pi-research Best authentication libraries for Next.js App Router
@@ -543,7 +543,7 @@ claude-prism is a local wrapper — it does not process or bill tokens itself. E
 | `/pi-code-review` | 1 (Codex) | 2K–10K | 1K–4K | Scales with diff size |
 | `/pi-ui-review` | 1 (Gemini) | 2K–10K | 1K–4K | Scales with file count |
 | `/pi-ui-design` | 1 (Gemini) | 1K–3K | 3K–8K | Output-heavy (HTML generation) |
-| `/pi-research` | 1 (Gemini) | 1K–3K | 2K–6K | Output-heavy (structured report) |
+| `/pi-research` | 1 (Gemini) + 2–4 (WebSearch) | 1K–5K | 2K–8K | Dual-track search; scales with topic complexity |
 | `/pi-multi-review` | 2 (Codex + Gemini) | Above ×2 | Above ×2 | Both providers called in parallel |
 | `/pi-plan` | 0–2 (optional) | 1K–5K each | 1K–4K each | Providers consulted only if available |
 Token ranges are approximate and vary with input size (diff length, file count, question complexity). Different providers use different tokenization methods — these figures are order-of-magnitude estimates, not billing-accurate counts.
@@ -622,7 +622,7 @@ With logging enabled (default), check `~/.claude/logs/multi-ai.log` to verify. E
 
 **Q: What if I only have Gemini CLI installed?**
 
-That's fine. All commands include graceful degradation — if a provider is unavailable, Claude continues with the remaining providers. `/pi-multi-review` and `/pi-askall` will use Claude + the available provider (two perspectives instead of three). `/pi-code-review` will fall back to a Claude-only review with a caveat note. `/pi-fact-check` uses dual-track (Gemini + WebSearch simultaneously); if both fail, falls back to Claude's training data.
+That's fine. All commands include graceful degradation with **structured error diagnostics** — if a provider is unavailable, the failure message includes the specific reason (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, SANDBOX, NETWORK, CLI_ERROR, or CLI_NOT_FOUND) and suggests an alternative command. `/pi-multi-review` and `/pi-askall` will use Claude + the available provider (two perspectives instead of three). `/pi-code-review` will fall back to a Claude-only review with a caveat note and suggest `/pi-multi-review`. `/pi-fact-check` and `/pi-research` both use dual-track (Gemini + WebSearch simultaneously); if both fail, falls back to Claude's training data.
 
 **Q: What if a provider returns an unexpected format?**
 

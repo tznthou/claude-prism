@@ -64,11 +64,11 @@ claude-prism 的 [Confidence Scoring Framework](spec/confidence-scoring-v1.md) �
 | `/pi-fact-check` | Gemini + WebSearch + Claude | 事實查核 — 雙軌搜尋（Gemini + WebSearch 同步），Claude 以收斂度評分驗證 |
 | `/pi-ui-design` | Gemini | 從設計規格產生 HTML mockup |
 | `/pi-ui-review` | Gemini | UI/UX 無障礙與設計審查（含信心度評分） |
-| `/pi-research` | Gemini | 結構化技術研究 |
+| `/pi-research` | Gemini + WebSearch + Claude | 結構化技術研究 — 雙軌搜尋（Gemini + WebSearch 同步） |
 | `/pi-multi-review` | Codex + Gemini + Claude | 三方對抗式審查（智慧路由 + 信心度評分） |
 | `/pi-plan` | Codex + Gemini + Claude | 多方觀點實作規劃，適用於架構決策 |
 
-所有指令皆內建 **graceful degradation** — 若某個 provider 不可用，Claude 會用剩餘的 provider 繼續執行，而非直接失敗。
+所有指令皆內建 **graceful degradation** — 若某個 provider 不可用，Claude 會用剩餘的 provider 繼續執行，而非直接失敗。每次失敗都附帶**結構化錯誤診斷**（TIMEOUT、RATE_LIMIT、AUTH_ERROR、PERMISSION、SANDBOX、NETWORK、CLI_ERROR 或 CLI_NOT_FOUND）並建議替代指令。
 
 ### `/pi-ask-codex` — 詢問 OpenAI
 
@@ -139,7 +139,7 @@ Gemini 審查前端程式碼的無障礙、響應式設計、元件結構和 UX 
 
 ### `/pi-research` — 技術研究
 
-Gemini 進行結構化技術研究，包含比較表、推薦方案和學習資源。若研究主題與當前專案相關，會自動帶入相關 context（依賴、既有模式）。研究結果可選擇存到 `.claude/pi-research/` 供日後參考。
+雙軌搜尋：Gemini（search grounding）和 WebSearch 同步執行，產出結構化技術研究報告，含比較表、推薦方案和來源 URL。任一軌道失敗時另一軌道自動補位——與 `/pi-fact-check` 相同的韌性架構。若研究主題與當前專案相關，會自動帶入相關 context（依賴、既有模式）。研究結果可選擇存到 `.claude/pi-research/` 供日後參考。
 
 ```
 /pi-research Next.js App Router 最佳認證方案
@@ -543,7 +543,7 @@ claude-prism 是本地端 wrapper——它本身不處理也不計費 token。�
 | `/pi-code-review` | 1 (Codex) | 2K–10K | 1K–4K | 隨 diff 大小增減 |
 | `/pi-ui-review` | 1 (Gemini) | 2K–10K | 1K–4K | 隨檔案數量增減 |
 | `/pi-ui-design` | 1 (Gemini) | 1K–3K | 3K–8K | 產出較重（HTML 生成） |
-| `/pi-research` | 1 (Gemini) | 1K–3K | 2K–6K | 產出較重（結構化報告） |
+| `/pi-research` | 1 (Gemini) + 2–4 (WebSearch) | 1K–5K | 2K–8K | 雙軌搜尋；隨主題複雜度增減 |
 | `/pi-multi-review` | 2 (Codex + Gemini) | 上述 ×2 | 上述 ×2 | 兩個 provider 並行呼叫 |
 | `/pi-plan` | 0–2（可選） | 各 1K–5K | 各 1K–4K | 僅在 provider 可用時諮詢 |
 Token 範圍為近似值，隨輸入大小（diff 長度、檔案數、問題複雜度）變動。不同 provider 使用不同的 tokenization 方法——這些數字是數量級估算，非帳單精確值。
@@ -622,7 +622,7 @@ Logging 預設開啟，檢查 `~/.claude/logs/multi-ai.log` 即可驗證。每�
 
 **Q: 如果我只裝了 Gemini CLI？**
 
-沒問題。所有指令都內建 graceful degradation——若 provider 不可用，Claude 會用剩餘的 provider 繼續。`/pi-multi-review` 和 `/pi-askall` 會使用 Claude + 可用的 provider（兩方觀點取代三方）。`/pi-code-review` 會退回 Claude 獨立審查並加註同源盲點警告。`/pi-fact-check` 採用雙軌搜尋（Gemini + WebSearch 同步）；若兩者皆失敗才退至 Claude 訓練資料。
+沒問題。所有指令都內建 graceful degradation 和**結構化錯誤診斷**——若 provider 不可用，失敗訊息會包含具體原因（TIMEOUT、RATE_LIMIT、AUTH_ERROR、PERMISSION、SANDBOX、NETWORK、CLI_ERROR 或 CLI_NOT_FOUND）並建議替代指令。`/pi-multi-review` 和 `/pi-askall` 會使用 Claude + 可用的 provider（兩方觀點取代三方）。`/pi-code-review` 會退回 Claude 獨立審查並加註同源盲點警告，同時建議改用 `/pi-multi-review`。`/pi-fact-check` 和 `/pi-research` 都採用雙軌搜尋（Gemini + WebSearch 同步）；若兩者皆失敗才退至 Claude 訓練資料。
 
 **Q: 如果 provider 回傳格式不符預期？**
 
