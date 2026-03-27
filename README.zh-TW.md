@@ -347,6 +347,7 @@ claude-prism/
 | 變數 | 預設值 | 說明 |
 |------|--------|------|
 | `GEMINI_MODEL` | （CLI 預設） | 覆蓋 Gemini 模型（如 `gemini-3-flash-preview`） |
+| `GEMINI_MODEL_DEEP` | （回退至 `GEMINI_MODEL`，再回退至 CLI 預設） | 重推理指令用的模型（`/pi-fact-check`、`/pi-research`、`/pi-multi-review`、`/pi-plan`） |
 | `CODEX_MODEL` | （CLI 預設） | 覆蓋 Codex 模型（如 `gpt-5.3-codex`） |
 | `GEMINI_API_KEY` | （無） | 使用自己的 AI Studio API key 取代 OAuth（[申請](https://aistudio.google.com/apikey)） |
 | `GEMINI_BIN` | （自動偵測） | Gemini 執行檔路徑 |
@@ -357,7 +358,8 @@ claude-prism/
 
 ```bash
 # Shell 設定檔（~/.zshrc 或 ~/.bashrc）
-export GEMINI_MODEL="gemini-3-flash-preview"   # 建議：更快、避免 Pro 限流
+export GEMINI_MODEL="gemini-3-flash-preview"   # 預設：快速、穩定
+export GEMINI_MODEL_DEEP="gemini-3-pro-preview"  # 重推理：事實查核、研究、Review、規劃
 export CODEX_MODEL="gpt-5.3-codex"
 
 # 選用：使用自己的 API key 取得獨立 quota

@@ -110,7 +110,7 @@ $(code)"
 
 **Gemini Review:**
 ```bash
-~/.claude/scripts/call-gemini.sh "You are a Senior Code Reviewer.
+GEMINI_MODEL="${GEMINI_MODEL_DEEP:-${GEMINI_MODEL:-}}" ~/.claude/scripts/call-gemini.sh "You are a Senior Code Reviewer.
 Focus: design patterns, alternatives, maintainability, test coverage, inline annotation compliance (check if changes violate nearby IMPORTANT/WARNING/FIXME/TODO/NOTE comments).
 $(if guidelines found)Also check compliance with the project guidelines below.$(end if)
 

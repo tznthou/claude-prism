@@ -347,6 +347,7 @@ Installed to:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GEMINI_MODEL` | (CLI default) | Override Gemini model (e.g. `gemini-3-flash-preview`) |
+| `GEMINI_MODEL_DEEP` | (falls back to `GEMINI_MODEL`, then CLI default) | Model for heavy-reasoning commands (`/pi-fact-check`, `/pi-research`, `/pi-multi-review`, `/pi-plan`) |
 | `CODEX_MODEL` | (CLI default) | Override Codex model (e.g. `gpt-5.3-codex`) |
 | `GEMINI_API_KEY` | (none) | Use your own AI Studio API key instead of OAuth ([get one](https://aistudio.google.com/apikey)) |
 | `GEMINI_BIN` | (auto-detect) | Path to gemini binary |
@@ -357,7 +358,8 @@ By default, scripts defer to each CLI's built-in default model — no configurat
 
 ```bash
 # Shell profile (~/.zshrc or ~/.bashrc)
-export GEMINI_MODEL="gemini-3-flash-preview"   # Recommended: faster, avoids Pro rate limiting
+export GEMINI_MODEL="gemini-3-flash-preview"   # Default: fast, stable
+export GEMINI_MODEL_DEEP="gemini-3-pro-preview"  # Heavy reasoning: fact-check, research, review, planning
 export CODEX_MODEL="gpt-5.3-codex"
 
 # Optional: use your own API key for direct quota control

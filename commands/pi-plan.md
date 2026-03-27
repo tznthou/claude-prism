@@ -59,7 +59,7 @@ $(relevant code snippets — keep under 4000 chars)"
 
 **Gemini Analysis:**
 ```bash
-~/.claude/scripts/call-gemini.sh "You are a software architect. Analyze this task and provide:
+GEMINI_MODEL="${GEMINI_MODEL_DEEP:-${GEMINI_MODEL:-}}" ~/.claude/scripts/call-gemini.sh "You are a software architect. Analyze this task and provide:
 1. Key technical challenges
 2. Recommended approach (with alternatives considered)
 3. Potential risks and edge cases
