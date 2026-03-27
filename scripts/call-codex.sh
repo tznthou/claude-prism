@@ -106,15 +106,16 @@ RESULT=$(printf '%s' "$PROMPT" | "${CMD[@]}" - 2>"$ERR_TMP") || {
     rc=$?
     err_text=$(cat "$ERR_TMP")
     # Classify the error for better diagnostics
+    err_lower="${err_text,,}"
     if [[ $rc -eq 137 || $rc -eq 143 ]]; then
         diag="TIMEOUT: Codex CLI was killed (signal $((rc - 128))). Likely capacity issue."
-    elif echo "$err_text" | grep -qi '429\|rate.limit\|quota\|capacity'; then
+    elif [[ "$err_lower" =~ 429|rate.limit|quota|capacity ]]; then
         diag="RATE_LIMIT: Codex returned 429/quota error. Try again later."
-    elif echo "$err_text" | grep -qi 'sandbox\|permission denied\|EPERM'; then
+    elif [[ "$err_lower" =~ sandbox|permission.denied|eperm ]]; then
         diag="SANDBOX: Codex sandbox restriction. Try --sandbox none for Q&A."
-    elif echo "$err_text" | grep -qi 'auth\|token\|api.key\|credential\|403'; then
+    elif [[ "$err_lower" =~ auth|token|api.key|credential|403 ]]; then
         diag="AUTH_ERROR: Codex authentication failed. Check OPENAI_API_KEY."
-    elif echo "$err_text" | grep -qi 'network\|connect\|ECONNREFUSED\|ETIMEDOUT\|DNS'; then
+    elif [[ "$err_lower" =~ network|connect|econnrefused|etimedout|dns ]]; then
         diag="NETWORK: Cannot reach OpenAI API. Check internet connection."
     else
         diag="CLI_ERROR: Codex CLI exited with code $rc."

@@ -84,14 +84,9 @@ Combine findings from both tracks:
 
 When a track fails, include the specific reason in the status note:
 
-**Gemini** (stderr from call-gemini.sh):
-- Timeout (>90s) → "Gemini timed out (>90s) — likely capacity issue. Tip: try `/pi-ask-gemini` for a simpler query."
-- Non-zero exit → "Gemini CLI error (exit code N)."
-- CLI not found → "Gemini CLI not installed. See: https://github.com/google-gemini/gemini-cli"
+**Gemini**: The script classifies errors in stderr (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, NETWORK, CLI_ERROR, or CLI_NOT_FOUND). Include the classification and diagnostic message directly.
 
-**WebSearch** (Claude tool — no stderr):
-- Tool returns error or empty results → "WebSearch returned no results for [query]."
-- WebSearch failures are typically transient — note and continue.
+**WebSearch** (Claude tool — no stderr): If the tool returns an error or empty results, note "WebSearch returned no results for [query]." WebSearch failures are typically transient — note and continue.
 
 ### 5. Claude synthesis
 

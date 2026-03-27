@@ -115,7 +115,7 @@ echo "prompt + code" | ~/.claude/scripts/call-codex.sh "review"
 
 **If Codex fails** (script exits non-zero or CLI not found):
 - Do NOT abort. Claude performs the review independently instead.
-- Include the specific failure reason from stderr (TIMEOUT, RATE_LIMIT, AUTH_ERROR, SANDBOX, NETWORK, or CLI_ERROR).
+- Include the specific failure reason from stderr (TIMEOUT, RATE_LIMIT, AUTH_ERROR, SANDBOX, NETWORK, CLI_ERROR, or CLI_NOT_FOUND).
 - Note in output: "⚠️ Codex unavailable ([reason]) — review conducted by Claude only (same-source blind spot caveat applies). For cross-provider review with Gemini, try `/pi-multi-review`."
 
 **If Codex output doesn't match requested format** (no emoji severity, no score, pure prose):

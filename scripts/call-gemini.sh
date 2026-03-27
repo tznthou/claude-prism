@@ -88,13 +88,16 @@ RESULT=$(printf '%s' "$PROMPT" | "${CMD[@]}" -p " " 2>"$ERR_TMP") || {
     rc=$?
     err_text=$(cat "$ERR_TMP")
     # Classify the error for better diagnostics
+    err_lower="${err_text,,}"
     if [[ $rc -eq 137 || $rc -eq 143 ]]; then
         diag="TIMEOUT: Gemini CLI was killed (signal $((rc - 128))). Likely capacity issue or search grounding delay."
-    elif echo "$err_text" | grep -qi '429\|rate.limit\|quota\|capacity'; then
+    elif [[ "$err_lower" =~ 429|rate.limit|quota|capacity ]]; then
         diag="RATE_LIMIT: Gemini returned 429/quota error. Try again later or use an API key (GEMINI_API_KEY)."
-    elif echo "$err_text" | grep -qi 'auth\|oauth\|token\|credential\|permission\|403'; then
+    elif [[ "$err_lower" =~ permission.denied|eperm ]]; then
+        diag="PERMISSION: Filesystem permission denied. Check temp directory and file permissions."
+    elif [[ "$err_lower" =~ auth|oauth|token|credential|403 ]]; then
         diag="AUTH_ERROR: Gemini authentication failed. Check OAuth session or API key."
-    elif echo "$err_text" | grep -qi 'network\|connect\|ECONNREFUSED\|ETIMEDOUT\|DNS'; then
+    elif [[ "$err_lower" =~ network|connect|econnrefused|etimedout|dns ]]; then
         diag="NETWORK: Cannot reach Gemini API. Check internet connection."
     else
         diag="CLI_ERROR: Gemini CLI exited with code $rc."

@@ -141,7 +141,7 @@ $(code)"
 If one provider fails (script exits non-zero or returns an error message):
 - **Do NOT abort the review.** Continue with the remaining providers.
 - Claude always participates, so at minimum you have Claude + one external provider.
-- Include the specific failure reason from stderr (TIMEOUT, RATE_LIMIT, AUTH_ERROR, etc.).
+- Include the specific failure reason from stderr (TIMEOUT, RATE_LIMIT, AUTH_ERROR, SANDBOX, PERMISSION, NETWORK, CLI_ERROR, or CLI_NOT_FOUND).
 - In the output, clearly note: "⚠️ [Provider] unavailable ([reason]) — continuing with [other provider] + Claude."
 - If **both** external providers fail, Claude performs a solo review and notes: "⚠️ Both external providers unavailable ([Codex reason] / [Gemini reason]) — single-perspective review. For single-provider review, try `/pi-code-review` (Codex) or `/pi-ui-review` (Gemini) when they recover."
 

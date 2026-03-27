@@ -29,7 +29,7 @@ $(code content)" | ~/.claude/scripts/call-gemini.sh "$ARGUMENTS"
 
 If Gemini fails (script exits non-zero or CLI not found):
 - Claude answers the question directly.
-- Include the specific failure reason from stderr (the script classifies errors as TIMEOUT, RATE_LIMIT, AUTH_ERROR, NETWORK, or CLI_ERROR).
+- Include the specific failure reason from stderr (the script classifies errors as TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, NETWORK, CLI_ERROR, or CLI_NOT_FOUND).
 - Note in output: "⚠️ Gemini unavailable ([reason]) — answering with Claude only. For multi-provider perspectives, try `/pi-askall`."
 
 ### 4. Present results
