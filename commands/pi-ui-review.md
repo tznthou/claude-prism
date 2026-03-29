@@ -55,7 +55,14 @@ Read frontend files with the Read tool. For directories, first Glob for `*.tsx`,
 ### 3. Call Gemini
 
 ```bash
-~/.claude/scripts/call-gemini.sh "You are a UI/UX expert. Review the following frontend code.
+echo "Code to review:
+
+$(frontend code content)
+
+$(if historical review comments were found in Step 1.7)
+Historical Review Context (previous review comments on the same files — recurring issues are high-confidence signals):
+$(historical comments)
+$(end if)" | ~/.claude/scripts/call-gemini.sh "You are a UI/UX expert. Review the following frontend code provided via stdin.
 
 Review focus:
 1. ♿ Accessibility (WCAG 2.1 AA) — aria labels, keyboard navigation, color contrast
@@ -85,10 +92,7 @@ DO NOT flag:
 Output format:
 - Label each issue with category and severity (🔴/🟡/🟢)
 - Include specific fix suggestions with code examples
-- End with an overall UX score (1-10)
-
-Code:
-$(frontend code content)"
+- End with an overall UX score (1-10)"
 ```
 
 ### 4. Handle failures
