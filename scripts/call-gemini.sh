@@ -88,7 +88,7 @@ RESULT=$(printf '%s' "$PROMPT" | "${CMD[@]}" -p " " 2>"$ERR_TMP") || {
     rc=$?
     err_text=$(cat "$ERR_TMP")
     # Classify the error for better diagnostics
-    err_lower="${err_text,,}"
+    err_lower=$(printf '%s' "$err_text" | tr '[:upper:]' '[:lower:]')
     if [[ $rc -eq 137 || $rc -eq 143 ]]; then
         diag="TIMEOUT: Gemini CLI was killed (signal $((rc - 128))). Likely capacity issue or search grounding delay."
     elif [[ "$err_lower" =~ 429|rate.limit|quota|capacity ]]; then

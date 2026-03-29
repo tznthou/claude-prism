@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v0.11.3 (2026-03-29)
+
+**Fix: macOS bash 3.2 compatibility** — error classification no longer breaks on stock macOS bash.
+
+### Bash compatibility
+
+- **`${var,,}` → `tr` replacement** — `call-codex.sh` and `call-gemini.sh` error classification used bash 4+ lowercase syntax (`${err_text,,}`), which causes `bad substitution` on macOS built-in bash 3.2. Replaced with POSIX-compatible `printf | tr '[:upper:]' '[:lower:]'`
+- Only affects the error path (CLI call failure); normal execution was never impacted
+
 ## v0.11.2 (2026-03-29)
 
 **Fix: pi-ui-review stdin pipe** — large code reviews no longer silently fail.
@@ -38,7 +47,7 @@ Driven by Gemini CLI service degradation (Discussion [#22970](https://github.com
 ### Structured error diagnostics
 
 - **Error classification in shell scripts** — `call-gemini.sh` and `call-codex.sh` now classify errors into 7 categories: `TIMEOUT`, `RATE_LIMIT`, `AUTH_ERROR`, `PERMISSION`, `SANDBOX` (Codex only), `NETWORK`, `CLI_ERROR`, plus `CLI_NOT_FOUND` for missing binaries
-- **Bash regex over grep** — error classification uses `[[ "${err_text,,}" =~ pattern ]]` instead of `echo | grep -qi`, eliminating subshell forks on the error path and avoiding a `set -euo pipefail` edge case
+- **Bash regex over grep** — error classification uses `[[ "$err_lower" =~ pattern ]]` instead of `echo | grep -qi`, eliminating subshell forks on the error path and avoiding a `set -euo pipefail` edge case. Lowercase conversion updated to `printf | tr` for macOS bash 3.2 compatibility in v0.11.3
 - **PERMISSION class** — new error category for filesystem permission denied (previously misclassified as AUTH_ERROR in both scripts). `call-codex.sh` reordered: SANDBOX now matches before AUTH_ERROR, preventing "permission denied" from triggering wrong recovery guidance
 - **CLI_NOT_FOUND class** — binary resolution failures now emit the same structured `Error: CLI_NOT_FOUND:` prefix as runtime errors, so downstream commands can parse failure reason consistently
 
