@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v0.11.2 (2026-03-29)
+
+**Fix: pi-ui-review stdin pipe** — large code reviews no longer silently fail.
+
+### Stdin pipe migration
+
+- **`/pi-ui-review` stdin pipe** — code content moved from shell argument to stdin pipe, matching the v0.9.6 standard used by all other commands. Previously, large frontend code reviews caused `call-gemini.sh` to return 0 bytes silently due to ARG_MAX limits and shell metacharacter expansion in `run_in_background` mode
+- **Historical review comments via stdin** — Step 1.7 PR comment context also routed through stdin to avoid argument overflow on repos with extensive review history
+
 ## v0.11.1 (2026-03-27)
 
 **Model Tier Override** — two-tier model setup for heavy-reasoning commands.
