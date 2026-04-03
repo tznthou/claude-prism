@@ -97,12 +97,17 @@ fi
 
 # --- Execute ---
 # Always pipe prompt via stdin to avoid exposing content in `ps` output.
+# Stream directly to stdout (no buffering) so callers that background this
+# script can still capture output in real time.
 CMD=("$CODEX_BIN" exec --sandbox "$SANDBOX")
 [[ -n "$MODEL" ]] && CMD+=(--model "$MODEL")
 
 ERR_TMP=$(mktemp)
-trap 'rm -f "$ERR_TMP"' EXIT
-RESULT=$(printf '%s' "$PROMPT" | "${CMD[@]}" - 2>"$ERR_TMP") || {
+OUT_TMP=$(mktemp)
+trap 'rm -f "$ERR_TMP" "$OUT_TMP"' EXIT
+trap '' HUP  # Survive background detach (SIGHUP)
+
+printf '%s' "$PROMPT" | "${CMD[@]}" - 2>"$ERR_TMP" | tee "$OUT_TMP" || {
     rc=$?
     err_text=$(cat "$ERR_TMP")
     # Classify the error for better diagnostics
@@ -126,5 +131,4 @@ RESULT=$(printf '%s' "$PROMPT" | "${CMD[@]}" - 2>"$ERR_TMP") || {
     exit $rc
 }
 
-_log INFO "success response_len=${#RESULT}"
-echo "$RESULT"
+_log INFO "success response_len=$(wc -c < "$OUT_TMP" | tr -d ' ')"
