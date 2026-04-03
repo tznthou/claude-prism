@@ -1,11 +1,11 @@
 ---
 command: pi-code-review
-description: Cross-provider code review via Codex — eliminate same-source blind spots
+description: Adversarial code review via Codex — break confidence in changes, not validate them
 ---
 
-# Code Review via Codex
+# Adversarial Code Review via Codex
 
-Use Codex CLI to review code. Core value: **the AI that wrote the code (Claude) is NOT the one reviewing it (Codex) — eliminates same-source blind spots**.
+Use Codex CLI to adversarially review code. Core value: **the AI that wrote the code (Claude) is NOT the one reviewing it (Codex) — eliminates same-source blind spots**. The reviewer's job is to **break confidence in the change**, not validate it.
 
 ## Execution
 
@@ -69,16 +69,19 @@ git diff main...HEAD
 ### 3. Build prompt and call Codex
 
 ```bash
-~/.claude/scripts/call-codex.sh "You are a Senior Code Reviewer. Review the following code.
+~/.claude/scripts/call-codex.sh "You are performing an adversarial code review.
+Your job is to break confidence in this change, not to validate it. Default to skepticism — assume the change can fail in subtle, high-cost, or user-visible ways until the evidence says otherwise. Do not give credit for good intent, partial fixes, or likely follow-up work.
 
-Review focus:
-1. Bugs and logic errors
-2. Security vulnerabilities (OWASP Top 10)
-3. Performance issues
-4. Maintainability and code smells
-5. Design patterns and architecture
-6. Inline annotation compliance — check if changes violate nearby code comments (IMPORTANT, WARNING, FIXME, TODO, NOTE annotations, or any comment that constrains how surrounding code should behave)
-7. Project guideline compliance (if guidelines provided below)
+Attack surface — prioritize these failure modes:
+1. Auth, permissions, tenant isolation, trust boundary violations
+2. Data loss, corruption, duplication, irreversible state changes
+3. Rollback safety, retry logic, partial failure, idempotency gaps
+4. Race conditions, ordering assumptions, stale state, re-entrancy
+5. Empty-state, null, timeout, degraded dependency behavior
+6. Version skew, schema drift, migration hazards
+7. Observability gaps that would hide failures in production
+8. Inline annotation violations — check if changes contradict nearby IMPORTANT/WARNING/FIXME/TODO/NOTE comments
+9. Project guideline violations (if guidelines provided below)
 
 Scope constraint: Focus on the diff provided. Do not speculate about code outside the diff unless directly referenced by the changed lines.
 
@@ -90,12 +93,22 @@ $(guideline content from Step 1.5)
 Flag any violations of these guidelines as separate issues.
 $(end if)
 
+Finding bar — every finding MUST answer:
+1. What can go wrong?
+2. Why is this code path vulnerable?
+3. What is the likely impact (data loss, downtime, security breach, silent corruption)?
+4. What concrete change would reduce the risk?
+
 DO NOT flag:
 - Pre-existing issues not introduced in this diff
 - Issues that linters or formatters would catch (eslint, prettier, etc.)
-- Pedantic nitpicks (naming style preferences without guideline backing)
+- Pedantic nitpicks or style preferences without guideline backing
 - Lines with explicit lint-ignore / noqa / @ts-ignore comments
-- General 'could be better' suggestions without concrete impact
+- General 'could be better' suggestions without concrete failure scenario
+
+Calibration: Prefer one strong finding over several weak ones. Do not dilute serious issues with filler. If the change looks safe, say so directly.
+
+Final self-check: Before outputting, verify each finding is adversarial (not stylistic), tied to a concrete code location, plausible under a real failure scenario, and actionable.
 
 Output format:
 - Label each issue with severity: 🔴 Critical / 🟡 Medium / 🟢 Suggestion

@@ -102,9 +102,11 @@ fi
 CMD=("$CODEX_BIN" exec --sandbox "$SANDBOX")
 [[ -n "$MODEL" ]] && CMD+=(--model "$MODEL")
 
+LOG_DIR="${HOME}/.claude/logs"
+mkdir -p "$LOG_DIR"
 ERR_TMP=$(mktemp)
-OUT_TMP=$(mktemp)
-trap 'rm -f "$ERR_TMP" "$OUT_TMP"' EXIT
+OUT_TMP="${LOG_DIR}/pi-codex-last.out"
+trap 'rm -f "$ERR_TMP"' EXIT  # Keep OUT_TMP as last-run safety net
 trap '' HUP  # Survive background detach (SIGHUP)
 
 printf '%s' "$PROMPT" | "${CMD[@]}" - 2>"$ERR_TMP" | tee "$OUT_TMP" || {

@@ -60,12 +60,12 @@ claude-prism 的 [Confidence Scoring Framework](spec/confidence-scoring-v1.md) �
 | `/pi-ask-codex` | Codex | 直接提問 — 取得 OpenAI 觀點 |
 | `/pi-ask-gemini` | Gemini | 直接提問 — 取得 Google 觀點 |
 | `/pi-askall` | Codex + Gemini + Claude | 同時詢問所有 provider — 三方觀點 + 綜合分析 |
-| `/pi-code-review` | Codex | 跨 Provider 程式碼審查（含信心度評分） |
+| `/pi-code-review` | Codex | 對抗式程式碼審查 — 打破信心而非驗證（含信心度評分） |
 | `/pi-fact-check` | Gemini + WebSearch + Claude | 事實查核 — 雙軌搜尋（Gemini + WebSearch 同步），Claude 以收斂度評分驗證 |
 | `/pi-ui-design` | Gemini | 從設計規格產生 HTML mockup |
 | `/pi-ui-review` | Gemini | UI/UX 無障礙與設計審查（含信心度評分） |
 | `/pi-research` | Gemini + WebSearch + Claude | 結構化技術研究 — 雙軌搜尋（Gemini + WebSearch 同步） |
-| `/pi-multi-review` | Codex + Gemini + Claude | 三方對抗式審查（智慧路由 + 信心度評分） |
+| `/pi-multi-review` | Codex + Gemini + Claude | 三方對抗式審查 — 分工攻擊面（智慧路由 + 信心度評分） |
 | `/pi-plan` | Codex + Gemini + Claude | 多方觀點實作規劃，適用於架構決策 |
 
 所有指令皆內建 **graceful degradation** — 若某個 provider 不可用，Claude 會用剩餘的 provider 繼續執行，而非直接失敗。每次失敗都附帶**結構化錯誤診斷**（TIMEOUT、RATE_LIMIT、AUTH_ERROR、PERMISSION、SANDBOX、NETWORK、CLI_ERROR 或 CLI_NOT_FOUND）並建議替代指令。
@@ -105,9 +105,9 @@ claude-prism 的 [Confidence Scoring Framework](spec/confidence-scoring-v1.md) �
 /pi-fact-check "特斯拉 2024 年交付 180 萬輛，市場佔有率超過 50%"
 ```
 
-### `/pi-code-review` — 跨 Provider Code Review
+### `/pi-code-review` — 對抗式 Code Review
 
-Codex review Claude 寫的程式碼。核心用例——**不同 AI 寫、不同 AI 審**。
+Codex 以**對抗式立場** review Claude 寫的程式碼——reviewer 的任務是打破你對這份改動的信心，而非驗證它。核心用例依然是**不同 AI 寫、不同 AI 審**，但 prompt 從中性的 "Senior Reviewer" 升級為 adversarial stance，定義了 9 類攻擊面（auth、data loss、race condition、rollback safety 等），每個 finding 必須回答四個問題：會出什麼問題、為什麼脆弱、影響多大、怎麼修。
 
 每個 issue 都會使用 [Confidence Scoring Framework](spec/confidence-scoring-v1.md) 打 0–100 分——evidence-based、deterministic 的雜訊過濾。只有 ≥ 80 分的 issue 會顯示。Review 同時檢查 inline annotation 合規性（`IMPORTANT`/`WARNING`/`TODO` 註解），`--pr` 模式下還會查詢同檔案的歷史 PR 評論，浮現反覆出現的問題。
 
@@ -146,9 +146,9 @@ Gemini 審查前端程式碼的無障礙、響應式設計、元件結構和 UX 
 /pi-research Monorepo 工具比較：Turborepo vs Nx vs Moon
 ```
 
-### `/pi-multi-review` — 三方對抗式 Review
+### `/pi-multi-review` — 三方對抗式 Review（分工攻擊面）
 
-旗艦指令。同一份程式碼**同時**送給 Codex 和 Gemini，Claude 整合分析：
+旗艦指令。同一份程式碼**同時**送給 Codex 和 Gemini 進行**分工 adversarial review**——Codex 攻擊 security 與 data integrity（auth、data loss、race condition、schema drift 等 7 類），Gemini 攻擊 design、UX 與 maintainability（edge case UX、accessibility、abstraction leak、test coverage 等 7 類）。Claude 整合分析：
 
 1. **共識區** — 雙方都指出的問題（高信心度，優先修復）
 2. **分歧區** — 只有一方發現的問題（Claude 判斷有效性）
@@ -648,6 +648,8 @@ Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 emoji/score 格式
 
 ## 隨想
 
+*初版 — 2026-03*
+
 在 AI Coding 的時代，大部分開發者都會使用御三家（Claude、Codex、Gemini）的 CLI。我自己訂閱了 Claude Code 之後，就一直在想：既然已經有一個強大的 orchestrator 在手上，為什麼不能同時調度其他家的 CLI 來協助我完成更多事情？不管是 Code Review、技術研究，還是 UI/UX 設計，讓不同 AI 各自從不同角度切入，結果一定比單一來源更全面。
 
 但我找了一圈，發現網路上現有的工具用起來都不太順手，不是太重、就是跟 Claude Code 的工作流整合得不好。所以我決定自己做一個。
@@ -655,6 +657,18 @@ Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 emoji/score 格式
 本來只打算寫幾個簡單的 wrapper script，解決日常 review 的需求就好。沒想到做著做著，越來越多可能性冒出來：三方對抗式審查、review 趨勢分析、CI/CD 自動化⋯⋯這些方向都不在原本的計畫裡，但每一個都讓我覺得「欸，這好像真的有用」。
 
 所以就變成了現在這個樣子。希望這個工具也能幫到你。
+
+*更新 — 2026-04-03*
+
+OpenAI 出了 [codex-plugin-cc](https://github.com/openai/codex-plugin-cc)。第一眼看到的時候，說實話有一種被暗算的感覺——什麼，官方自己下場做 Claude Code 的 Codex 插件了？
+
+但仔細研究之後就冷靜了。底層架構完全不同：他們是 Node.js + JSONRPC + Unix socket broker 的重量級方案，我們是 Bash shell script 的輕量路線。定位也不一樣，他們是單一 provider 的深度整合，我們是 cross-provider orchestration。沒有誰取代誰的問題。
+
+不過，裡面有個很有意思的東西：`adversarial-review`。他們不是讓 AI 當中性的 "Senior Reviewer"，而是明確告訴它「你的任務是打破對這份改動的信心，不是驗證它」。七類攻擊面、每個 finding 必須回答四個問題、校準規則要求「寧可一個強 finding，不要多個弱 finding」——這套設計哲學讓我很受啟發。
+
+畢竟我們只是 Vibe Coder，能站在巨人的肩膀上看遠一點，何樂而不為。所以就著手改進了 `pi-code-review` 和 `pi-multi-review` 的 prompt 架構：引入 adversarial stance、定義分工攻擊面（Codex 攻擊 security、Gemini 攻擊 design/UX）、加入 finding bar 和校準規則。概念是借來的，但融入我們既有的 confidence scoring framework 和 domain-aware weighting 之後，反而變成了我們自己的東西。
+
+開源的美好大概就是這樣吧。
 
 ---
 

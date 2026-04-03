@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v0.12.0 (2026-04-03)
+
+**Adversarial review upgrade** — review prompts redesigned from neutral "Senior Reviewer" to adversarial stance with divided attack surfaces, inspired by codex-plugin-cc concepts (Apache 2.0).
+
+### Adversarial review prompts
+
+- **pi-code-review** — Codex prompt upgraded to adversarial stance: "break confidence in the change, not validate it." 9-category attack surface (auth, data loss, race conditions, rollback safety, edge cases, schema drift, observability, annotation compliance, guideline compliance), finding bar (every finding must answer what/why/impact/fix), calibration rules ("prefer one strong finding over several weak ones"), and final self-check
+- **pi-multi-review** — both provider prompts upgraded to adversarial with **divided attack surfaces**: Codex attacks security & data integrity (7 categories), Gemini attacks design, UX & maintainability (7 categories). Aligns with existing domain-aware weighting (Codex → backend authority, Gemini → frontend authority)
+- **Consistent filtering** — "DO NOT flag" criteria unified across all three prompts (including lint-ignore/noqa/@ts-ignore exclusion)
+
+### Output persistence safety net
+
+- **Last-run output files** — `call-codex.sh` and `call-gemini.sh` now persist output to `~/.claude/logs/pi-codex-last.out` and `pi-gemini-last.out` (fixed paths, not temp files). Files survive script exit as a fallback if stdout is lost during background execution
+- Builds on v0.11.4's `tee` streaming fix — stdout remains the primary output channel; file persistence is the safety net
+
 ## v0.11.4 (2026-04-03)
 
 **Fix: streaming CLI output to prevent background execution data loss**

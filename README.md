@@ -60,12 +60,12 @@ claude-prism's [Confidence Scoring Framework](spec/confidence-scoring-v1.md) wor
 | `/pi-ask-codex` | Codex | Direct Q&A — get OpenAI's perspective |
 | `/pi-ask-gemini` | Gemini | Direct Q&A — get Google's perspective |
 | `/pi-askall` | Codex + Gemini + Claude | Ask all providers the same question — three perspectives with synthesis |
-| `/pi-code-review` | Codex | Cross-provider code review (with confidence scoring) |
+| `/pi-code-review` | Codex | Adversarial code review — break confidence in changes, not validate them (with confidence scoring) |
 | `/pi-fact-check` | Gemini + WebSearch + Claude | Fact-check content — dual-track search (Gemini + WebSearch), Claude validates with convergence scoring |
 | `/pi-ui-design` | Gemini | HTML mockup from design spec |
 | `/pi-ui-review` | Gemini | UI/UX accessibility & design audit (with confidence scoring) |
 | `/pi-research` | Gemini + WebSearch + Claude | Structured technical research — dual-track search (Gemini + WebSearch parallel) |
-| `/pi-multi-review` | Codex + Gemini + Claude | Triple-provider adversarial review (smart routing + confidence scoring) |
+| `/pi-multi-review` | Codex + Gemini + Claude | Triple-provider adversarial review with divided attack surfaces (smart routing + confidence scoring) |
 | `/pi-plan` | Codex + Gemini + Claude | Multi-provider implementation planning for architectural decisions |
 
 All commands include **graceful degradation** — if a provider is unavailable, Claude continues with the remaining providers instead of failing. Every failure includes a **structured error diagnostic** (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, SANDBOX, NETWORK, CLI_ERROR, or CLI_NOT_FOUND) and suggests an alternative command.
@@ -105,9 +105,9 @@ Dual-track search: Gemini (search grounding) and WebSearch run simultaneously �
 /pi-fact-check "Tesla delivered 1.8M vehicles in 2024 and holds over 50% market share"
 ```
 
-### `/pi-code-review` — Cross-Provider Code Review
+### `/pi-code-review` — Adversarial Code Review
 
-Codex reviews code that Claude wrote. The core use case — **different AI, different blind spots**.
+Codex reviews code that Claude wrote with an **adversarial stance** — the reviewer's job is to break confidence in the change, not validate it. The core use case is still **different AI, different blind spots**, but the prompt has been upgraded from a neutral "Senior Reviewer" to an adversarial role with 9 attack surface categories (auth, data loss, race conditions, rollback safety, etc.), a finding bar (every finding must answer: what can go wrong, why vulnerable, likely impact, concrete fix), and calibration rules ("prefer one strong finding over several weak ones").
 
 Each issue is scored 0–100 using the [Confidence Scoring Framework](spec/confidence-scoring-v1.md) — evidence-based, deterministic noise filtering. Only issues scoring ≥ 80 are shown. Reviews also check inline annotation compliance (`IMPORTANT`/`WARNING`/`TODO` comments) and, in `--pr` mode, surface recurring issues from historical PR comments on the same files.
 
@@ -146,9 +146,9 @@ Dual-track search: Gemini (search grounding) and WebSearch run in parallel for s
 /pi-research Monorepo tooling: Turborepo vs Nx vs Moon
 ```
 
-### `/pi-multi-review` — Triple-Provider Adversarial Review
+### `/pi-multi-review` — Triple-Provider Adversarial Review (Divided Attack Surfaces)
 
-The flagship command. Sends the same code to **both** Codex and Gemini in parallel, then Claude synthesizes:
+The flagship command. Sends the same code to **both** Codex and Gemini for **adversarial review with divided attack surfaces** — Codex attacks security & data integrity (auth, data loss, race conditions, schema drift, etc.), Gemini attacks design, UX & maintainability (edge-case UX, accessibility, abstraction leaks, test coverage, etc.). Claude synthesizes:
 
 1. **Consensus** — issues both providers flagged (high confidence, fix first)
 2. **Divergence** — issues only one found (Claude judges validity)
@@ -400,8 +400,8 @@ Edit the command `.md` files in `commands/`. The prompt templates are inline and
 The command prompts default to English. To get responses in Traditional Chinese:
 
 ```diff
-- "You are a Senior Code Reviewer. Review the following code."
-+ "You are a Senior Code Reviewer. Review the following code. Respond in Traditional Chinese (繁體中文)."
+- "You are performing an adversarial code review."
++ "You are performing an adversarial code review. Respond in Traditional Chinese (繁體中文)."
 ```
 
 ---
@@ -648,6 +648,8 @@ Yes. The commands and scripts are standalone — they only depend on `~/.claude/
 
 ## Reflections
 
+*First entry — 2026-03*
+
 In the age of AI-assisted coding, most developers have access to the "big three" CLIs: Claude, Codex, and Gemini. After subscribing to Claude Code, I kept thinking: since I already have a powerful orchestrator at hand, why not leverage other providers' CLIs at the same time? Whether it's code review, technical research, or UI/UX design, having different AIs approach the same problem from different angles yields more comprehensive results than any single source.
 
 I looked around, but the existing tools I found were either too heavy or didn't integrate well with Claude Code's workflow. So I decided to build my own.
@@ -655,6 +657,18 @@ I looked around, but the existing tools I found were either too heavy or didn't 
 It started as a few simple wrapper scripts to handle everyday review tasks. But as I kept building, more possibilities emerged: triple-provider adversarial review, review trend analysis, CI/CD automation... None of these were in the original plan, yet each one felt genuinely useful.
 
 So here we are. I hope this tool helps you too.
+
+*Update — 2026-04-03*
+
+OpenAI released [codex-plugin-cc](https://github.com/openai/codex-plugin-cc). My first reaction was honestly a bit of a gut punch — wait, they're officially building a Codex plugin for Claude Code themselves?
+
+But after studying it closely, I calmed down. The architectures are fundamentally different: theirs is a heavy-duty Node.js + JSONRPC + Unix socket broker setup; ours is a lightweight Bash shell script approach. The positioning is different too — they're deep single-provider integration, we're cross-provider orchestration. There's no replacement story here.
+
+That said, one thing in their repo really caught my eye: `adversarial-review`. Instead of casting the AI as a neutral "Senior Reviewer," they explicitly tell it: "your job is to break confidence in this change, not to validate it." Seven attack surface categories, every finding must answer four questions, calibration rules demanding "prefer one strong finding over several weak ones" — this design philosophy gave me a lot of inspiration.
+
+After all, we're just Vibe Coders — standing on the shoulders of giants to see a little further is nothing but a good thing. So I went ahead and reworked the prompt architecture for `pi-code-review` and `pi-multi-review`: adversarial stance, divided attack surfaces (Codex attacks security, Gemini attacks design/UX), finding bars, and calibration rules. The concepts were borrowed, but once they were fused with our existing confidence scoring framework and domain-aware weighting, they became something of our own.
+
+That's the beauty of open source, I suppose.
 
 ---
 

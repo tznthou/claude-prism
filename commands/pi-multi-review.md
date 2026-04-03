@@ -3,9 +3,9 @@ command: pi-multi-review
 description: Triple-provider adversarial review — Codex + Gemini + Claude synthesis
 ---
 
-# Multi-Provider Review (Codex + Gemini + Claude)
+# Multi-Provider Adversarial Review (Codex + Gemini + Claude)
 
-Send the same code to both Codex and Gemini for review, then Claude synthesizes and compares. **Three different AI perspectives, maximum blind spot elimination.**
+Send the same code to both Codex and Gemini for **adversarial review with divided attack surfaces**, then Claude synthesizes. Codex attacks security & data integrity; Gemini attacks design, UX & maintainability. **Three adversarial perspectives, maximum blind spot elimination.**
 
 ## Execution
 
@@ -80,22 +80,22 @@ If the script is not found or fails, default to `fullstack` (balanced weighting)
 
 Use **two parallel Bash tool calls**:
 
-**Codex Review:**
+**Codex Review** (adversarial — security & data integrity focus):
 ```bash
-~/.claude/scripts/call-codex.sh "You are a Senior Code Reviewer.
-Focus: bugs, security vulnerabilities, performance, architecture issues, inline annotation compliance (check if changes violate nearby IMPORTANT/WARNING/FIXME/TODO/NOTE comments).
-$(if guidelines found)Also check compliance with the project guidelines below.$(end if)
+~/.claude/scripts/call-codex.sh "You are performing an adversarial code review focused on security, data integrity, and infrastructure resilience.
+Your job is to break confidence in this change, not to validate it. Default to skepticism.
+
+Attack surface — prioritize these failure modes:
+1. Auth, permissions, tenant isolation, trust boundary violations
+2. Data loss, corruption, duplication, irreversible state changes
+3. Rollback safety, retry logic, partial failure, idempotency gaps
+4. Race conditions, ordering assumptions, stale state, re-entrancy
+5. Version skew, schema drift, migration hazards
+6. Observability gaps that would hide failures in production
+7. Inline annotation violations (IMPORTANT/WARNING/FIXME/TODO/NOTE comments)
+$(if guidelines found)8. Project guideline violations (see guidelines below)$(end if)
 
 Scope constraint: Focus on the diff provided. Do not speculate about code outside the diff unless directly referenced by the changed lines.
-
-DO NOT flag:
-- Pre-existing issues not introduced in this diff
-- Issues linters/formatters would catch
-- Pedantic nitpicks without guideline backing
-- Lines with lint-ignore/noqa/@ts-ignore comments
-
-Label each issue with severity (🔴/🟡/🟢) and line numbers.
-End with an overall score (1-10).
 
 $(if guidelines found)
 Project Guidelines:
@@ -103,27 +103,46 @@ Project Guidelines:
 $(guideline content from Step 2.3)
 --- END GUIDELINES ---
 $(end if)
+
+Finding bar — every finding MUST answer:
+1. What can go wrong?
+2. Why is this code path vulnerable?
+3. What is the likely impact?
+4. What concrete change would reduce the risk?
+
+DO NOT flag:
+- Pre-existing issues not introduced in this diff
+- Issues linters/formatters would catch (eslint, prettier, etc.)
+- Style preferences without guideline backing or concrete failure scenario
+- Lines with explicit lint-ignore / noqa / @ts-ignore comments
+
+Calibration: Prefer one strong finding over several weak ones. If the change looks safe, say so directly.
+
+Final self-check: Verify each finding is adversarial (not stylistic), tied to concrete code, and plausible under a real failure scenario.
+
+Label each issue with severity (🔴/🟡/🟢) and line numbers.
+End with an overall score (1-10).
 
 Code:
 $(code)"
 ```
 
-**Gemini Review:**
+**Gemini Review** (adversarial — design, UX & maintainability focus):
 ```bash
-GEMINI_MODEL="${GEMINI_MODEL_DEEP:-${GEMINI_MODEL:-}}" ~/.claude/scripts/call-gemini.sh "You are a Senior Code Reviewer.
-Focus: design patterns, alternatives, maintainability, test coverage, inline annotation compliance (check if changes violate nearby IMPORTANT/WARNING/FIXME/TODO/NOTE comments).
-$(if guidelines found)Also check compliance with the project guidelines below.$(end if)
+GEMINI_MODEL="${GEMINI_MODEL_DEEP:-${GEMINI_MODEL:-}}" ~/.claude/scripts/call-gemini.sh "You are performing an adversarial code review focused on design quality, UX impact, and long-term maintainability.
+Your job is to break confidence in this change, not to validate it. Default to skepticism.
+
+Attack surface — prioritize these failure modes:
+1. Empty-state, null, timeout, degraded dependency behavior from a user's perspective
+2. Accessibility violations, broken responsive behavior, inconsistent UI states
+3. API contract mismatches, missing error feedback to users, silent failures
+4. Abstraction leaks, tight coupling, violation of single responsibility
+5. Missing or misleading test coverage that creates false confidence
+6. Breaking changes to public interfaces without migration path
+7. Inline annotation violations (IMPORTANT/WARNING/FIXME/TODO/NOTE comments)
+$(if guidelines found)8. Project guideline violations (see guidelines below)$(end if)
 
 Scope constraint: Focus on the diff provided. Do not speculate about code outside the diff unless directly referenced by the changed lines.
-
-DO NOT flag:
-- Pre-existing issues not introduced in this diff
-- Issues linters/formatters would catch
-- Pedantic nitpicks without guideline backing
-- Lines with lint-ignore/noqa/@ts-ignore comments
-
-Label each issue with severity (🔴/🟡/🟢) and line numbers.
-End with an overall score (1-10).
 
 $(if guidelines found)
 Project Guidelines:
@@ -131,6 +150,25 @@ Project Guidelines:
 $(guideline content from Step 2.3)
 --- END GUIDELINES ---
 $(end if)
+
+Finding bar — every finding MUST answer:
+1. What can go wrong?
+2. Why is this code path vulnerable?
+3. What is the likely impact?
+4. What concrete change would reduce the risk?
+
+DO NOT flag:
+- Pre-existing issues not introduced in this diff
+- Issues linters/formatters would catch (eslint, prettier, etc.)
+- Style preferences without guideline backing or concrete failure scenario
+- Lines with explicit lint-ignore / noqa / @ts-ignore comments
+
+Calibration: Prefer one strong finding over several weak ones. If the change looks safe, say so directly.
+
+Final self-check: Verify each finding is adversarial (not stylistic), tied to concrete code, and plausible under a real failure scenario.
+
+Label each issue with severity (🔴/🟡/🟢) and line numbers.
+End with an overall score (1-10).
 
 Code:
 $(code)"
