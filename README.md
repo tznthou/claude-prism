@@ -375,6 +375,8 @@ Both wrapper scripts support:
 
 | Feature | Description |
 |---------|-------------|
+| **Streaming output** | CLI responses stream directly to stdout via `tee` — no buffering. Callers that background the script (e.g. Claude Code auto-backgrounding) can capture output in real time |
+| **SIGHUP survival** | Scripts ignore `SIGHUP`, so they survive terminal detach when backgrounded |
 | **Binary detection** | Searches multiple paths for the CLI binary |
 | **Logging** | Every call logged to `~/.claude/logs/multi-ai.log` with timestamps |
 | **`--dry-run`** | Test without calling the API (no tokens consumed) |

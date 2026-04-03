@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v0.11.4 (2026-04-03)
+
+**Fix: streaming CLI output to prevent background execution data loss**
+
+### Streaming output
+
+- **`RESULT=$(...)` → `tee` streaming** — `call-codex.sh` and `call-gemini.sh` no longer buffer the entire CLI response in a shell variable. Output now streams directly to stdout via `tee`, so callers that background the script (e.g. Claude Code Bash tool auto-backgrounding) can capture output in real time instead of seeing 0 bytes
+- **SIGHUP survival** — added `trap '' HUP` to both wrapper scripts so they survive terminal detach when backgrounded, preventing silent process death
+- **bash 3.2 compat (error path)** — `${err_text,,}` in installed scripts now uses `printf | tr` (matching the v0.11.3 repo fix that hadn't been re-installed)
+
 ## v0.11.3 (2026-03-29)
 
 **Fix: macOS bash 3.2 compatibility** — error classification no longer breaks on stock macOS bash.
