@@ -53,6 +53,86 @@ claude-prism's [Confidence Scoring Framework](spec/confidence-scoring-v1.md) wor
 
 ---
 
+## Quick Start
+
+### Prerequisites
+
+| Tool | Required | Install |
+|------|----------|---------|
+| [Claude Code](https://claude.com/claude-code) | Yes | `npm install -g @anthropic-ai/claude-code` |
+| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | For Gemini commands | `npm install -g @google/gemini-cli` |
+| [Codex CLI](https://github.com/openai/codex) | For Codex commands | `npm install -g @openai/codex` |
+
+> **⚠️ Gemini CLI Service Update (effective March 25, 2026)**
+>
+> Google is [changing how Gemini CLI routes traffic](https://github.com/google-gemini/gemini-cli/discussions/22970). Free tier users will be limited to Flash models only (no Pro), and all users may experience rate limiting during peak hours. If you encounter timeouts:
+>
+> ```bash
+> # Option 1: Use Flash (faster, higher coding benchmark scores than Pro)
+> export GEMINI_MODEL="gemini-3-flash-preview"
+>
+> # Option 2: Use your own API key for self-managed quota
+> export GEMINI_API_KEY="your-key-from-ai-studio"
+> ```
+>
+> See [Environment Variables](#environment-variables) for details.
+
+### Install
+
+**Quick install (recommended)**
+
+```bash
+npx claud-prism-aireview
+```
+
+This downloads the package and runs the installer in one step — it deploys commands to `~/.claude/commands/` and scripts to `~/.claude/scripts/`. No `postinstall` scripts are used; you explicitly run this command yourself.
+
+**npm global install**
+
+```bash
+npm install -g claud-prism-aireview
+claud-prism-aireview   # ← Required: deploys commands and scripts to ~/.claude/
+```
+
+> **Important:** `npm install -g` only places the binary in your PATH. You must run `claud-prism-aireview` once to actually deploy the commands. This is by design — we intentionally avoid `postinstall` scripts for [supply chain security](https://socket.dev/blog/pnpm-10-0-0-blocks-lifecycle-scripts-by-default).
+
+**Homebrew (macOS)**
+
+```bash
+brew tap tznthou/claude-prism
+brew install claud-prism-aireview
+```
+
+**Manual**
+
+```bash
+git clone https://github.com/tznthou/claude-prism.git
+cd claude-prism
+./install.sh
+```
+
+The installer:
+- Checks for prerequisites and reports what's available
+- Verifies file integrity via SHA256 checksums (if `checksums.sha256` is present)
+- Backs up any existing files before overwriting
+- Copies commands to `~/.claude/commands/` and scripts to `~/.claude/scripts/`
+
+### Verify
+
+```bash
+./tests/smoke-test.sh
+```
+
+### Uninstall
+
+```bash
+npx claud-prism-aireview --uninstall
+# or manually:
+./uninstall.sh
+```
+
+---
+
 ## Commands
 
 | Command | Provider | Description |
@@ -215,77 +295,6 @@ For details on what data crosses trust boundaries, see [Privacy & Data Flow](#pr
 | Codex CLI | OpenAI access | Code review and Q&A (model configurable) |
 | Gemini CLI | Google access | Research, UI review, Q&A (model configurable) |
 | GitHub Actions | CI/CD integration | Automated PR review via REST APIs |
-
----
-
-## Quick Start
-
-### Prerequisites
-
-| Tool | Required | Install |
-|------|----------|---------|
-| [Claude Code](https://claude.com/claude-code) | Yes | `npm install -g @anthropic-ai/claude-code` |
-| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | For Gemini commands | `npm install -g @google/gemini-cli` |
-| [Codex CLI](https://github.com/openai/codex) | For Codex commands | `npm install -g @openai/codex` |
-
-> **⚠️ Gemini CLI Service Update (effective March 25, 2026)**
->
-> Google is [changing how Gemini CLI routes traffic](https://github.com/google-gemini/gemini-cli/discussions/22970). Free tier users will be limited to Flash models only (no Pro), and all users may experience rate limiting during peak hours. If you encounter timeouts:
->
-> ```bash
-> # Option 1: Use Flash (faster, higher coding benchmark scores than Pro)
-> export GEMINI_MODEL="gemini-3-flash-preview"
->
-> # Option 2: Use your own API key for self-managed quota
-> export GEMINI_API_KEY="your-key-from-ai-studio"
-> ```
->
-> See [Environment Variables](#environment-variables) for details.
-
-### Install
-
-**Quick install (recommended)**
-
-```bash
-npx claud-prism-aireview
-```
-
-**Homebrew (macOS)**
-
-```bash
-brew tap tznthou/claude-prism
-brew install claud-prism-aireview
-```
-
-**Manual**
-
-```bash
-git clone https://github.com/tznthou/claude-prism.git
-cd claude-prism
-./install.sh
-```
-
-The installer:
-- Checks for prerequisites and reports what's available
-- Verifies file integrity via SHA256 checksums (if `checksums.sha256` is present)
-- Backs up any existing files before overwriting
-- Copies commands to `~/.claude/commands/` and scripts to `~/.claude/scripts/`
-
-### Verify
-
-```bash
-./tests/smoke-test.sh
-```
-
-### Uninstall
-
-```bash
-npx claud-prism-aireview --uninstall
-# or manually:
-./uninstall.sh
-```
-
----
 
 ## Project Structure
 
@@ -565,6 +574,33 @@ Token ranges are approximate and vary with input size (diff length, file count, 
 
 ---
 
+## Supply Chain Security
+
+claude-prism takes supply chain security seriously. In 2025-2026, `postinstall` scripts became the [#1 attack vector](https://snyk.io/articles/npm-security-best-practices-shai-hulud-attack/) for npm supply chain attacks — from the Shai-Hulud worm (800+ packages infected) to the [Axios RAT compromise](https://www.microsoft.com/en-us/security/blog/2026/04/01/mitigating-the-axios-npm-supply-chain-compromise/) (North Korean state actor). We designed our install pipeline to avoid these risks entirely.
+
+### Defense Layers
+
+| Layer | Protects Against | How |
+|-------|-----------------|-----|
+| **No `postinstall` scripts** | Silent execution on install | pnpm/Bun users aren't blocked; Socket.dev raises no flags |
+| **Explicit user execution** | Unauthorized operations | `npx` or `claud-prism-aireview` requires deliberate action |
+| **SHA256 checksums** | File tampering in transit | `install.sh` verifies every file before deploying; aborts on mismatch |
+| **npm OIDC provenance** | Account hijacking | Packages can only be published from GitHub Actions CI, not manually |
+| **Pre-install backup** | Accidental overwrites | Existing files backed up to `~/.claude/.multi-ai-backup-*` |
+
+### Verify Integrity Yourself
+
+```bash
+# After cloning, verify all files match their checksums:
+cd claude-prism
+shasum -a 256 -c checksums.sha256
+
+# Check npm package provenance:
+npm audit signatures
+```
+
+---
+
 ## Privacy & Data Flow
 
 claude-prism is a local Bash wrapper, not a hosted proxy or relay service. There is no intermediary server between your machine and the AI providers.
@@ -669,6 +705,16 @@ That said, one thing in their repo really caught my eye: `adversarial-review`. I
 After all, we're just Vibe Coders — standing on the shoulders of giants to see a little further is nothing but a good thing. So I went ahead and reworked the prompt architecture for `pi-code-review` and `pi-multi-review`: adversarial stance, divided attack surfaces (Codex attacks security, Gemini attacks design/UX), finding bars, and calibration rules. The concepts were borrowed, but once they were fused with our existing confidence scoring framework and domain-aware weighting, they became something of our own.
 
 That's the beauty of open source, I suppose.
+
+*Update — 2026-04-03 (afternoon)*
+
+Today I ran `npm install -g` on claude-prism myself, fully confident it was done — only to find that none of the commands had actually been deployed to `~/.claude/`. Turns out `npm install -g` only places the binary in your PATH; you still need to run `claud-prism-aireview` once to actually deploy everything.
+
+This is probably the easiest pitfall for a Vibe Coder to stumble into: assuming `npm install` equals "fully installed." I even considered adding a `postinstall` script to auto-trigger `install.sh` and skip that extra step. But after digging into it, I learned that `postinstall` is now the #1 entry point for npm supply chain attacks — the March 2026 Axios incident (a North Korean state actor planted a RAT via postinstall; it was live for under three hours but reached millions of environments) is a sobering example. pnpm v10 and Bun now block all lifecycle scripts by default, and the entire ecosystem is systematically moving away from them.
+
+So the final approach: no `postinstall`. Instead, make the README crystal clear that the two-step install is a deliberate security design, not laziness. In the process, I also realized we already had SHA256 checksum verification and npm OIDC provenance in place — the full security chain was more robust than I thought.
+
+The upside of being a beginner is that every pitfall forces you to actually understand *why* things are designed a certain way, rather than just copying patterns without knowing the reason.
 
 ---
 

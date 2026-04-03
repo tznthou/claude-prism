@@ -53,6 +53,86 @@ claude-prism 的 [Confidence Scoring Framework](spec/confidence-scoring-v1.md) �
 
 ---
 
+## 快速開始
+
+### 前置需求
+
+| 工具 | 必要性 | 安裝方式 |
+|------|--------|----------|
+| [Claude Code](https://claude.com/claude-code) | 必要 | `npm install -g @anthropic-ai/claude-code` |
+| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | Gemini 相關指令需要 | `npm install -g @google/gemini-cli` |
+| [Codex CLI](https://github.com/openai/codex) | Codex 相關指令需要 | `npm install -g @openai/codex` |
+
+> **⚠️ Gemini CLI 服務更新（2026-03-25 生效）**
+>
+> Google 正在[調整 Gemini CLI 的流量路由方式](https://github.com/google-gemini/gemini-cli/discussions/22970)。免費帳號將僅限 Flash 模型（不再支援 Pro），所有用戶在尖峰時段可能遇到限流。如果遇到 timeout：
+>
+> ```bash
+> # 方案一：使用 Flash（更快，coding benchmark 分數比 Pro 更高）
+> export GEMINI_MODEL="gemini-3-flash-preview"
+>
+> # 方案二：使用自己的 API key 取得獨立 quota
+> export GEMINI_API_KEY="your-key-from-ai-studio"
+> ```
+>
+> 詳見[環境變數](#環境變數)。
+
+### 安裝
+
+**快速安裝（推薦）**
+
+```bash
+npx claud-prism-aireview
+```
+
+一行完成下載與安裝——自動將 commands 部署到 `~/.claude/commands/`、scripts 到 `~/.claude/scripts/`。不使用 `postinstall` scripts，由你明確執行此指令。
+
+**npm 全域安裝**
+
+```bash
+npm install -g claud-prism-aireview
+claud-prism-aireview   # ← 必要步驟：將 commands 和 scripts 部署到 ~/.claude/
+```
+
+> **注意：** `npm install -g` 只會將執行檔放入 PATH，不會自動部署指令檔案。你必須手動執行一次 `claud-prism-aireview` 才能完成安裝。這是刻意的設計——我們不使用 `postinstall` scripts，以確保[供應鏈安全](https://socket.dev/blog/pnpm-10-0-0-blocks-lifecycle-scripts-by-default)。
+
+**Homebrew (macOS)**
+
+```bash
+brew tap tznthou/claude-prism
+brew install claud-prism-aireview
+```
+
+**手動安裝**
+
+```bash
+git clone https://github.com/tznthou/claude-prism.git
+cd claude-prism
+./install.sh
+```
+
+安裝程式會：
+- 檢查前置需求並回報可用狀態
+- 透過 SHA256 checksum 驗證檔案完整性（若有 `checksums.sha256`）
+- 覆寫前自動備份現有檔案
+- 複製 commands 到 `~/.claude/commands/`，scripts 到 `~/.claude/scripts/`
+
+### 驗證安裝
+
+```bash
+./tests/smoke-test.sh
+```
+
+### 移除
+
+```bash
+npx claud-prism-aireview --uninstall
+# 或手動：
+./uninstall.sh
+```
+
+---
+
 ## 指令一覽
 
 | 指令 | Provider | 說明 |
@@ -215,77 +295,6 @@ flowchart LR
 | Codex CLI | OpenAI 存取 | Code review 與 Q&A（模型可設定） |
 | Gemini CLI | Google 存取 | 研究、UI 審查、Q&A（模型可設定） |
 | GitHub Actions | CI/CD 整合 | 自動化 PR review，透過 REST API |
-
----
-
-## 快速開始
-
-### 前置需求
-
-| 工具 | 必要性 | 安裝方式 |
-|------|--------|----------|
-| [Claude Code](https://claude.com/claude-code) | 必要 | `npm install -g @anthropic-ai/claude-code` |
-| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | Gemini 相關指令需要 | `npm install -g @google/gemini-cli` |
-| [Codex CLI](https://github.com/openai/codex) | Codex 相關指令需要 | `npm install -g @openai/codex` |
-
-> **⚠️ Gemini CLI 服務更新（2026-03-25 生效）**
->
-> Google 正在[調整 Gemini CLI 的流量路由方式](https://github.com/google-gemini/gemini-cli/discussions/22970)。免費帳號將僅限 Flash 模型（不再支援 Pro），所有用戶在尖峰時段可能遇到限流。如果遇到 timeout：
->
-> ```bash
-> # 方案一：使用 Flash（更快，coding benchmark 分數比 Pro 更高）
-> export GEMINI_MODEL="gemini-3-flash-preview"
->
-> # 方案二：使用自己的 API key 取得獨立 quota
-> export GEMINI_API_KEY="your-key-from-ai-studio"
-> ```
->
-> 詳見[環境變數](#環境變數)。
-
-### 安裝
-
-**快速安裝（推薦）**
-
-```bash
-npx claud-prism-aireview
-```
-
-**Homebrew (macOS)**
-
-```bash
-brew tap tznthou/claude-prism
-brew install claud-prism-aireview
-```
-
-**手動安裝**
-
-```bash
-git clone https://github.com/tznthou/claude-prism.git
-cd claude-prism
-./install.sh
-```
-
-安裝程式會：
-- 檢查前置需求並回報可用狀態
-- 透過 SHA256 checksum 驗證檔案完整性（若有 `checksums.sha256`）
-- 覆寫前自動備份現有檔案
-- 複製 commands 到 `~/.claude/commands/`，scripts 到 `~/.claude/scripts/`
-
-### 驗證安裝
-
-```bash
-./tests/smoke-test.sh
-```
-
-### 移除
-
-```bash
-npx claud-prism-aireview --uninstall
-# 或手動：
-./uninstall.sh
-```
-
----
 
 ## 專案結構
 
@@ -565,6 +574,33 @@ Token 範圍為近似值，隨輸入大小（diff 長度、檔案數、問題複
 
 ---
 
+## 供應鏈安全
+
+claude-prism 認真看待供應鏈安全。2025-2026 年間，`postinstall` scripts 已成為 npm 供應鏈攻擊的[頭號攻擊向量](https://snyk.io/articles/npm-security-best-practices-shai-hulud-attack/)——從 Shai-Hulud 蠕蟲（800+ 套件感染）到 [Axios RAT 入侵](https://www.microsoft.com/en-us/security/blog/2026/04/01/mitigating-the-axios-npm-supply-chain-compromise/)（北韓國家級駭客）。我們的安裝流程從設計上就避開了這些風險。
+
+### 防禦層級
+
+| 層級 | 防禦目標 | 機制 |
+|------|---------|------|
+| **不使用 `postinstall` scripts** | 安裝時靜默執行 | pnpm/Bun 使用者不會被擋；Socket.dev 不標記警告 |
+| **使用者明確執行** | 未授權操作 | `npx` 或 `claud-prism-aireview` 都需要主動執行 |
+| **SHA256 checksum 驗證** | 傳輸中檔案竄改 | `install.sh` 在部署前逐檔驗證，不符即中止 |
+| **npm OIDC provenance** | 帳號劫持 | Package 只能從 GitHub Actions CI 發布，無法手動 `npm publish` |
+| **安裝前自動備份** | 意外覆寫 | 現有檔案自動備份到 `~/.claude/.multi-ai-backup-*` |
+
+### 自行驗證完整性
+
+```bash
+# Clone 後，驗證所有檔案的 checksum：
+cd claude-prism
+shasum -a 256 -c checksums.sha256
+
+# 檢查 npm package provenance：
+npm audit signatures
+```
+
+---
+
 ## 隱私與資料流向
 
 claude-prism 是本地端 Bash wrapper，不是託管式代理或中繼服務。你的機器和 AI provider 之間沒有任何中介伺服器。
@@ -669,6 +705,16 @@ OpenAI 出了 [codex-plugin-cc](https://github.com/openai/codex-plugin-cc)。第
 畢竟我們只是 Vibe Coder，能站在巨人的肩膀上看遠一點，何樂而不為。所以就著手改進了 `pi-code-review` 和 `pi-multi-review` 的 prompt 架構：引入 adversarial stance、定義分工攻擊面（Codex 攻擊 security、Gemini 攻擊 design/UX）、加入 finding bar 和校準規則。概念是借來的，但融入我們既有的 confidence scoring framework 和 domain-aware weighting 之後，反而變成了我們自己的東西。
 
 開源的美好大概就是這樣吧。
+
+*更新 — 2026-04-03（下午）*
+
+今天自己用 `npm install -g` 安裝了 claude-prism，裝完信心滿滿地以為搞定了——結果 commands 根本沒進到 `~/.claude/`。才發現 `npm install -g` 只是把 binary 放進 PATH，你還得手動跑一次 `claud-prism-aireview` 才會真正部署。
+
+這大概是 Vibe Coder 新手最容易踩的坑：以為 `npm install` 就等於安裝完成。我甚至一度想加 `postinstall` 來自動觸發 install.sh，省掉這一步。但研究之後才知道，`postinstall` 現在是 npm 供應鏈攻擊的頭號入口——2026 年 3 月的 Axios 事件（北韓駭客透過 postinstall 植入 RAT，上線不到三小時就影響了數百萬環境）就是血淋淋的例子。pnpm v10 和 Bun 已經預設封鎖所有 lifecycle scripts，整個生態系正在系統性地淘汰它。
+
+最後的做法是：不加 postinstall，改把 README 的安裝說明寫清楚，讓使用者知道兩步驟是刻意的安全設計，不是偷懶。順便才想起來我們其實有 SHA256 checksum 驗證和 npm OIDC provenance，整條安全鏈比我自己以為的還完整。
+
+身為菜鳥的好處是，踩過的坑會讓你認真去理解「為什麼要這樣設計」，而不是照抄別人的做法卻不知道原因。
 
 ---
 
