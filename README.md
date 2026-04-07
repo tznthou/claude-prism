@@ -10,6 +10,7 @@
 [![Bash](https://img.shields.io/badge/Bash-3.2+-4EAA25.svg)](https://www.gnu.org/software/bash/)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-Plugin-7C3AED.svg)](https://claude.com/claude-code)
 [![ShellCheck](https://img.shields.io/badge/ShellCheck-Passing-4EAA25.svg)](https://www.shellcheck.net/)
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 
 [繁體中文](README.zh-TW.md)
 
@@ -715,6 +716,21 @@ This is probably the easiest pitfall for a Vibe Coder to stumble into: assuming 
 So the final approach: no `postinstall`. Instead, make the README crystal clear that the two-step install is a deliberate security design, not laziness. In the process, I also realized we already had SHA256 checksum verification and npm OIDC provenance in place — the full security chain was more robust than I thought.
 
 The upside of being a beginner is that every pitfall forces you to actually understand *why* things are designed a certain way, rather than just copying patterns without knowing the reason.
+
+---
+
+## Contributing
+
+We welcome contributions! Whether it's bug fixes, new provider integrations, prompt improvements, or documentation — check out our [Contributing Guide](CONTRIBUTING.md) to get started.
+
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code.
+
+**Quick links:**
+
+- [Development setup](CONTRIBUTING.md#getting-started)
+- [Code standards](CONTRIBUTING.md#code-standards) (Bash 3.2+, ShellCheck, conventional commits)
+- [Submitting a PR](CONTRIBUTING.md#submitting-changes)
+- [Reporting issues](CONTRIBUTING.md#reporting-issues)
 
 ---
 

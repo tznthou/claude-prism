@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v0.12.1 (2026-04-07)
+
+**Community** — added contributing guide and code of conduct.
+
+- **CONTRIBUTING.md** — development setup, code standards (Bash 3.2+, ShellCheck), testing, commit convention, PR process, and contribution boundaries (what we accept / don't accept)
+- **CODE_OF_CONDUCT.md** — Contributor Covenant 2.1
+- **README updates** — added Contributor Covenant badge and Contributing section to both `README.md` and `README.zh-TW.md`
+
 ## v0.12.0 (2026-04-03)
 
 **Adversarial review upgrade** — review prompts redesigned from neutral "Senior Reviewer" to adversarial stance with divided attack surfaces, inspired by codex-plugin-cc concepts (Apache 2.0).

@@ -10,6 +10,7 @@
 [![Bash](https://img.shields.io/badge/Bash-3.2+-4EAA25.svg)](https://www.gnu.org/software/bash/)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-Plugin-7C3AED.svg)](https://claude.com/claude-code)
 [![ShellCheck](https://img.shields.io/badge/ShellCheck-Passing-4EAA25.svg)](https://www.shellcheck.net/)
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 
 [English](README.md)
 
@@ -715,6 +716,21 @@ OpenAI 出了 [codex-plugin-cc](https://github.com/openai/codex-plugin-cc)。第
 最後的做法是：不加 postinstall，改把 README 的安裝說明寫清楚，讓使用者知道兩步驟是刻意的安全設計，不是偷懶。順便才想起來我們其實有 SHA256 checksum 驗證和 npm OIDC provenance，整條安全鏈比我自己以為的還完整。
 
 身為菜鳥的好處是，踩過的坑會讓你認真去理解「為什麼要這樣設計」，而不是照抄別人的做法卻不知道原因。
+
+---
+
+## 貢獻指南
+
+歡迎貢獻！不論是 bug 修復、新 provider 整合、prompt 改善，還是文件修正——請參閱我們的[貢獻指南](CONTRIBUTING.md)開始。
+
+本專案遵循 [Contributor Covenant 行為準則](CODE_OF_CONDUCT.md)，參與即代表你同意遵守。
+
+**快速連結：**
+
+- [開發環境設定](CONTRIBUTING.md#getting-started)
+- [程式碼標準](CONTRIBUTING.md#code-standards)（Bash 3.2+、ShellCheck、conventional commits）
+- [提交 PR](CONTRIBUTING.md#submitting-changes)
+- [回報問題](CONTRIBUTING.md#reporting-issues)
 
 ---
 
