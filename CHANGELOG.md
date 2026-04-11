@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v0.12.2 (2026-04-11)
+
+**Background fallback** — all 10 commands now recover from Bash tool backgrounding.
+
+- **Fallback read instructions** — every `pi-*` command prompt now includes a fallback directive: if the Bash tool was backgrounded or returned empty output, Claude reads the result from `~/.claude/logs/pi-{codex,gemini}-last.out` (persisted by the script's `tee` safety net since v0.11.4/v0.12.0)
+- Completes the three-layer defense against background output loss: script-level `tee` streaming (v0.11.4) → file persistence (v0.12.0) → command-level fallback read (v0.12.2)
+
 ## v0.12.1 (2026-04-07)
 
 **Community** — added contributing guide and code of conduct.

@@ -59,6 +59,8 @@ The CLI argument (`"perspective request"`) is a short label for the call — the
 - Both fail → Claude answers solo. Note: "⚠️ Both external providers unavailable ([Codex reason] / [Gemini reason]) — single-perspective answer."
 - **Never abort.** Always produce output.
 
+If the Bash tool was backgrounded or returned empty output, read the results from `~/.claude/logs/pi-codex-last.out` and/or `~/.claude/logs/pi-gemini-last.out` (persisted by the scripts' `tee` safety net).
+
 ### 4. Present provider responses
 
 Show each provider's full response, clearly labeled:

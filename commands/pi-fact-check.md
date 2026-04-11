@@ -84,6 +84,8 @@ For each claim, merge sources from both tracks. If one track fails (timeout, aut
 
 **Never abort.** Always produce a report, even if both tracks fail for some claims.
 
+If the Bash tool was backgrounded or returned empty output, read the result from `~/.claude/logs/pi-gemini-last.out` (persisted by the script's `tee` safety net).
+
 ### 4. Cross-verification (Claude)
 
 This is where cross-provider adds value. Claude independently evaluates the merged search results (from Gemini and/or WebSearch) — not re-searching, but applying judgment the search tools cannot:

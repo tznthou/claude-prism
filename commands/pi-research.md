@@ -80,6 +80,8 @@ Combine findings from both tracks:
 
 **Never abort.** Always produce a report.
 
+If the Bash tool was backgrounded or returned empty output, read the result from `~/.claude/logs/pi-gemini-last.out` (persisted by the script's `tee` safety net).
+
 #### Failure diagnostics
 
 When a track fails, include the specific reason in the status note:

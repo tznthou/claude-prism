@@ -387,6 +387,7 @@ export GEMINI_API_KEY="your-key-from-ai-studio"
 |------|------|
 | **Streaming 輸出** | CLI 回應透過 `tee` 即時串流到 stdout，不做 buffering。被背景化時也能即時捕獲輸出 |
 | **SIGHUP 防禦** | Script 忽略 `SIGHUP`，背景化時不會被終止 |
+| **背景化 Fallback** | 輸出持久化到 `~/.claude/logs/pi-{codex,gemini}-last.out`。所有指令皆含 fallback 指示——若 Bash tool 被背景化或回傳空輸出，Claude 會自動讀取 log 檔取得結果 |
 | **Binary 偵測** | 自動搜尋多個路徑找 CLI 執行檔 |
 | **Logging** | 每次呼叫記錄到 `~/.claude/logs/multi-ai.log`（含時間戳） |
 | **`--dry-run`** | 測試模式，不呼叫 API（不消耗 token） |

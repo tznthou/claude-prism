@@ -387,6 +387,7 @@ Both wrapper scripts support:
 |---------|-------------|
 | **Streaming output** | CLI responses stream directly to stdout via `tee` — no buffering. Callers that background the script (e.g. Claude Code auto-backgrounding) can capture output in real time |
 | **SIGHUP survival** | Scripts ignore `SIGHUP`, so they survive terminal detach when backgrounded |
+| **Background fallback** | Output persisted to `~/.claude/logs/pi-{codex,gemini}-last.out`. All commands include a fallback directive — if the Bash tool was backgrounded or returned empty output, Claude reads the result from the log file |
 | **Binary detection** | Searches multiple paths for the CLI binary |
 | **Logging** | Every call logged to `~/.claude/logs/multi-ai.log` with timestamps |
 | **`--dry-run`** | Test without calling the API (no tokens consumed) |

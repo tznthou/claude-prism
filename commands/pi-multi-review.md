@@ -183,6 +183,8 @@ If one provider fails (script exits non-zero or returns an error message):
 - In the output, clearly note: "⚠️ [Provider] unavailable ([reason]) — continuing with [other provider] + Claude."
 - If **both** external providers fail, Claude performs a solo review and notes: "⚠️ Both external providers unavailable ([Codex reason] / [Gemini reason]) — single-perspective review. For single-provider review, try `/pi-code-review` (Codex) or `/pi-ui-review` (Gemini) when they recover."
 
+If the Bash tool was backgrounded or returned empty output, read the results from `~/.claude/logs/pi-codex-last.out` and/or `~/.claude/logs/pi-gemini-last.out` (persisted by the scripts' `tee` safety net).
+
 ### 5. Handle non-conforming output
 
 External providers may not follow the requested format (no emoji severity, no 1-10 score, pure prose, etc.). When this happens:

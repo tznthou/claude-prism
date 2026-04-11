@@ -102,6 +102,8 @@ If Gemini fails (script exits non-zero or CLI not found):
 - Include the specific failure reason from stderr (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, NETWORK, CLI_ERROR, or CLI_NOT_FOUND).
 - Note in output: "⚠️ Gemini unavailable ([reason]) — review conducted by Claude only. For cross-provider review with Codex, try `/pi-multi-review`."
 
+If the Bash tool was backgrounded or returned empty output, read the result from `~/.claude/logs/pi-gemini-last.out` (persisted by the script's `tee` safety net).
+
 ### 5. Screenshot analysis (if provided)
 
 Skip Gemini CLI. Use Claude's Read tool to view the screenshot, then analyze with multimodal:

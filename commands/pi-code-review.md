@@ -135,6 +135,8 @@ echo "prompt + code" | ~/.claude/scripts/call-codex.sh "review"
 - Extract actionable issues from the raw text. Do NOT discard the response.
 - If no numeric score was given, omit the score or note "score not provided."
 
+If the Bash tool was backgrounded or returned empty output, read the result from `~/.claude/logs/pi-codex-last.out` (persisted by the script's `tee` safety net).
+
 ### 5. Confidence scoring & filtering
 
 Before presenting, Claude scores **each** issue from Codex using the [Confidence Scoring Framework](../spec/confidence-scoring-v1.md). **Only issues scoring ≥ 80 enter the output.**
