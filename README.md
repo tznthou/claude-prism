@@ -46,6 +46,25 @@ There's a deeper structural issue: when Claude Code writes your code **and** rev
 | **Scoring method** | Evidence-based formula ([open spec](spec/confidence-scoring-v1.md)) — deterministic core, same evidence = same score | LLM self-assessment — AI grades its own confidence |
 | **Data path** | Local-first: direct to provider APIs, no intermediary server | Varies by service |
 
+### Compared to `/ultrareview` (released 2026-04-16)
+
+Anthropic shipped [`/ultrareview`](https://code.claude.com/docs/en/ultrareview.md) alongside Claude Opus 4.7 on 2026-04-16 — a cloud-hosted review that spins up a fleet of Claude agents in a remote sandbox, with each finding independently verified. It's a genuine upgrade over single-pass `/review`, but it plays a different game than claude-prism:
+
+| | claude-prism `/pi-multi-review` | `/ultrareview` |
+|---|---|---|
+| **Model diversity** | Codex + Gemini + Claude (3 independent models) | Many Claude agents, one underlying model |
+| **Blind-spot strategy** | Heterogeneous training data cancels shared gaps | Homogeneous — more passes, same gaps |
+| **Review stance** | Adversarial, divided attack surfaces | Verification-focused (lower false-positive rate) |
+| **Free tier** | Unlimited (uses existing CLI subscriptions) | 3 runs per account, one-time — does not refresh |
+| **Team / Enterprise free runs** | Unlimited | 0 |
+| **After free tier** | Still unlimited | ~$5–$20 per run as extra usage |
+| **API-key-only Claude Code** | Works | Blocked (Claude.ai login required) |
+| **Bedrock / Vertex / Foundry** | Works (provider-agnostic) | Not supported |
+| **Zero Data Retention orgs** | Works | Blocked |
+| **CI/CD** | `ci-review.sh` in GitHub Actions | Interactive session only |
+
+The two tools optimize for different scenarios. `/ultrareview` is a solid pre-merge confidence boost for Pro/Max users working inside the Claude ecosystem. `/pi-multi-review` exists for everything outside that box — CI pipelines, regulated / ZDR environments, teams without Pro/Max seats, and anyone who wants perspectives that don't share Claude's training data.
+
 ### Why Trust the Findings?
 
 Most AI review tools use a similar approach: have the AI score its own findings on a 0–100 confidence scale, then filter below a threshold. [Anthropic's official code review plugin](https://github.com/anthropics/claude-code/blob/main/plugins/code-review/README.md), for example, uses a ≥80 threshold. The problem is that LLM-generated confidence scores are non-deterministic — run the same review twice, you may get different scores.

@@ -46,6 +46,25 @@ AI code review 很吵。市場上最好的工具 F1 score 大概也才 64%——
 | **評分方式** | 證據導向公式（[公開 spec](spec/confidence-scoring-v1.md)），deterministic 核心，同樣證據 = 同樣分數 | LLM 自評，AI 給自己打信心分數 |
 | **資料路徑** | Local-first：直連 provider API，無中繼伺服器 | 依服務而異 |
 
+### 與 `/ultrareview` 的比較（2026-04-16 發布）
+
+Anthropic 在 2026-04-16 隨 Claude Opus 4.7 一起推出 [`/ultrareview`](https://code.claude.com/docs/en/ultrareview.md)——雲端 review，在遠端 sandbox 啟動一整批 Claude agent，每個發現都獨立驗證。相較單次 `/review` 是實質升級，但和 claude-prism 打的是不同的戰場：
+
+| | claude-prism `/pi-multi-review` | `/ultrareview` |
+|---|---|---|
+| **模型多樣性** | Codex + Gemini + Claude（3 個獨立模型） | 多個 Claude agent，同一底層模型 |
+| **盲點策略** | 異質訓練資料抵消共同盲區 | 同源——多跑幾次，盲區一樣 |
+| **審查立場** | 對抗式，攻擊面分工 | 驗證導向（降低誤報率） |
+| **免費額度** | 無上限（用現有 CLI 訂閱） | 每帳號終身 3 次，**用完不補** |
+| **Team / Enterprise 免費次數** | 無上限 | 0 |
+| **超過免費額度後** | 仍然無上限 | 每次約 $5–$20，計入 extra usage |
+| **僅用 API key 的 Claude Code** | 可用 | 被擋（必須 Claude.ai 登入） |
+| **Bedrock / Vertex / Foundry** | 可用（provider-agnostic） | 不支援 |
+| **Zero Data Retention 組織** | 可用 | 被擋 |
+| **CI/CD** | `ci-review.sh` 跑在 GitHub Actions | 僅限互動 session |
+
+兩個工具優化的場景不同。`/ultrareview` 適合 Pro/Max 用戶在 Claude 生態內做 pre-merge 信心確認。`/pi-multi-review` 則是為那個圈子外的一切而生——CI pipeline、受法規/ZDR 管制的環境、沒有 Pro/Max 授權的團隊，以及任何想要「不共享 Claude 訓練資料的第三方觀點」的人。
+
 ### 為什麼信任這些發現？
 
 多數 AI review 工具都用類似做法：讓 AI 對自己的發現打 0–100 信心分數，低於門檻就過濾。[Anthropic 官方 code review plugin](https://github.com/anthropics/claude-code/blob/main/plugins/code-review/README.md) 也使用 ≥80 門檻。問題是 LLM 產生的信心分數不穩定——同一份 review 跑兩次可能得到不同分數。
