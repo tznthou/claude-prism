@@ -9,6 +9,8 @@ Analyze the codebase and generate a structured implementation plan with cross-pr
 
 ## Execution
 
+> **Bash invocation rules (v0.12.3+)**: Call `call-codex.sh` / `call-gemini.sh` in **foreground synchronous mode** with `timeout: 600000` (Bash tool's 10-minute ceiling). **Do not** use `&`, **do not** set `run_in_background: true`, **do not** use `nohup` — Claude Code 2026-04+ has an auto-background child-lifecycle regression that silently kills the process (output file stays 0 bytes). Parallel providers still run concurrently by sending two Bash tool calls in a single response, each foreground-synchronous. Use `run_in_background: true` + BashOutput polling only as an exception when the call is genuinely expected to exceed 10 minutes.
+
 ### 1. Parse arguments
 
 `$ARGUMENTS` is the task description. If it's too vague (less than ~10 words and no clear objective), use AskUserQuestion to clarify:

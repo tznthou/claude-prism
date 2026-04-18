@@ -425,15 +425,6 @@ export GEMINI_API_KEY="your-key-from-ai-studio"
 
 編輯 `commands/` 下的 `.md` 檔案，prompt 模板內嵌其中，直接改就好。
 
-**輸出語言：**
-
-Command 的 prompt 預設英文。要改成繁體中文輸出：
-
-```diff
-- "You are a Senior Code Reviewer. Review the following code."
-+ "你是資深 Code Reviewer，用繁體中文 review 以下程式碼。"
-```
-
 ---
 
 ## 可觀測性
@@ -490,6 +481,24 @@ Command 的 prompt 預設英文。要改成繁體中文輸出：
 ```
 
 分類：`security`、`performance`、`design`、`logic`、`maintainability`、`guideline`、`accessibility`、`other`。`guideline` 分類追蹤專案規範違規（`CLAUDE.md` / `Agents.md`）。
+
+### 呼叫生命週期診斷
+
+遇到狀況時——`/pi-*` 指令卡住、回傳空輸出、或 log 檔意外是 0 bytes——`analyze-log.sh` 會把 `multi-ai.log` 的事件依 pid 分組，告訴你每次呼叫是怎麼結束的：
+
+```bash
+~/.claude/scripts/analyze-log.sh              # 分析預設 log 檔
+~/.claude/scripts/analyze-log.sh /path/to/log  # 指定 log 檔
+```
+
+每次呼叫會被歸類為四種結局之一：
+
+- **SUCCESS** — 正常完成
+- **ERROR** — CLI 回非零 exit code（會標示錯誤分類：`TIMEOUT`、`RATE_LIMIT`、`AUTH_ERROR`、`PERMISSION`、`SANDBOX`、`NETWORK`、`CLI_ERROR`、`CLI_NOT_FOUND`）
+- **SIGNAL** — 執行中收到 `HUP` / `INT` / `TERM`（會附上當下卡在哪個執行階段）
+- **SILENT** — 有啟動但沒有任何完成事件——這是 `SIGKILL` 的特徵，通常發生在 Claude Code 的 Bash tool 把某次呼叫 auto-background 後直接把 child process 殺掉
+
+SILENT death 是最有用的診斷訊號：看到就表示你的指令被提前終止。v0.12.3+ 的 `pi-*` commands 都在 preamble 指示 Claude 用前台同步方式呼叫 script，從源頭繞過這個 regression。完整背景見 [CHANGELOG.md](CHANGELOG.md)。
 
 ---
 

@@ -9,6 +9,8 @@ Verify factual claims using Gemini (Google search) for source discovery and Clau
 
 ## Execution
 
+> **Bash invocation rules (v0.12.3+)**: Call `call-codex.sh` / `call-gemini.sh` in **foreground synchronous mode** with `timeout: 600000` (Bash tool's 10-minute ceiling). **Do not** use `&`, **do not** set `run_in_background: true`, **do not** use `nohup` — Claude Code 2026-04+ has an auto-background child-lifecycle regression that silently kills the process (output file stays 0 bytes). Use `run_in_background: true` + BashOutput polling only as an exception when the call is genuinely expected to exceed 10 minutes.
+
 ### 1. Obtain content
 
 Use `$ARGUMENTS` as the content to verify.

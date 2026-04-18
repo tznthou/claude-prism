@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v0.12.3 (2026-04-18)
+
+**Bypass Claude Code auto-background regression** — commands and scripts harden against the 2026-04+ regression where Claude Code's auto-background path silently kills child processes (output file stays 0 bytes, `ps` shows no trace).
+
+### Root cause
+
+Claude Code 2026-04+ versions (observed on v2.1.114) changed the auto-background lifecycle: when the runtime decides to background a Bash tool invocation, the child process gets killed instead of detached — the task dir gets a "running" entry but `ps aux` shows nothing, and output files stay empty because the process never reached the `tee` write. Explicit `run_in_background: true` uses a different (working) lifecycle, and foreground synchronous calls are unaffected.
+
+### Mitigation
+
+- **All 10 `pi-*` commands** now include a "Bash invocation rules" preamble directing Claude to call `call-codex.sh` / `call-gemini.sh` in **foreground synchronous mode** with an explicit `timeout: 600000` (10-minute ceiling). Explicit `&`, `run_in_background: true`, and `nohup` are forbidden — any path that lets Claude Code decide to background triggers the regression. `run_in_background: true` remains as an escape hatch for commands genuinely expected to exceed 10 minutes
+- **Parallel provider calls** (`pi-askall`, `pi-multi-review`, `pi-plan`) achieve concurrency by sending two Bash tool calls in a single response, each foreground-synchronous, instead of relying on shell-level `&`
+
+### Observability (new)
+
+- **Lifecycle logging** — `call-codex.sh` and `call-gemini.sh` gain `INVOKE` (entry), `STAGE` (tracks `entry` → `parse_flags` → `stdin_read` → `git_check` → `binary_resolve` → `exec` → `done`), and `SIGNAL` (HUP/INT/TERM traps) log events. Every log line now carries a `[pid=N]` prefix to group events by invocation. `SIGKILL` is uncatchable, so the absence of a `SUCCESS`/`ERROR`/`SIGNAL` event after an `INVOKE` is the signature of an auto-background kill
+- **SIGHUP trap replaces silent ignore** — the previous `trap '' HUP` is replaced with `trap '_log_signal HUP' HUP`. Behavior is unchanged (HUP still doesn't terminate the script), but now the event is recorded
+- **`scripts/analyze-log.sh`** — new utility that reads `multi-ai.log`, groups entries by pid, and reports each invocation's outcome (Success / Error / Signal / Silent death). Silent deaths point to suspected Claude Code auto-background SIGKILLs. Pre-v0.12.3 log entries (no pid prefix) are skipped
+
+### Documentation
+
+- **Removed "Changing the output language" section** from both `README.md` and `README.zh-TW.md`. The original guidance had two problems: it biased the example toward a specific language (a public open-source package shouldn't assume its readers' preferred language), and it pointed users at `commands/*.md` files that `./install.sh` overwrites on every upgrade — so the customization wouldn't persist anyway. A proper mechanism (likely an env var) is deferred to a future release
+- **Added "Invocation Diagnostics" section** under Observability in both README variants, documenting `analyze-log.sh` usage, the four outcome categories (SUCCESS / ERROR / SIGNAL / SILENT), and how SILENT deaths signal Claude Code auto-background SIGKILL events
+
 ## v0.12.2 (2026-04-11)
 
 **Background fallback** — all 10 commands now recover from Bash tool backgrounding.

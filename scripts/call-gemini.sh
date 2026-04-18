@@ -17,10 +17,25 @@ LOG_FILE="$LOG_DIR/multi-ai.log"
 _log() {
     local level="$1"; shift
     mkdir -p "$LOG_DIR"
-    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [gemini] [$level] $*" >> "$LOG_FILE"
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [gemini] [$level] [pid=$$] $*" >> "$LOG_FILE"
 }
 
+# --- Lifecycle observability (v0.12.3+) ---
+# Distinguish "not invoked" from "invoked then SIGKILL'd" when diagnosing
+# Claude Code 2026-04+ auto-background regressions (child gets killed,
+# output file stays 0 bytes, ps shows no trace). SIGKILL is uncatchable —
+# absence of SUCCESS/ERROR/SIGNAL after INVOKE = likely SIGKILL.
+STAGE="entry"
+_log_signal() {
+    _log WARN "signal SIG$1 stage=$STAGE"
+}
+trap '_log_signal HUP' HUP
+trap '_log_signal INT; exit 130' INT
+trap '_log_signal TERM; exit 143' TERM
+_log INFO "invoke ppid=$PPID stage=entry"
+
 # --- Parse flags ---
+STAGE="parse_flags"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -m|--model)
@@ -39,6 +54,7 @@ if [[ -z "$PROMPT" ]]; then
 fi
 
 # --- Append stdin if available ---
+STAGE="stdin_read"
 if [[ ! -t 0 ]]; then
     STDIN_DATA=$(cat)
     PROMPT="${PROMPT}
@@ -49,6 +65,7 @@ fi
 _log INFO "model=${MODEL:-(default)} prompt_len=${#PROMPT} dry_run=$DRY_RUN"
 
 # --- Dry run mode (no binary needed) ---
+STAGE="dry_run"
 if [[ "$DRY_RUN" == true ]]; then
     echo "[DRY RUN] Would call: gemini -p \"...\"${MODEL:+ -m $MODEL}"
     echo "[DRY RUN] Prompt length: ${#PROMPT} chars"
@@ -57,6 +74,7 @@ if [[ "$DRY_RUN" == true ]]; then
 fi
 
 # --- Resolve gemini binary ---
+STAGE="binary_resolve"
 GEMINI_BIN="${GEMINI_BIN:-}"
 if [[ -z "$GEMINI_BIN" ]]; then
     for candidate in \
@@ -81,6 +99,7 @@ fi
 # Stream directly to stdout (no buffering) so callers that background this
 # script can still capture output in real time.
 # -p " " activates headless mode; Gemini appends it to stdin (harmless).
+STAGE="exec"
 CMD=("$GEMINI_BIN")
 [[ -n "$MODEL" ]] && CMD+=(-m "$MODEL")
 
@@ -89,7 +108,8 @@ mkdir -p "$LOG_DIR"
 ERR_TMP=$(mktemp)
 OUT_TMP="${LOG_DIR}/pi-gemini-last.out"
 trap 'rm -f "$ERR_TMP"' EXIT  # Keep OUT_TMP as last-run safety net
-trap '' HUP  # Survive background detach (SIGHUP)
+# SIGHUP handled by _log_signal HUP trap above (log + continue) — preserves
+# background detach survival without silencing the signal.
 
 printf '%s' "$PROMPT" | "${CMD[@]}" -p " " 2>"$ERR_TMP" | tee "$OUT_TMP" || {
     rc=$?
@@ -115,4 +135,5 @@ printf '%s' "$PROMPT" | "${CMD[@]}" -p " " 2>"$ERR_TMP" | tee "$OUT_TMP" || {
     exit $rc
 }
 
+STAGE="done"
 _log INFO "success response_len=$(wc -c < "$OUT_TMP" | tr -d ' ')"

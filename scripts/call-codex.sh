@@ -18,10 +18,25 @@ LOG_FILE="$LOG_DIR/multi-ai.log"
 _log() {
     local level="$1"; shift
     mkdir -p "$LOG_DIR"
-    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [codex] [$level] $*" >> "$LOG_FILE"
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [codex] [$level] [pid=$$] $*" >> "$LOG_FILE"
 }
 
+# --- Lifecycle observability (v0.12.3+) ---
+# Distinguish "not invoked" from "invoked then SIGKILL'd" when diagnosing
+# Claude Code 2026-04+ auto-background regressions (child gets killed,
+# output file stays 0 bytes, ps shows no trace). SIGKILL is uncatchable —
+# absence of SUCCESS/ERROR/SIGNAL after INVOKE = likely SIGKILL.
+STAGE="entry"
+_log_signal() {
+    _log WARN "signal SIG$1 stage=$STAGE"
+}
+trap '_log_signal HUP' HUP
+trap '_log_signal INT; exit 130' INT
+trap '_log_signal TERM; exit 143' TERM
+_log INFO "invoke ppid=$PPID stage=entry"
+
 # --- Parse flags ---
+STAGE="parse_flags"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -m|--model)
@@ -47,6 +62,7 @@ if [[ -z "$PROMPT" ]]; then
 fi
 
 # --- Append stdin if available ---
+STAGE="stdin_read"
 if [[ ! -t 0 ]]; then
     STDIN_DATA=$(cat)
     PROMPT="${PROMPT}
@@ -59,6 +75,7 @@ fi
 # downgrade to "none" so pure Q&A calls (e.g. pi-askall) still work.
 # Only downgrade "read-only" — if caller explicitly requested "sandbox",
 # respect that intent and let codex fail with its own error.
+STAGE="git_check"
 if [[ "$SANDBOX" == "read-only" ]] && ! git rev-parse --is-inside-work-tree &>/dev/null; then
     _log WARN "not inside a git repo — downgrading sandbox from 'read-only' to 'none'"
     echo "Warning: not in a git repo — sandbox downgraded to 'none'" >&2
@@ -68,6 +85,7 @@ fi
 _log INFO "model=${MODEL:-(default)} sandbox=$SANDBOX prompt_len=${#PROMPT} dry_run=$DRY_RUN"
 
 # --- Dry run mode (no binary or git repo needed) ---
+STAGE="dry_run"
 if [[ "$DRY_RUN" == true ]]; then
     echo "[DRY RUN] Would call: codex exec${MODEL:+ --model $MODEL} --sandbox $SANDBOX \"...\""
     echo "[DRY RUN] Prompt length: ${#PROMPT} chars"
@@ -76,6 +94,7 @@ if [[ "$DRY_RUN" == true ]]; then
 fi
 
 # --- Resolve codex binary ---
+STAGE="binary_resolve"
 CODEX_BIN="${CODEX_BIN:-}"
 if [[ -z "$CODEX_BIN" ]]; then
     for candidate in \
@@ -99,6 +118,7 @@ fi
 # Always pipe prompt via stdin to avoid exposing content in `ps` output.
 # Stream directly to stdout (no buffering) so callers that background this
 # script can still capture output in real time.
+STAGE="exec"
 CMD=("$CODEX_BIN" exec --sandbox "$SANDBOX")
 [[ -n "$MODEL" ]] && CMD+=(--model "$MODEL")
 
@@ -107,7 +127,8 @@ mkdir -p "$LOG_DIR"
 ERR_TMP=$(mktemp)
 OUT_TMP="${LOG_DIR}/pi-codex-last.out"
 trap 'rm -f "$ERR_TMP"' EXIT  # Keep OUT_TMP as last-run safety net
-trap '' HUP  # Survive background detach (SIGHUP)
+# SIGHUP handled by _log_signal HUP trap above (log + continue) — preserves
+# background detach survival without silencing the signal.
 
 printf '%s' "$PROMPT" | "${CMD[@]}" - 2>"$ERR_TMP" | tee "$OUT_TMP" || {
     rc=$?
@@ -133,4 +154,5 @@ printf '%s' "$PROMPT" | "${CMD[@]}" - 2>"$ERR_TMP" | tee "$OUT_TMP" || {
     exit $rc
 }
 
+STAGE="done"
 _log INFO "success response_len=$(wc -c < "$OUT_TMP" | tr -d ' ')"

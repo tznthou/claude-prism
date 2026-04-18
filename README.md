@@ -425,15 +425,6 @@ Both wrapper scripts support:
 
 Edit the command `.md` files in `commands/`. The prompt templates are inline and easy to modify.
 
-**Changing the output language:**
-
-The command prompts default to English. To get responses in Traditional Chinese:
-
-```diff
-- "You are performing an adversarial code review."
-+ "You are performing an adversarial code review. Respond in Traditional Chinese (繁體中文)."
-```
-
 ---
 
 ## Observability
@@ -490,6 +481,24 @@ Each review record follows this schema:
 ```
 
 Categories: `security`, `performance`, `design`, `logic`, `maintainability`, `guideline`, `accessibility`, `other`. The `guideline` category tracks violations of project-specific rules (`CLAUDE.md` / `Agents.md`).
+
+### Invocation Diagnostics
+
+When something goes wrong — a `/pi-*` command hangs, returns empty output, or a log file is unexpectedly 0 bytes — `analyze-log.sh` groups `multi-ai.log` events by pid and classifies each invocation's outcome:
+
+```bash
+~/.claude/scripts/analyze-log.sh              # analyze the default log
+~/.claude/scripts/analyze-log.sh /path/to/log  # inspect a specific log file
+```
+
+Each invocation falls into one of four categories:
+
+- **SUCCESS** — completed normally
+- **ERROR** — the CLI returned non-zero (error class shown: `TIMEOUT`, `RATE_LIMIT`, `AUTH_ERROR`, `PERMISSION`, `SANDBOX`, `NETWORK`, `CLI_ERROR`, `CLI_NOT_FOUND`)
+- **SIGNAL** — the script caught `HUP` / `INT` / `TERM` mid-run (the stage the script died at is recorded)
+- **SILENT** — invoked but produced no completion event — the signature of `SIGKILL`, commonly caused by Claude Code's Bash tool auto-backgrounding a call and killing its child
+
+Silent deaths are the most actionable diagnostic signal: if you see one, your command was terminated before it could finish. The `pi-*` commands shipped in v0.12.3+ include a "Bash invocation rules" preamble that tells Claude to call scripts in foreground synchronous mode, bypassing this failure mode. See [CHANGELOG.md](CHANGELOG.md) for the full regression writeup.
 
 ---
 
