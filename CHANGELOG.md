@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v0.12.5 (2026-04-20)
+
+**Hardening pass on top of v0.12.4** — adversarial review (Codex) and security lint surfaced two issues that complete the stdin attack surface fix.
+
+### Fixed
+
+- **Silent drop of `< file.txt` redirect input** — v0.12.4's stdin guard `[[ ! -t 0 && -p /dev/stdin ]]` correctly stopped the `cat` deadlock but narrowed too far: a regular-file redirect (`call-codex.sh "..." < diff.txt`) is not a FIFO under bash, so the redirected payload was discarded without warning. Broaden the guard to `[[ ! -t 0 && ( -p /dev/stdin || -f /dev/stdin ) ]]` so any finite EOF-reaching source is consumed; non-EOF inherited fds still skip (preserving the v0.12.4 fix). Verified across pipe / file redirect / `</dev/null` / no-redirect inheritance
+- **Log injection via unsanitized CLI stderr** — `_log ERROR "... $err_text"` in both wrappers wrote raw subprocess stderr to `~/.claude/logs/multi-ai.log`, which lets a crafted prompt fragment echoed back by Codex/Gemini forge log entries (e.g. `\n2026-04-20T00:00:00Z [codex] [INFO] [pid=1] fake success`). The v0.12.4 stdin guard widening enlarged the attacker-controlled payload surface (file redirect now consumed too), so harden the sink. Strip newlines via `tr '\n' ' '` before the `_log` call. The user-facing `Details:` stderr echo keeps the raw text — that path is for terminal display, not structured log parsing. OWASP A09 Logging & Monitoring Failures
+
 ## v0.12.4 (2026-04-20)
 
 **Fix stdin pipe deadlock** — `call-codex.sh` / `call-gemini.sh` no longer hang on `cat` when invoked without an upstream pipe.
