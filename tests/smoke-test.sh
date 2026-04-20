@@ -268,6 +268,58 @@ else
     skip "Codex no-git sandbox test skipped (Codex CLI not installed)"
 fi
 
+# ─── Test 12: Stdin regression scenarios ───
+# Guards against the v0.12.3→v0.12.5 bug shapes: silent drop on file redirect,
+# deadlock on non-EOF stdin. Any edit to the stdin block in call-{codex,gemini}.sh
+# must keep these six cases green.
+echo ""
+echo "12. Stdin regression..."
+
+STDIN_FIXTURE_DIR=$(mktemp -d)
+STDIN_FIXTURE="$STDIN_FIXTURE_DIR/fixture.txt"
+echo "hi from stdin" > "$STDIN_FIXTURE"
+
+STDIN_CODEX_REPO=$(mktemp -d)
+git -C "$STDIN_CODEX_REPO" init -q
+
+_check_prompt_len() {
+    local label="$1" output="$2" expect_kind="$3" len
+    len=$(grep -oE 'Prompt length: [0-9]+' <<< "$output" | grep -oE '[0-9]+' | head -1 || true)
+    if [[ "$expect_kind" == "consumed" ]]; then
+        if [[ "$len" =~ ^[0-9]+$ ]] && (( len > 1 )); then
+            pass "$label (prompt_len=$len)"
+        else
+            fail "$label: expected len>1, got '$len'"
+        fi
+    else
+        if [[ "$len" == "1" ]]; then
+            pass "$label (prompt_len=$len)"
+        else
+            fail "$label: expected len=1, got '$len'"
+        fi
+    fi
+}
+
+STDIN_OUT=$(echo "hi from stdin" | "$SCRIPT_DIR/scripts/call-gemini.sh" --dry-run "q" 2>&1 || true)
+_check_prompt_len "call-gemini.sh stdin via pipe" "$STDIN_OUT" consumed
+
+STDIN_OUT=$("$SCRIPT_DIR/scripts/call-gemini.sh" --dry-run "q" < "$STDIN_FIXTURE" 2>&1 || true)
+_check_prompt_len "call-gemini.sh stdin via file redirect" "$STDIN_OUT" consumed
+
+STDIN_OUT=$("$SCRIPT_DIR/scripts/call-gemini.sh" --dry-run "q" < /dev/null 2>&1 || true)
+_check_prompt_len "call-gemini.sh stdin from /dev/null skipped" "$STDIN_OUT" skipped
+
+STDIN_OUT=$(cd "$STDIN_CODEX_REPO" && echo "hi from stdin" | "$SCRIPT_DIR/scripts/call-codex.sh" --dry-run "q" 2>&1 || true)
+_check_prompt_len "call-codex.sh stdin via pipe" "$STDIN_OUT" consumed
+
+STDIN_OUT=$(cd "$STDIN_CODEX_REPO" && "$SCRIPT_DIR/scripts/call-codex.sh" --dry-run "q" < "$STDIN_FIXTURE" 2>&1 || true)
+_check_prompt_len "call-codex.sh stdin via file redirect" "$STDIN_OUT" consumed
+
+STDIN_OUT=$(cd "$STDIN_CODEX_REPO" && "$SCRIPT_DIR/scripts/call-codex.sh" --dry-run "q" < /dev/null 2>&1 || true)
+_check_prompt_len "call-codex.sh stdin from /dev/null skipped" "$STDIN_OUT" skipped
+
+rm -rf "$STDIN_FIXTURE_DIR" "$STDIN_CODEX_REPO"
+
 # ─── Summary ───
 echo ""
 echo "─────────────────────────────────────────"

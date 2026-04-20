@@ -54,6 +54,7 @@ if [[ -z "$PROMPT" ]]; then
 fi
 
 # --- Append stdin if available ---
+# Keep in sync with scripts/call-codex.sh — any edit to the stdin block must mirror.
 # Only read stdin when it's an actual pipe or regular file — i.e. a source that
 # will reach EOF. `! -t 0` alone deadlocks `cat` when Claude Code v0.12.3+
 # subshells pass through a non-TTY stdin that never closes; allowing -f as well
