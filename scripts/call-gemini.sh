@@ -54,8 +54,11 @@ if [[ -z "$PROMPT" ]]; then
 fi
 
 # --- Append stdin if available ---
+# Require -p /dev/stdin so we only consume an actual FIFO (pipe with a writer
+# that will close). `! -t 0` alone deadlocks `cat` when Claude Code v0.12.3+
+# subshells inherit a non-TTY stdin that never reaches EOF.
 STAGE="stdin_read"
-if [[ ! -t 0 ]]; then
+if [[ ! -t 0 && -p /dev/stdin ]]; then
     STDIN_DATA=$(cat)
     PROMPT="${PROMPT}
 

@@ -299,7 +299,7 @@ flowchart LR
 4. Claude 透過 Bash tool 呼叫 shell script → script 調用外部 CLI
 5. 外部 AI 處理請求並回傳結果
 6. Claude 呈現結果，適時加入自己的觀點
-7. Review 指令會自動將結構化 insights 記錄到 `review-insights.jsonl` 以供趨勢分析
+7. Review 指令完成後，Claude 會解讀各 provider 的輸出（嚴重度、分類、來源），把結構化結果寫入 `review-insights.jsonl` 供日後趨勢分析
 
 關於資料跨越信任邊界的細節，請參閱[隱私與資料流向](#隱私與資料流向)。
 
@@ -444,10 +444,10 @@ export GEMINI_API_KEY="your-key-from-ai-studio"
 
 ### Review 趨勢分析
 
-每次 `/pi-code-review` 或 `/pi-multi-review` 後，Claude 會自動記錄結構化問題資料到 `~/.claude/logs/review-insights.jsonl`。分析歷史趨勢：
+每次 `/pi-code-review` 或 `/pi-multi-review` 結束時，Claude 會解讀 provider 的輸出——把 emoji 嚴重度對應為字串、推斷發現來源、依信心門檻過濾——再把結構化結果寫入 `~/.claude/logs/review-insights.jsonl`。底下的腳本用 `jq` 讀這個檔案產出純粹的計數，趨勢解讀則可請 Claude 接手：
 
 ```bash
-~/.claude/scripts/review-insights.sh              # 完整分析
+~/.claude/scripts/review-insights.sh              # 計數統計（不含 AI 解讀）
 ~/.claude/scripts/review-insights.sh --recent 10  # 最近 10 次
 ~/.claude/scripts/review-insights.sh --project my-app  # 篩選專案
 ```
@@ -499,6 +499,14 @@ export GEMINI_API_KEY="your-key-from-ai-studio"
 - **SILENT** — 有啟動但沒有任何完成事件——這是 `SIGKILL` 的特徵，通常發生在 Claude Code 的 Bash tool 把某次呼叫 auto-background 後直接把 child process 殺掉
 
 SILENT death 是最有用的診斷訊號：看到就表示你的指令被提前終止。v0.12.3+ 的 `pi-*` commands 都在 preamble 指示 Claude 用前台同步方式呼叫 script，從源頭繞過這個 regression。完整背景見 [CHANGELOG.md](CHANGELOG.md)。
+
+### 快取 TTL 行為
+
+Claude Code 目前全員 5 分鐘 prompt cache TTL，不分 Pro 或 Max。當 `/pi-*` 指令超過 5 分鐘才回來（Codex、Gemini 跑大型任務時偶爾會碰到），Claude 下一輪對話就吃不到 cache read 的 10 倍折扣，等於原價重算一次。
+
+這是 Claude Code 自己的行為，不是 claude-prism 的 bug——2026-03-08 前後，Claude Code 從原本 1 小時的 default 悄悄退回 5 分鐘（詳見 [GitHub issue #46829](https://github.com/anthropics/claude-code/issues/46829)）。Anthropic 的[官方 prompt caching 文件](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)也明確寫了 TTL 不看訂閱層級——網路上流傳的「Max 使用者自動獲得 1 小時 TTL」是沒有官方背書的傳聞。
+
+實測至今，這個 overhead 對 claude-prism 使用者沒造成明顯成本飆升。如果你遇到 token 消耗異常，歡迎開 issue 告訴我們。
 
 ---
 
@@ -663,7 +671,7 @@ sequenceDiagram
 ### 留在本地的內容
 
 - **Log 檔**：`~/.claude/logs/multi-ai.log` 僅記錄 metadata（時間戳、prompt/response 位元組長度）——不含程式碼內容
-- **Review 歷史**：`~/.claude/logs/review-insights.jsonl` 包含結構化的問題摘要（類別、嚴重度、信心度分數）——可能包含衍生自 AI 回應的問題標題
+- **Review 歷史**：`~/.claude/logs/review-insights.jsonl`——每次 review 一行結構化 JSON。每筆紀錄是 Claude 對 provider 輸出的解讀（類別、嚴重度、信心度、發現來源，以及衍生自 AI 回應的問題標題），不是原始 transcript
 - **計畫與研究**：`.claude/pi-plans/` 和 `.claude/pi-research/` 檔案留在你的機器上
 - **零遙測**：claude-prism 沒有分析服務、不會回傳資料、沒有中介伺服器
 

@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v0.12.4 (2026-04-20)
+
+**Fix stdin pipe deadlock** — `call-codex.sh` / `call-gemini.sh` no longer hang on `cat` when invoked without an upstream pipe.
+
+### Fixed
+
+- **stdin pipe deadlock when no pipe present** — `call-codex.sh` / `call-gemini.sh` previously hung on `cat` when invoked without a pipe but with an inherited non-TTY stdin (a Claude Code v0.12.3+ subshell behavior surfaced after the auto-background bypass landed). Affected 6 commands across 8 call sites: `pi-plan`, `pi-multi-review`, `pi-code-review` (main path), `pi-ui-design` (spec-generation step), `pi-ask-codex` (no-context path), and `pi-ask-gemini` (no-context path). The fix narrows the stdin guard from `[[ ! -t 0 ]]` to `[[ ! -t 0 && -p /dev/stdin ]]` so the script only reads when there's an actual FIFO with a writer that will close. The 8 pipe-based call sites (`pi-research`, `pi-askall`, `pi-fact-check`, `pi-ui-review`, `pi-ui-design` HTML generation, `pi-code-review` long-input mode, `pi-ask-{codex,gemini}` with-context path) are unaffected.
+
+### Documentation
+
+- **Added "Cache TTL Behavior" section** under Observability in both `README.md` and `README.zh-TW.md`. Documents Claude Code's current 5-minute prompt cache TTL (applying to all subscribers regardless of Pro or Max tier), the 2026-03-08 Claude Code-wide shift from a 1-hour default back to 5 minutes (see [GitHub issue #46829](https://github.com/anthropics/claude-code/issues/46829)), and clarifies that "Max subscribers automatically receive a 1-hour TTL" is an unverified community claim — Anthropic's official [prompt caching documentation](https://platform.claude.com/docs/en/build-with-claude/prompt-caching) does not gate TTL by subscription tier. Non-alarmist informational framing; no preamble, command, or script changes
+- **Sharpened review-insights wording** in both `README.md` and `README.zh-TW.md` to accurately reflect that Claude (the AI) participates in both writing and reading sides of the JSONL log: at write time Claude interprets Codex/Gemini output (emoji→severity mapping, source inference, ≥80 confidence filter) before appending; at read time `review-insights.sh` only computes raw counts via `jq`, with deeper interpretation (trends, root causes) handled by Claude. Replaced passive voice / "automatically records" phrasing across 4 spots — How It Works step 7, the Review Insights section, the bash comment annotation, and the Privacy "What Stays Local" note — so readers don't mistake the pipeline for pure script automation
+
 ## v0.12.3 (2026-04-18)
 
 **Bypass Claude Code auto-background regression** — commands and scripts harden against the 2026-04+ regression where Claude Code's auto-background path silently kills child processes (output file stays 0 bytes, `ps` shows no trace).

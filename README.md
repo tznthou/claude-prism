@@ -299,7 +299,7 @@ flowchart LR
 4. Claude calls the shell script via Bash tool → script invokes the external CLI
 5. External AI processes the request and returns results
 6. Claude presents the results, adding its own perspective where relevant
-7. For review commands, structured insights are logged to `review-insights.jsonl` for trend analysis
+7. For review commands, Claude interprets the providers' output (severity, category, source) and appends a structured record to `review-insights.jsonl` for later trend analysis
 
 For details on what data crosses trust boundaries, see [Privacy & Data Flow](#privacy--data-flow).
 
@@ -444,10 +444,10 @@ Output includes per-provider call counts, success/error/dry-run breakdown, and a
 
 ### Review Insights
 
-After each `/pi-code-review` or `/pi-multi-review`, Claude automatically records structured issue data to `~/.claude/logs/review-insights.jsonl`. Analyze patterns over time:
+After each `/pi-code-review` or `/pi-multi-review`, Claude interprets the providers' output — mapping emoji severity to strings, inferring discovery source, filtering by the confidence threshold — and appends a structured record to `~/.claude/logs/review-insights.jsonl`. The script below reads that file with `jq` for raw counts; ask Claude to layer interpretation on top of the numbers:
 
 ```bash
-~/.claude/scripts/review-insights.sh              # full analysis
+~/.claude/scripts/review-insights.sh              # raw counts (no AI interpretation)
 ~/.claude/scripts/review-insights.sh --recent 10  # last 10 reviews
 ~/.claude/scripts/review-insights.sh --project my-app  # filter by project
 ```
@@ -499,6 +499,14 @@ Each invocation falls into one of four categories:
 - **SILENT** — invoked but produced no completion event — the signature of `SIGKILL`, commonly caused by Claude Code's Bash tool auto-backgrounding a call and killing its child
 
 Silent deaths are the most actionable diagnostic signal: if you see one, your command was terminated before it could finish. The `pi-*` commands shipped in v0.12.3+ include a "Bash invocation rules" preamble that tells Claude to call scripts in foreground synchronous mode, bypassing this failure mode. See [CHANGELOG.md](CHANGELOG.md) for the full regression writeup.
+
+### Cache TTL Behavior
+
+Claude Code currently uses a 5-minute prompt cache TTL for all subscribers — Pro and Max alike. When a `/pi-*` command takes longer than 5 minutes to return (Codex or Gemini occasionally runs past this window on complex tasks), the next turn in Claude Code pays full input price instead of reading from cache at the usual 10x discount.
+
+This isn't a claude-prism bug — it reflects a Claude Code-wide shift from a 1-hour default back to 5 minutes around 2026-03-08 (see [GitHub issue #46829](https://github.com/anthropics/claude-code/issues/46829)). Anthropic's official [prompt caching documentation](https://platform.claude.com/docs/en/build-with-claude/prompt-caching) does not gate TTL by subscription tier; community claims that Max subscribers automatically receive a 1-hour TTL remain unverified.
+
+In practice, this overhead hasn't produced noticeable cost spikes for claude-prism users so far. If your usage pattern changes that, file an issue.
 
 ---
 
@@ -663,7 +671,7 @@ sequenceDiagram
 ### What Stays Local
 
 - **Logs**: `~/.claude/logs/multi-ai.log` records metadata only (timestamps, prompt/response byte lengths) — no code content
-- **Review history**: `~/.claude/logs/review-insights.jsonl` contains structured issue summaries (category, severity, confidence scores) — may include issue titles derived from AI responses
+- **Review history**: `~/.claude/logs/review-insights.jsonl` — one structured JSON line per review. Each record is Claude's interpretation of the providers' output (category, severity, confidence, source, and an issue title derived from the AI response), not a raw transcript
 - **Plans and research**: `.claude/pi-plans/` and `.claude/pi-research/` files stay on your machine
 - **No telemetry**: claude-prism has no analytics, no phone-home, no intermediary server
 
