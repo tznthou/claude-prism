@@ -271,52 +271,58 @@ fi
 # ─── Test 12: Stdin regression scenarios ───
 # Guards against the v0.12.3→v0.12.5 bug shapes: silent drop on file redirect,
 # deadlock on non-EOF stdin. Any edit to the stdin block in call-{codex,gemini}.sh
-# must keep these six cases green.
+# must keep these six cases green. Assertions check exact prompt_len so that a
+# silent truncation (appending only separators or fragments of stdin) still fails.
+#
+# Intentionally excluded: inherited non-EOF fd (anonymous pipe via /dev/fd). FIFO
+# is not a valid proxy (guard's -p predicate returns true for named pipes, so it
+# blocks on cat instead of skipping), and macOS lacks `timeout`. See
+# .claude/pi-plans/stdin-duplication-evaluation.md Simplify Review for details.
 echo ""
 echo "12. Stdin regression..."
 
 STDIN_FIXTURE_DIR=$(mktemp -d)
 STDIN_FIXTURE="$STDIN_FIXTURE_DIR/fixture.txt"
-echo "hi from stdin" > "$STDIN_FIXTURE"
+STDIN_PAYLOAD="hi from stdin"
+printf '%s\n' "$STDIN_PAYLOAD" > "$STDIN_FIXTURE"
+
+# Prompt length accounting when guard consumes stdin:
+#   PROMPT = "q" + "\n\n" + STDIN_DATA
+# STDIN_DATA is $(cat), which strips the trailing newline echo/printf adds, so
+# it equals STDIN_PAYLOAD byte-for-byte. Expected = 1 + 2 + len(payload).
+STDIN_EXPECT_CONSUMED=$(( 1 + 2 + ${#STDIN_PAYLOAD} ))
+STDIN_EXPECT_SKIPPED=1
 
 STDIN_CODEX_REPO=$(mktemp -d)
 git -C "$STDIN_CODEX_REPO" init -q
 
 _check_prompt_len() {
-    local label="$1" output="$2" expect_kind="$3" len
+    local label="$1" output="$2" expected="$3" len
     len=$(grep -oE 'Prompt length: [0-9]+' <<< "$output" | grep -oE '[0-9]+' | head -1 || true)
-    if [[ "$expect_kind" == "consumed" ]]; then
-        if [[ "$len" =~ ^[0-9]+$ ]] && (( len > 1 )); then
-            pass "$label (prompt_len=$len)"
-        else
-            fail "$label: expected len>1, got '$len'"
-        fi
+    if [[ "$len" == "$expected" ]]; then
+        pass "$label (prompt_len=$len)"
     else
-        if [[ "$len" == "1" ]]; then
-            pass "$label (prompt_len=$len)"
-        else
-            fail "$label: expected len=1, got '$len'"
-        fi
+        fail "$label: expected len=$expected, got '$len'"
     fi
 }
 
-STDIN_OUT=$(echo "hi from stdin" | "$SCRIPT_DIR/scripts/call-gemini.sh" --dry-run "q" 2>&1 || true)
-_check_prompt_len "call-gemini.sh stdin via pipe" "$STDIN_OUT" consumed
+STDIN_OUT=$(printf '%s\n' "$STDIN_PAYLOAD" | "$SCRIPT_DIR/scripts/call-gemini.sh" --dry-run "q" 2>&1 || true)
+_check_prompt_len "call-gemini.sh stdin via pipe" "$STDIN_OUT" "$STDIN_EXPECT_CONSUMED"
 
 STDIN_OUT=$("$SCRIPT_DIR/scripts/call-gemini.sh" --dry-run "q" < "$STDIN_FIXTURE" 2>&1 || true)
-_check_prompt_len "call-gemini.sh stdin via file redirect" "$STDIN_OUT" consumed
+_check_prompt_len "call-gemini.sh stdin via file redirect" "$STDIN_OUT" "$STDIN_EXPECT_CONSUMED"
 
 STDIN_OUT=$("$SCRIPT_DIR/scripts/call-gemini.sh" --dry-run "q" < /dev/null 2>&1 || true)
-_check_prompt_len "call-gemini.sh stdin from /dev/null skipped" "$STDIN_OUT" skipped
+_check_prompt_len "call-gemini.sh stdin from /dev/null skipped" "$STDIN_OUT" "$STDIN_EXPECT_SKIPPED"
 
-STDIN_OUT=$(cd "$STDIN_CODEX_REPO" && echo "hi from stdin" | "$SCRIPT_DIR/scripts/call-codex.sh" --dry-run "q" 2>&1 || true)
-_check_prompt_len "call-codex.sh stdin via pipe" "$STDIN_OUT" consumed
+STDIN_OUT=$(cd "$STDIN_CODEX_REPO" && printf '%s\n' "$STDIN_PAYLOAD" | "$SCRIPT_DIR/scripts/call-codex.sh" --dry-run "q" 2>&1 || true)
+_check_prompt_len "call-codex.sh stdin via pipe" "$STDIN_OUT" "$STDIN_EXPECT_CONSUMED"
 
 STDIN_OUT=$(cd "$STDIN_CODEX_REPO" && "$SCRIPT_DIR/scripts/call-codex.sh" --dry-run "q" < "$STDIN_FIXTURE" 2>&1 || true)
-_check_prompt_len "call-codex.sh stdin via file redirect" "$STDIN_OUT" consumed
+_check_prompt_len "call-codex.sh stdin via file redirect" "$STDIN_OUT" "$STDIN_EXPECT_CONSUMED"
 
 STDIN_OUT=$(cd "$STDIN_CODEX_REPO" && "$SCRIPT_DIR/scripts/call-codex.sh" --dry-run "q" < /dev/null 2>&1 || true)
-_check_prompt_len "call-codex.sh stdin from /dev/null skipped" "$STDIN_OUT" skipped
+_check_prompt_len "call-codex.sh stdin from /dev/null skipped" "$STDIN_OUT" "$STDIN_EXPECT_SKIPPED"
 
 rm -rf "$STDIN_FIXTURE_DIR" "$STDIN_CODEX_REPO"
 
