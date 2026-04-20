@@ -282,6 +282,9 @@ echo ""
 echo "12. Stdin regression..."
 
 STDIN_FIXTURE_DIR=$(mktemp -d)
+STDIN_CODEX_REPO=$(mktemp -d)
+trap 'rm -rf "$STDIN_FIXTURE_DIR" "$STDIN_CODEX_REPO"' EXIT
+
 STDIN_FIXTURE="$STDIN_FIXTURE_DIR/fixture.txt"
 STDIN_PAYLOAD="hi from stdin"
 printf '%s\n' "$STDIN_PAYLOAD" > "$STDIN_FIXTURE"
@@ -293,7 +296,6 @@ printf '%s\n' "$STDIN_PAYLOAD" > "$STDIN_FIXTURE"
 STDIN_EXPECT_CONSUMED=$(( 1 + 2 + ${#STDIN_PAYLOAD} ))
 STDIN_EXPECT_SKIPPED=1
 
-STDIN_CODEX_REPO=$(mktemp -d)
 git -C "$STDIN_CODEX_REPO" init -q
 
 _check_prompt_len() {
@@ -324,7 +326,7 @@ _check_prompt_len "call-codex.sh stdin via file redirect" "$STDIN_OUT" "$STDIN_E
 STDIN_OUT=$(cd "$STDIN_CODEX_REPO" && "$SCRIPT_DIR/scripts/call-codex.sh" --dry-run "q" < /dev/null 2>&1 || true)
 _check_prompt_len "call-codex.sh stdin from /dev/null skipped" "$STDIN_OUT" "$STDIN_EXPECT_SKIPPED"
 
-rm -rf "$STDIN_FIXTURE_DIR" "$STDIN_CODEX_REPO"
+# Cleanup handled by EXIT trap set above.
 
 # ─── Summary ───
 echo ""
