@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v0.12.6 (2026-04-20)
+
+**Regression test hardening** — lock in the v0.12.3→v0.12.5 stdin fixes with six dedicated test cases so future edits to the stdin block in `call-codex.sh` / `call-gemini.sh` fail fast instead of silently regressing.
+
+### Testing
+
+- **Added six stdin regression scenarios** to `tests/smoke-test.sh` (pipe / file redirect / `</dev/null` × 2 wrappers). Uses exact prompt-length assertions so silent truncation or drop cannot pass the test — the prior `> 1` form would have accepted partial-byte loss. Inherited non-EOF fd case intentionally excluded and documented in-line (FIFO is not a valid proxy for the v0.12.3 anonymous-pipe bug shape, and macOS lacks `timeout`). smoke-test total: 31 → 37
+- **Added `# Keep in sync with scripts/call-<other>.sh` comments** above the shared stdin block in both wrappers, aligning with the existing `install.sh` / `uninstall.sh` mirror convention so manual edits carry a visible sync signal
+
+### Fixed
+
+- **EXIT trap for temp dir cleanup in smoke-test.sh regression block** — the new Test 12 section created two temp dirs (`mktemp -d` for fixture + git repo) but relied on a trailing `rm -rf` for cleanup. Under `set -euo pipefail`, any error between `mktemp` and the final cleanup would leak the dirs (including an initialized git repo). Register an `EXIT` trap immediately after both `mktemp -d` calls so cleanup runs on success, error, and signal paths alike. OWASP A10 Mishandling of Exceptional Conditions
+
 ## v0.12.5 (2026-04-20)
 
 **Hardening pass on top of v0.12.4** — adversarial review (Codex) and security lint surfaced two issues that complete the stdin attack surface fix.
