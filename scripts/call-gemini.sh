@@ -54,11 +54,12 @@ if [[ -z "$PROMPT" ]]; then
 fi
 
 # --- Append stdin if available ---
-# Require -p /dev/stdin so we only consume an actual FIFO (pipe with a writer
-# that will close). `! -t 0` alone deadlocks `cat` when Claude Code v0.12.3+
-# subshells inherit a non-TTY stdin that never reaches EOF.
+# Only read stdin when it's an actual pipe or regular file — i.e. a source that
+# will reach EOF. `! -t 0` alone deadlocks `cat` when Claude Code v0.12.3+
+# subshells pass through a non-TTY stdin that never closes; allowing -f as well
+# preserves `call-gemini.sh "..." < file.txt` redirect usage without silent drop.
 STAGE="stdin_read"
-if [[ ! -t 0 && -p /dev/stdin ]]; then
+if [[ ! -t 0 && ( -p /dev/stdin || -f /dev/stdin ) ]]; then
     STDIN_DATA=$(cat)
     PROMPT="${PROMPT}
 
