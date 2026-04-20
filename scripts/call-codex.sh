@@ -152,7 +152,11 @@ printf '%s' "$PROMPT" | "${CMD[@]}" - 2>"$ERR_TMP" | tee "$OUT_TMP" || {
     else
         diag="CLI_ERROR: Codex CLI exited with code $rc."
     fi
-    _log ERROR "codex call failed ($diag): $err_text"
+    # Strip newlines from $err_text before logging — CLI stderr can echo
+    # prompt fragments that, if injected with "\n[INFO] [pid=N] ..." tokens,
+    # would forge log entries (OWASP A09 Log Injection).
+    err_text_safe=$(printf '%s' "$err_text" | tr '\n' ' ')
+    _log ERROR "codex call failed ($diag): $err_text_safe"
     echo "Error: $diag" >&2
     [[ -n "$err_text" ]] && echo "Details: $err_text" >&2
     exit $rc
