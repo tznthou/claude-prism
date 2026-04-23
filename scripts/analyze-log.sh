@@ -31,6 +31,11 @@ echo ""
 
 awk '
 function to_epoch(ts,   cmd, result) {
+    # Reject anything not matching strict ISO-8601 before shell-interpolating.
+    # Prevents command injection if the log file is externally tampered — the
+    # normal _log write path always produces this format, so zero false negatives
+    # for legitimate entries (OWASP A03).
+    if (ts !~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/) return 0
     # BSD date (macOS) first, GNU date fallback. Silent failure → 0.
     cmd = "date -u -j -f \"%Y-%m-%dT%H:%M:%SZ\" \"" ts "\" +%s 2>/dev/null || date -u -d \"" ts "\" +%s 2>/dev/null || echo 0"
     cmd | getline result
