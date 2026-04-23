@@ -18,9 +18,14 @@ All notable changes to this project will be documented in this file.
 - **Dispatch rules preamble** in `pi-askall`, `pi-plan`, and `pi-multi-review` replaces the v0.12.3 "Bash invocation rules" notice. Explains why main-conversation parallel Bash fails (FIFO), how sub-agent fan-out differs (separate dispatch layer), and when `run_in_background: true` still applies (unchanged escape hatch for genuinely-long calls)
 - **`GEMINI_MODEL` passthrough note** in `pi-askall` spells out the policy so future skill authors don't reintroduce layering
 
+### Breaking changes
+
+- **`GEMINI_MODEL_DEEP` is no longer read** by any skill. Users who set `GEMINI_MODEL_DEEP` to force the deep tier for `pi-plan` / `pi-multi-review` / `pi-fact-check` / `pi-research` will, after upgrade, fall through to whatever `GEMINI_MODEL` is set to (or the CLI's own default if unset). **Migration**: if you previously set `GEMINI_MODEL_DEEP=gemini-3-pro-preview` to keep the deep tier for reviews while running Flash for general Q&A, either (a) set `GEMINI_MODEL=gemini-3-pro-preview` globally and accept the deep tier everywhere, (b) set it per-command via `GEMINI_MODEL=... /pi-plan ...`, or (c) leave it unset and let the CLI default apply
+- **Downstream skill authors** extending `pi-askall` / `pi-plan` / `pi-multi-review` verbatim must follow the new sub-agent fan-out pattern — the old "two parallel Bash tool calls" prescription is gone
+
 ### Notes
 
-- Breaking change for downstream skill authors who extend `pi-askall` / `pi-plan` / `pi-multi-review` verbatim (must follow the new sub-agent pattern). For end-users calling `/pi-askall` etc., no behaviour change beyond "parallel now actually parallel"
+- For end-users who did NOT set `GEMINI_MODEL_DEEP`, the only behaviour change is "parallel now actually parallel"
 - `pi-fact-check` and `pi-research` make one Gemini Bash call + N `WebSearch` calls. They don't trigger the two-Bash FIFO, so sub-agent fan-out is not applied there — only the `GEMINI_MODEL` passthrough change affects them. The Bash + WebSearch queue interaction is untested; a future investigation tied to the `call-*.sh` soft-timeout work may surface additional changes
 
 ## v0.12.6 (2026-04-20)

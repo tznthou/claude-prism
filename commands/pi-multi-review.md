@@ -174,17 +174,24 @@ Task: run one foreground-synchronous Bash command and return its output verbatim
 Step 1. Run this exact Bash command (timeout 600000 ms; no `&`, `nohup`, or `run_in_background: true`):
 
     start_ts=$(date +%s)
-    cat <CODEX_PROMPT> | ~/.claude/scripts/call-codex.sh "adversarial review" 2>&1
+    wrapper_out=$(~/.claude/scripts/call-codex.sh "adversarial review" < "<CODEX_PROMPT>" 2>&1)
     rc=$?
     end_ts=$(date +%s)
+    if [ -z "$wrapper_out" ]; then
+        wrapper_out=$(cat ~/.claude/logs/pi-codex-last.out 2>/dev/null)
+        [ -n "$wrapper_out" ] && echo "[FALLBACK: wrapper stdout was empty — loaded from pi-codex-last.out]"
+    fi
+    printf '%s\n' "$wrapper_out"
     echo "===META==="
     echo "rc=$rc"
     echo "runtime=$((end_ts - start_ts))s"
     echo "response_bytes=$(wc -c < ~/.claude/logs/pi-codex-last.out 2>/dev/null || echo NA)"
 
-Step 2. If stdout is empty, Read `~/.claude/logs/pi-codex-last.out` — the wrapper's `tee` safety net persists the response there even when the Bash tool returns 0 bytes.
+Two design notes on this Bash shape:
+- `< "<CODEX_PROMPT>"` feeds the prompt directly to the wrapper's stdin — NO `cat |` pipe. Without `set -o pipefail`, a pipeline's `$?` is only the tail command's exit code, so a missing / unreadable prompt file would silently run the wrapper on empty stdin. Direct redirect keeps `$?` as the wrapper's real rc.
+- The `wrapper_out` capture lets the emptiness check run BEFORE the META block is printed. If we echoed META first, stdout would never be empty (META would always fill it), so the `pi-codex-last.out` fallback for silent-kill / auto-bg regressions would never trigger.
 
-Step 3. Return to me: the complete stdout verbatim (do NOT summarize, paraphrase, or reformat the Codex review — it will feed Claude's synthesis and confidence scoring with full fidelity), the META block, and any stderr if rc != 0 (classifier: TIMEOUT / RATE_LIMIT / AUTH_ERROR / SANDBOX / NETWORK / CLI_ERROR / CLI_NOT_FOUND).
+Step 2. Return to me: the complete printed output verbatim (do NOT summarize, paraphrase, or reformat the Codex review — it will feed Claude's synthesis and confidence scoring with full fidelity), including the META block. If the Bash command printed a `[FALLBACK: ...]` line, relay that too — it signals the wrapper was silently killed and the response came from the tee safety net. If rc != 0, include any stderr — the wrapper classifies failures as TIMEOUT / RATE_LIMIT / AUTH_ERROR / SANDBOX / NETWORK / CLI_ERROR / CLI_NOT_FOUND.
 
 Only use Bash and Read tools.
 ```
