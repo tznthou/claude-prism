@@ -287,7 +287,10 @@ T13_DIR=""
 T13_LOGDIRS=()
 # shellcheck disable=SC2329  # invoked via trap
 _t12_t13_cleanup() {
-    rm -rf "$STDIN_FIXTURE_DIR" "$STDIN_CODEX_REPO" ${T13_DIR:+"$T13_DIR"} "${T13_LOGDIRS[@]}"
+    # Bash 3.2 + set -u: "${arr[@]}" on empty array aborts. ${arr[@]+"${arr[@]}"}
+    # is the standard empty-array-safe guard (same shape as ${T13_DIR:+...}).
+    # Relevant if EXIT trap fires after Test 12 but before T13 has populated the array.
+    rm -rf "$STDIN_FIXTURE_DIR" "$STDIN_CODEX_REPO" ${T13_DIR:+"$T13_DIR"} ${T13_LOGDIRS[@]+"${T13_LOGDIRS[@]}"}
 }
 trap _t12_t13_cleanup EXIT
 

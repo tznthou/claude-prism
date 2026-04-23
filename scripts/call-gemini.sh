@@ -108,7 +108,6 @@ STAGE="exec"
 CMD=("$GEMINI_BIN")
 [[ -n "$MODEL" ]] && CMD+=(-m "$MODEL")
 
-mkdir -p "$LOG_DIR"
 ERR_TMP=$(mktemp)
 OUT_TMP="${LOG_DIR}/pi-gemini-last.out"
 

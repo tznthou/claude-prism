@@ -127,7 +127,6 @@ STAGE="exec"
 CMD=("$CODEX_BIN" exec --sandbox "$SANDBOX")
 [[ -n "$MODEL" ]] && CMD+=(--model "$MODEL")
 
-mkdir -p "$LOG_DIR"
 ERR_TMP=$(mktemp)
 OUT_TMP="${LOG_DIR}/pi-codex-last.out"
 
