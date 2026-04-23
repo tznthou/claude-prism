@@ -114,7 +114,7 @@ npm install -g claud-prism-aireview
 claud-prism-aireview   # ← 必要步驟：將 commands 和 scripts 部署到 ~/.claude/
 ```
 
-> **注意：** `npm install -g` 只會將執行檔放入 PATH，不會自動部署指令檔案。你必須手動執行一次 `claud-prism-aireview` 才能完成安裝。這是刻意的設計——我們不使用 `postinstall` scripts，以確保[供應鏈安全](https://socket.dev/blog/pnpm-10-0-0-blocks-lifecycle-scripts-by-default)。
+> **注意：** `npm install -g` 只會將執行檔放入 PATH，不會自動部署指令檔案。你必須手動執行一次 `claud-prism-aireview` 才能完成安裝。這是刻意的設計——我們不使用 `postinstall` scripts 以確保[供應鏈安全](docs/supply-chain-security.zh-TW.md)。
 
 **Homebrew (macOS)**
 
@@ -131,11 +131,7 @@ cd claude-prism
 ./install.sh
 ```
 
-安裝程式會：
-- 檢查前置需求並回報可用狀態
-- 透過 SHA256 checksum 驗證檔案完整性（若有 `checksums.sha256`）
-- 覆寫前自動備份現有檔案
-- 複製 commands 到 `~/.claude/commands/`，scripts 到 `~/.claude/scripts/`
+安裝程式會檢查前置需求、透過 SHA256 checksum 驗證檔案完整性、覆寫前自動備份、然後將 commands 複製到 `~/.claude/commands/`、scripts 到 `~/.claude/scripts/`。
 
 ### 驗證安裝
 
@@ -296,12 +292,75 @@ flowchart LR
 1. 使用者在 Claude Code 輸入 slash command（如 `/pi-code-review src/auth.ts`）
 2. Claude Code 讀取 command 定義（含指示的 Markdown）
 3. Claude 讀取相關程式碼，組裝 prompt
-4. Claude 透過 Bash tool 呼叫 shell script → script 調用外部 CLI
-5. 外部 AI 處理請求並回傳結果
-6. Claude 呈現結果，適時加入自己的觀點
-7. Review 指令完成後，Claude 會解讀各 provider 的輸出（嚴重度、分類、來源），把結構化結果寫入 `review-insights.jsonl` 供日後趨勢分析
+4. 若指令需要同時呼叫兩個以上 provider，Claude 透過 **sub-agent fan-out** 分派（詳見下方[實證基礎](#實證基礎)）
+5. 各 sub-agent 透過 Bash tool 呼叫 shell script → script 調用外部 CLI
+6. 外部 AI 並行處理請求並回傳結果
+7. Claude 呈現綜合結果，適時加入自己的觀點
+8. Review 指令完成後，Claude 會解讀各 provider 的輸出（嚴重度、分類、來源），把結構化結果寫入 `review-insights.jsonl` 供日後趨勢分析
 
-關於資料跨越信任邊界的細節，請參閱[隱私與資料流向](#隱私與資料流向)。
+---
+
+## 實證基礎
+
+多數 AI 調度工具都宣稱「我們並行呼叫多個 provider」。我們用跨三層執行 context 的對照實驗驗證了這個宣稱在 Claude Code 裡是否真的成立——結果發現：**除非你為並行而設計，否則它不會自然發生**。
+
+### 問題
+
+當 Claude Code 在同一 message 裡發兩個 Bash tool call（`call-codex.sh` + `call-gemini.sh`），它們真的同時跑嗎？還是某一層其實有 queue？
+
+### 對照實驗（N=36+）
+
+五個實驗組對應三個候選假說（queue / provider contention / capacity）：
+
+| 組 | 設定 | 驗證層級 |
+|---|---|---|
+| **A** | 主對話、同 message、2 個 Bash（Codex + Gemini） | 主對話層 queue |
+| **B** | 主對話 → 2 個 sub-agent，各跑 1 個 CLI | sub-agent 層 queue |
+| **B-hold15 / B-sleep / B-swap** | 變量隔離 | 拆掉 CLI / provider / 順序干擾 |
+| **F** | 2 個 sub-agent，都跑 Gemini | 排除 provider 異質性 |
+| **D** | 純 OS shell `&` fork | Claude Code 之下的 baseline |
+
+### 結果 — 分層行為（MECE）
+
+| 層級 | Queue 序列化 | Silence watchdog | Sleep guard | Auto-background |
+|---|---|---|---|---|
+| OS shell `&` fork | ❌ | ❌ | ❌ | ❌ |
+| Sub-agent Bash | ❌（真並行） | ❓ 未測 | ✅ | 🔥 偶發 |
+| **主對話 Bash** | ✅（同 message 內 FIFO） | ❌ | ❌ | ❌ |
+
+- **A 層：N=7，`delta/first_exec` = 1.00 跨兩個 capacity window，每一次都精準吻合。** 最極端的一次：Codex 跑 150 秒，Gemini 的 invoke 時間戳跟 Codex 結束時間戳**精確到秒**地重合。零 variance。
+- **B 層：N=13，dispatch delta 中位數 2.8 秒。** B-hold15 證實 Gemini 在 Codex 還在 `sleep 15` 時就正常 dispatch；B-sleep 證實 Codex 側完全沒跑 CLI，Gemini 照樣並行。
+- **OS 層：N=6，delta ≈ 0 秒。** Claude Code 之下沒有任何限制。
+
+### 對比圖 — 同樣的工作、不同的佈局
+
+```mermaid
+sequenceDiagram
+    participant M as 主對話
+    participant S1 as Sub-agent 1
+    participant S2 as Sub-agent 2
+
+    Note over M: 反模式（structural FIFO）
+    M->>M: Bash: call-codex.sh（10s）
+    M->>M: Bash: call-gemini.sh（排隊中）
+    Note over M: 總計：20s
+
+    Note over M,S2: 正確模式（sub-agent fan-out）
+    M->>S1: Agent（codex 側）
+    M->>S2: Agent（gemini 側）
+    par
+      S1->>S1: Bash: call-codex.sh（10s）
+    and
+      S2->>S2: Bash: call-gemini.sh（10s）
+    end
+    Note over M,S2: 總計：~13s（10s exec + 2.8s dispatch）
+```
+
+### 這為什麼重要
+
+`pi-askall`、`pi-plan`、`pi-multi-review`、`pi-fact-check`——凡是會呼叫兩個以上 provider 的指令，都走 **sub-agent fan-out**，不在主對話直接發並行 Bash。這不是架構偏好，是**唯一能在 Claude Code 的 structural FIFO 下拿到真並行的執行層**。
+
+完整摘要、分層資料、產品決策 trace：[docs/research/bash-tool-parallelism.md](docs/research/bash-tool-parallelism.md)（英文）。
 
 ---
 
@@ -311,7 +370,7 @@ flowchart LR
 |------|------|------|
 | Bash | CLI 包裝腳本 | 負責 binary 偵測、logging、stdin 管線 |
 | Markdown | Slash command 定義 | Claude Code 讀取這些檔案作為指令 |
-| Claude Code | 調度者 | 讀取 command，分派至外部 CLI |
+| Claude Code | 調度者 | 讀取 command，透過 sub-agent fan-out 分派 |
 | Codex CLI | OpenAI 存取 | Code review 與 Q&A（模型可設定） |
 | Gemini CLI | Google 存取 | 研究、UI 審查、Q&A（模型可設定） |
 | GitHub Actions | CI/CD 整合 | 自動化 PR review，透過 REST API |
@@ -323,33 +382,23 @@ claude-prism/
 ├── .github/workflows/
 │   ├── ai-review.yml           # GitHub Actions CI review workflow
 │   └── shellcheck.yml          # ShellCheck 靜態分析
+├── docs/                       # 深度文件（見下方延伸閱讀）
 ├── spec/                       # 獨立規格文件
 │   └── confidence-scoring-v1.md  # Evidence-based 雜訊過濾 framework
 ├── commands/                   # Slash command 定義（Markdown）
-│   ├── pi-ask-codex.md
-│   ├── pi-ask-gemini.md
-│   ├── pi-askall.md
-│   ├── pi-code-review.md
-│   ├── pi-fact-check.md
-│   ├── pi-multi-review.md
-│   ├── pi-plan.md
-│   ├── pi-research.md
-│   ├── pi-ui-design.md
-│   └── pi-ui-review.md
 ├── scripts/                    # CLI 包裝腳本與工具（Bash）
-│   ├── call-codex.sh           # Codex CLI 包裝
-│   ├── call-gemini.sh          # Gemini CLI 包裝
+│   ├── call-codex.sh           # Codex CLI 包裝（含 soft-timeout）
+│   ├── call-gemini.sh          # Gemini CLI 包裝（含 soft-timeout）
 │   ├── detect-domain.sh        # 智慧路由 domain 偵測
+│   ├── analyze-log.sh          # 呼叫生命週期診斷
 │   ├── ci-review.sh            # CI/CD review 調度器（curl API）
 │   ├── usage-summary.sh        # API 使用量統計
 │   └── review-insights.sh      # Review 趨勢分析
-├── tests/
-│   └── smoke-test.sh
+├── tests/smoke-test.sh
 ├── checksums.sha256            # SHA256 checksum 完整性驗證
-├── install.sh
-├── uninstall.sh
-├── README.md
-└── README.zh-TW.md
+├── install.sh / uninstall.sh
+├── README.md / README.zh-TW.md
+└── CHANGELOG.md
 ```
 
 安裝後的位置：
@@ -361,10 +410,6 @@ claude-prism/
 └── logs/
     ├── multi-ai.log            # 呼叫紀錄（時間戳、prompt/response 長度）
     └── review-insights.jsonl   # 結構化 review 歷史（自動記錄）
-
-# /pi-plan 和 /pi-research 執行時建立：
-.claude/pi-plans/               # ← 計畫檔（專案本地，跨 session 持久化）
-.claude/pi-research/            # ← 研究結果存檔（可選）
 ```
 
 ---
@@ -384,12 +429,12 @@ claude-prism/
 | `MULTI_AI_LOG_DIR` | `~/.claude/logs` | 紀錄檔目錄 |
 | `CLAUDE_PRISM_TIMEOUT`（v0.14.0+） | `110` | Soft-timeout 掛鐘時限（整數秒，範圍 1..3600）。無效值自動 fallback 到 110 並寫入 WARN log。超時時 wrapper 會發出 rc=124 + stderr sentinel + `soft_timeout` log event，取代原本被 Claude Code harness 在 130 秒附近悄悄 SIGKILL 的黑洞。已知會跑比較久的任務可以 per-invocation 調寬：`CLAUDE_PRISM_TIMEOUT=180 ./call-codex.sh "40KB review prompt"` |
 
-預設不指定模型，由各 CLI 使用內建預設值——零設定即可用。CLI 更新時自動使用最新模型。如需指定模型：
+預設不指定模型，由各 CLI 使用內建預設值——零設定即可用。如需指定模型：
 
 ```bash
 # Shell 設定檔（~/.zshrc 或 ~/.bashrc）
-export GEMINI_MODEL="gemini-3-flash-preview"   # 預設：快速、穩定
-export GEMINI_MODEL_DEEP="gemini-3-pro-preview"  # 重推理：事實查核、研究、Review、規劃
+export GEMINI_MODEL="gemini-3-flash-preview"
+export GEMINI_MODEL_DEEP="gemini-3-pro-preview"
 export CODEX_MODEL="gpt-5.3-codex"
 
 # 選用：使用自己的 API key 取得獨立 quota
@@ -405,293 +450,39 @@ export GEMINI_API_KEY="your-key-from-ai-studio"
 
 | 功能 | 說明 |
 |------|------|
-| **Streaming 輸出** | CLI 回應透過 `tee` 即時串流到 stdout，不做 buffering。被背景化時也能即時捕獲輸出 |
+| **Streaming 輸出** | CLI 回應透過 `tee` 即時串流到 stdout，不做 buffering |
 | **SIGHUP 防禦** | Script 忽略 `SIGHUP`，背景化時不會被終止 |
-| **背景化 Fallback** | 輸出持久化到 `~/.claude/logs/pi-{codex,gemini}-last.out`。所有指令皆含 fallback 指示——若 Bash tool 被背景化或回傳空輸出，Claude 會自動讀取 log 檔取得結果 |
+| **背景化 Fallback** | 輸出持久化到 `~/.claude/logs/pi-{codex,gemini}-last.out`；指令會在 stdout 為空時自動讀 log |
 | **Binary 偵測** | 自動搜尋多個路徑找 CLI 執行檔 |
 | **Logging** | 每次呼叫記錄到 `~/.claude/logs/multi-ai.log`（含時間戳） |
 | **`--dry-run`** | 測試模式，不呼叫 API（不消耗 token） |
 | **Stdin 管線** | `echo "code" \| call-gemini.sh "prompt"` 處理長輸入 |
 | **Model 切換** | `-m model-name` 指定不同模型 |
-| **Soft-timeout**（v0.14.0+） | Provider CLI 呼叫被 `CLAUDE_PRISM_TIMEOUT` 掛鐘限制（預設 110 秒，範圍 1..3600）。超時時 wrapper 會結構化退出：rc=124、stderr 印出 `[CLAUDE-PRISM: soft-timeout at STAGE=exec after Ns]`、寫入 `soft_timeout` log event 讓 `analyze-log.sh` 歸類為 SOFT_TIMEOUT——比 Claude Code ~130 秒的 harness watchdog 更早觸發，讓你看到明確錯誤而不是靜默 SIGKILL |
+| **Soft-timeout**（v0.14.0+） | Provider CLI 呼叫被 `CLAUDE_PRISM_TIMEOUT` 掛鐘限制（預設 110 秒，範圍 1..3600）。超時時結構化退出：rc=124、stderr sentinel、`soft_timeout` log event 讓 `analyze-log.sh` 歸類為 SOFT_TIMEOUT——比 Claude Code ~130 秒的 harness watchdog 更早觸發 |
 
 ### 自訂
 
-**新增 Provider：**
+**新增 Provider：** 建立 `scripts/call-newprovider.sh` 和 `commands/ask-newprovider.md`（參考現有格式），執行 `./install.sh` 部署。
 
-1. 建立 `scripts/call-newprovider.sh`，參考現有 script 格式
-2. 建立 `commands/ask-newprovider.md`，寫 command 定義
-3. 執行 `./install.sh` 部署
-
-**修改 Review Prompt：**
-
-編輯 `commands/` 下的 `.md` 檔案，prompt 模板內嵌其中，直接改就好。
+**修改 Review Prompt：** 編輯 `commands/` 下的 `.md` 檔案，prompt 模板內嵌其中。
 
 ---
 
-## 可觀測性
-
-### 使用量統計
-
-追蹤 API 呼叫量和估算 token 消耗：
-
-```bash
-~/.claude/scripts/usage-summary.sh            # 今天
-~/.claude/scripts/usage-summary.sh --week      # 過去 7 天
-~/.claude/scripts/usage-summary.sh --all       # 全部
-~/.claude/scripts/usage-summary.sh --date 2026-02-24  # 指定日期
-```
-
-輸出包含各 provider 呼叫次數、成功/失敗/dry-run 分佈、粗估 token 量（~4 字元/token）。
-
-### Review 趨勢分析
-
-每次 `/pi-code-review` 或 `/pi-multi-review` 結束時，Claude 會解讀 provider 的輸出——把 emoji 嚴重度對應為字串、推斷發現來源、依信心門檻過濾——再把結構化結果寫入 `~/.claude/logs/review-insights.jsonl`。底下的腳本用 `jq` 讀這個檔案產出純粹的計數，趨勢解讀則可請 Claude 接手：
-
-```bash
-~/.claude/scripts/review-insights.sh              # 計數統計（不含 AI 解讀）
-~/.claude/scripts/review-insights.sh --recent 10  # 最近 10 次
-~/.claude/scripts/review-insights.sh --project my-app  # 篩選專案
-```
-
-輸出包含：
-- **分類分佈** — security、performance、design、logic 等（含長條圖）
-- **嚴重度分佈** — critical / medium / suggestion
-- **發現來源** — 共識 vs 單一 provider 發現
-- **最常見問題** — 重複出現的模式會標記
-- **近期 review 時間軸** — 最近 5 次 review 及問題數量
-
-每筆 review 紀錄格式：
-
-```json
-{
-  "date": "2026-02-24T10:30:00Z",
-  "project": "my-app",
-  "scope": "pr",
-  "domain": "backend",
-  "providers": ["codex", "gemini", "claude"],
-  "issues": [
-    {
-      "category": "security",
-      "severity": "critical",
-      "confidence": 95,
-      "title": "SQL injection in user input handler",
-      "source": "consensus"
-    }
-  ]
-}
-```
-
-分類：`security`、`performance`、`design`、`logic`、`maintainability`、`guideline`、`accessibility`、`other`。`guideline` 分類追蹤專案規範違規（`CLAUDE.md` / `Agents.md`）。
-
-### 呼叫生命週期診斷
-
-遇到狀況時——`/pi-*` 指令卡住、回傳空輸出、或 log 檔意外是 0 bytes——`analyze-log.sh` 會把 `multi-ai.log` 的事件依 pid 分組，告訴你每次呼叫是怎麼結束的：
-
-```bash
-~/.claude/scripts/analyze-log.sh              # 分析預設 log 檔
-~/.claude/scripts/analyze-log.sh /path/to/log  # 指定 log 檔
-```
-
-每次呼叫會被歸類為五種結局之一：
-
-- **SUCCESS** — 正常完成
-- **ERROR** — CLI 回非零 exit code（會標示錯誤分類：`TIMEOUT`、`RATE_LIMIT`、`AUTH_ERROR`、`PERMISSION`、`SANDBOX`、`NETWORK`、`CLI_ERROR`、`CLI_NOT_FOUND`）
-- **SIGNAL** — 執行中收到 `HUP` / `INT` / `TERM`（會附上當下卡在哪個執行階段）
-- **SOFT_TIMEOUT**（v0.14.0+）— wrapper 的 `CLAUDE_PRISM_TIMEOUT` 掛鐘時限觸發；CLI 是被我們主動殺掉並留下結構化訊號，和下面 SILENT 的被動死亡可以明確區分
-- **SILENT** — 有啟動但沒有任何完成事件——這是 `SIGKILL` 的特徵，通常發生在 Claude Code 的 Bash tool 把某次呼叫 auto-background 後直接把 child process 殺掉
-
-SILENT death 是最有用的診斷訊號：看到就表示你的指令被提前終止。v0.12.3+ 的 `pi-*` commands 都在 preamble 指示 Claude 用前台同步方式呼叫 script，從源頭繞過這個 regression。完整背景見 [CHANGELOG.md](CHANGELOG.md)。
-
-### 快取 TTL 行為
-
-Claude Code 目前全員 5 分鐘 prompt cache TTL，不分 Pro 或 Max。當 `/pi-*` 指令超過 5 分鐘才回來（Codex、Gemini 跑大型任務時偶爾會碰到），Claude 下一輪對話就吃不到 cache read 的 10 倍折扣，等於原價重算一次。
-
-這是 Claude Code 自己的行為，不是 claude-prism 的 bug——2026-03-08 前後，Claude Code 從原本 1 小時的 default 悄悄退回 5 分鐘（詳見 [GitHub issue #46829](https://github.com/anthropics/claude-code/issues/46829)）。Anthropic 的[官方 prompt caching 文件](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)也明確寫了 TTL 不看訂閱層級——網路上流傳的「Max 使用者自動獲得 1 小時 TTL」是沒有官方背書的傳聞。
-
-實測至今，這個 overhead 對 claude-prism 使用者沒造成明顯成本飆升。如果你遇到 token 消耗異常，歡迎開 issue 告訴我們。
-
----
-
-## CI/CD 整合
-
-透過 GitHub Actions 自動化多方 provider PR review。CI 路徑直接使用 REST API（不需在 runner 上安裝 CLI）。
-
-### 快速設定
-
-1. 複製 workflow 檔案到你的專案：
-
-```bash
-mkdir -p .github/workflows
-cp path/to/claude-prism/.github/workflows/ai-review.yml .github/workflows/
-cp path/to/claude-prism/scripts/ci-review.sh scripts/
-```
-
-2. 在 GitHub Secrets 設定 API key（至少一個）：
-
-| Secret | Provider | 必要？ |
-|--------|----------|--------|
-| `GEMINI_API_KEY` | Gemini review | 選配 |
-| `OPENAI_API_KEY` | OpenAI review | 選配 |
-| `ANTHROPIC_API_KEY` | Claude 綜合分析 | 選配 |
-
-3. 在 PR 加上 `ai-review` label 即可觸發 review。
-
-### 觸發模式
-
-**Label 觸發（預設）：** 在 PR 加上 `ai-review` label → workflow 執行。適合控制成本。
-
-**自動觸發：** 取消 workflow 檔案中 `pull_request: [opened, synchronize]` 區塊的註解 → 每次 PR 更新自動執行。
-
-### CI 運作原理
-
-1. GitHub Actions checkout PR 並取得 diff
-2. `ci-review.sh` 自動偵測 `CLAUDE.md` / `Agents.md` 作為規範 context
-3. 透過 GraphQL（單次 API 呼叫）查詢同檔案的歷史 PR 評論，作為反覆問題的 context
-4. Diff 並行送給可用 provider（Gemini API、OpenAI API），含 inline annotation 合規檢查和 false positive 排除規則
-5. 若有設定 `ANTHROPIC_API_KEY`，Claude 進行信心度評分綜合分析（只有 ≥ 80 分的 issue 會被貼出）
-6. 若無，直接串接各方結果
-7. 若 review 包含具體修正建議，會以 **inline PR review comment** 搭配 GitHub suggestion block 發佈（一鍵接受修改）。其餘內容作為 review body。若 Reviews API 不可用，退回一般 PR comment
-
-### CI 環境變數
-
-| 變數 | 預設值 | 說明 |
-|------|--------|------|
-| `GEMINI_MODEL` | `gemini-2.0-flash` | CI review 用的 Gemini 模型 |
-| `OPENAI_MODEL` | `gpt-4o` | CI review 用的 OpenAI 模型 |
-| `ANTHROPIC_MODEL` | `claude-sonnet-4-20250514` | 綜合分析用的 Claude 模型 |
-| `MAX_DIFF_CHARS` | `32000` | Diff 截斷上限 |
-
-### 安全注意事項
-
-- **Fork PR**：Workflow 使用 `pull_request`（不是 `pull_request_target`），fork PR 無法存取你的 secrets。這是設計如此——fork PR 會被跳過。
-- **API key**：使用 GitHub repository secrets，切勿將 API key commit 到 repo。
-- **Concurrency**：同一 PR 同時只跑一個 review；新 push 會取消進行中的 review。
-- **Checksums**：`checksums.sha256` 驗證檔案完整性，防止傳輸損壞或意外修改。但**無法**防禦 repo 本身被入侵——如需更強保護，請從 GitHub Release artifacts 頁面下載並比對。
-
-### CLI 版本相容性
-
-Wrapper scripts 依賴 CLI 的特定行為，這些行為不屬於官方穩定 API：
-
-| CLI | 使用的行為 | 已驗證範圍 |
-|-----|-----------|-----------|
-| Gemini CLI | `-p " "` headless 模式（stdin + prompt） | v0.1.x – v0.3.x |
-| Codex CLI | `codex exec - ` stdin 模式 | v0.100.x – v0.106.x |
-
-若 CLI 更新導致功能異常，請固定使用已驗證版本或開 issue 回報。關於 2026-03-25 Gemini 服務更新，詳見[前置需求的注意事項](#前置需求)。
-
----
-
-## 成本估算
-
-claude-prism 是本地端 wrapper——它本身不處理也不計費 token。每個指令可能透過 CLI 觸發一或多次外部 provider（Codex、Gemini）的 API 呼叫。Claude Code 自身的調度 token（讀取檔案、組建 prompt、合成結果）是獨立計算的，由你的 Claude 訂閱方案或 API 方案承擔。
-
-### 各指令 Token 消耗
-
-| 指令 | 外部呼叫 | 典型 Input Tokens | 典型 Output Tokens | 備註 |
-|------|---------|-------------------|-------------------|------|
-| `/pi-ask-codex` | 1 (Codex) | 500–2K | 500–2K | 隨問題複雜度增減 |
-| `/pi-ask-gemini` | 1 (Gemini) | 500–2K | 500–2K | 隨問題複雜度增減 |
-| `/pi-askall` | 2 (Codex + Gemini) | 各 500–2K | 各 500–2K | 兩個 provider 並行呼叫 |
-| `/pi-fact-check` | 1 (Gemini) + N (WebSearch) | 1K–5K | 2K–8K | 隨聲明數量增減；WebSearch 平行執行 |
-| `/pi-code-review` | 1 (Codex) | 2K–10K | 1K–4K | 隨 diff 大小增減 |
-| `/pi-ui-review` | 1 (Gemini) | 2K–10K | 1K–4K | 隨檔案數量增減 |
-| `/pi-ui-design` | 1 (Gemini) | 1K–3K | 3K–8K | 產出較重（HTML 生成） |
-| `/pi-research` | 1 (Gemini) + 2–4 (WebSearch) | 1K–5K | 2K–8K | 雙軌搜尋；隨主題複雜度增減 |
-| `/pi-multi-review` | 2 (Codex + Gemini) | 上述 ×2 | 上述 ×2 | 兩個 provider 並行呼叫 |
-| `/pi-plan` | 0–2（可選） | 各 1K–5K | 各 1K–4K | 僅在 provider 可用時諮詢 |
-Token 範圍為近似值，隨輸入大小（diff 長度、檔案數、問題複雜度）變動。不同 provider 使用不同的 tokenization 方法——這些數字是數量級估算，非帳單精確值。
-
-### 控制成本
-
-- **`--dry-run`** — 測試請求路徑但不呼叫 provider（不消耗 token）
-- **`usage-summary.sh`** — 檢視歷史呼叫次數與粗估 token 用量：
-  ```bash
-  ~/.claude/scripts/usage-summary.sh --week
-  ```
-- **Provider 定價** — 至各 provider 定價頁面查詢目前費率：
-  - [OpenAI API Pricing](https://openai.com/api/pricing/)
-  - [Google AI Pricing](https://ai.google.dev/pricing)
-
----
-
-## 供應鏈安全
-
-claude-prism 認真看待供應鏈安全。2025-2026 年間，`postinstall` scripts 已成為 npm 供應鏈攻擊的[頭號攻擊向量](https://snyk.io/articles/npm-security-best-practices-shai-hulud-attack/)——從 Shai-Hulud 蠕蟲（800+ 套件感染）到 [Axios RAT 入侵](https://www.microsoft.com/en-us/security/blog/2026/04/01/mitigating-the-axios-npm-supply-chain-compromise/)（北韓國家級駭客）。我們的安裝流程從設計上就避開了這些風險。
-
-### 防禦層級
-
-| 層級 | 防禦目標 | 機制 |
-|------|---------|------|
-| **不使用 `postinstall` scripts** | 安裝時靜默執行 | pnpm/Bun 使用者不會被擋；Socket.dev 不標記警告 |
-| **使用者明確執行** | 未授權操作 | `npx` 或 `claud-prism-aireview` 都需要主動執行 |
-| **SHA256 checksum 驗證** | 傳輸中檔案竄改 | `install.sh` 在部署前逐檔驗證，不符即中止 |
-| **npm OIDC provenance** | 帳號劫持 | Package 只能從 GitHub Actions CI 發布，無法手動 `npm publish` |
-| **安裝前自動備份** | 意外覆寫 | 現有檔案自動備份到 `~/.claude/.multi-ai-backup-*` |
-
-### 自行驗證完整性
-
-```bash
-# Clone 後，驗證所有檔案的 checksum：
-cd claude-prism
-shasum -a 256 -c checksums.sha256
-
-# 檢查 npm package provenance：
-npm audit signatures
-```
-
----
-
-## 隱私與資料流向
-
-claude-prism 是本地端 Bash wrapper，不是託管式代理或中繼服務。你的機器和 AI provider 之間沒有任何中介伺服器。
-
-### 資料流向
-
-```mermaid
-sequenceDiagram
-    participant L as 你的機器
-    participant C as Claude Code
-    participant S as claude-prism scripts
-    participant P as Provider API (Google / OpenAI)
-
-    L->>C: 使用者執行 /pi-command
-    C->>C: 讀取檔案、組建 prompt
-    C->>S: 傳遞 prompt + 程式碼 context
-    Note over S: 在本地記錄 metadata（時間戳、長度）
-    S->>P: 透過 provider CLI 發送 HTTPS 請求
-    P-->>S: AI 回應
-    S-->>C: 回傳輸出
-    C-->>L: 呈現結果
-```
-
-### 送出到外部 Provider 的內容
-
-- 與指令相關的程式碼片段、diff 或檔案內容
-- Claude Code 組建的 prompt（審查指令、context）
-- 模型選擇 metadata（模型名稱、flags）
-
-### 留在本地的內容
-
-- **Log 檔**：`~/.claude/logs/multi-ai.log` 僅記錄 metadata（時間戳、prompt/response 位元組長度）——不含程式碼內容
-- **Review 歷史**：`~/.claude/logs/review-insights.jsonl`——每次 review 一行結構化 JSON。每筆紀錄是 Claude 對 provider 輸出的解讀（類別、嚴重度、信心度、發現來源，以及衍生自 AI 回應的問題標題），不是原始 transcript
-- **計畫與研究**：`.claude/pi-plans/` 和 `.claude/pi-research/` 檔案留在你的機器上
-- **零遙測**：claude-prism 沒有分析服務、不會回傳資料、沒有中介伺服器
-
-### 我們無法控制的部分
-
-每個 provider 的資料處理方式由其自身的 API/商業條款規範，不受 claude-prism 控制：
-
-- **資料保留** — provider 是否及保留你的 prompt/回應多久
-- **模型訓練** — 你的資料是否被用於改善模型（API 條款通常排除此項，但請確認你的具體方案）
-- **子處理者** — provider 使用的雲端基礎設施（AWS、Google Cloud、Azure）
-
-Provider 條款：
-- [Anthropic 商業條款](https://www.anthropic.com/policies/commercial-terms)
-- [OpenAI API 條款](https://openai.com/policies/row-terms-of-use/)
-- [Google AI 條款](https://ai.google.dev/gemini-api/terms)
-
-> **合規或機密專案注意**：若你的程式碼受 HIPAA、SOC 2、NDA 或類似合規要求約束，請在將程式碼送至外部 API 前，確認完整鏈結——Claude Code 條款、provider API 條款、資料保留設定，以及你所屬組織的內部核准流程。
+## 延伸閱讀
+
+所有「安裝與使用」之外的細節都放在 [`docs/`](docs/)：
+
+| 主題 | English | 繁體中文 |
+|---|---|---|
+| 可觀測性 — 使用量統計、review 趨勢、呼叫生命週期、快取 TTL | [docs/observability.md](docs/observability.md) | [docs/observability.zh-TW.md](docs/observability.zh-TW.md) |
+| CI/CD 整合 — GitHub Actions workflow、CI 環境變數、安全注意事項 | [docs/ci-cd.md](docs/ci-cd.md) | [docs/ci-cd.zh-TW.md](docs/ci-cd.zh-TW.md) |
+| 成本估算 — 各指令 token 範圍、成本控制工具 | [docs/cost.md](docs/cost.md) | [docs/cost.zh-TW.md](docs/cost.zh-TW.md) |
+| 供應鏈安全 — 免 `postinstall` 設計、防禦層級、自行驗證 | [docs/supply-chain-security.md](docs/supply-chain-security.md) | [docs/supply-chain-security.zh-TW.md](docs/supply-chain-security.zh-TW.md) |
+| 隱私與資料流向 — 送出什麼、留在本地什麼、Provider 條款 | [docs/privacy.md](docs/privacy.md) | [docs/privacy.zh-TW.md](docs/privacy.zh-TW.md) |
+| 隨想 — 設計筆記與心得 | [docs/reflections.md](docs/reflections.md) | [docs/reflections.zh-TW.md](docs/reflections.zh-TW.md) |
+| 研究 — sub-agent fan-out 設計背後的 Bash tool 分層研究 | [docs/research/bash-tool-parallelism.md](docs/research/bash-tool-parallelism.md) | — |
+| [Confidence Scoring Framework](spec/confidence-scoring-v1.md) | normative spec | — |
+| [CHANGELOG](CHANGELOG.md) | 版本歷史 | — |
 
 ---
 
@@ -711,7 +502,7 @@ Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 emoji/score 格式
 
 **Q: 費用多少？**
 
-參閱[成本估算](#成本估算)段落，了解各指令的 token 消耗範圍和成本控制工具。
+參閱 [docs/cost.zh-TW.md](docs/cost.zh-TW.md) 了解各指令的 token 消耗範圍和成本控制工具。
 
 **Q: Gemini CLI 一直 timeout 或回應很慢？**
 
@@ -721,41 +512,9 @@ Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 emoji/score 格式
 
 可以。Commands 和 scripts 是獨立的，只依賴 Claude Code 的 `~/.claude/` 目錄慣例。
 
----
+**Q: 隱私政策 / 供應鏈安全細節在哪？**
 
-## 隨想
-
-*初版 — 2026-03*
-
-在 AI Coding 的時代，大部分開發者都會使用御三家（Claude、Codex、Gemini）的 CLI。我自己訂閱了 Claude Code 之後，就一直在想：既然已經有一個強大的 orchestrator 在手上，為什麼不能同時調度其他家的 CLI 來協助我完成更多事情？不管是 Code Review、技術研究，還是 UI/UX 設計，讓不同 AI 各自從不同角度切入，結果一定比單一來源更全面。
-
-但我找了一圈，發現網路上現有的工具用起來都不太順手，不是太重、就是跟 Claude Code 的工作流整合得不好。所以我決定自己做一個。
-
-本來只打算寫幾個簡單的 wrapper script，解決日常 review 的需求就好。沒想到做著做著，越來越多可能性冒出來：三方對抗式審查、review 趨勢分析、CI/CD 自動化⋯⋯這些方向都不在原本的計畫裡，但每一個都讓我覺得「欸，這好像真的有用」。
-
-所以就變成了現在這個樣子。希望這個工具也能幫到你。
-
-*更新 — 2026-04-03*
-
-OpenAI 出了 [codex-plugin-cc](https://github.com/openai/codex-plugin-cc)。第一眼看到的時候，說實話有一種被暗算的感覺——什麼，官方自己下場做 Claude Code 的 Codex 插件了？
-
-但仔細研究之後就冷靜了。底層架構完全不同：他們是 Node.js + JSONRPC + Unix socket broker 的重量級方案，我們是 Bash shell script 的輕量路線。定位也不一樣，他們是單一 provider 的深度整合，我們是 cross-provider orchestration。沒有誰取代誰的問題。
-
-不過，裡面有個很有意思的東西：`adversarial-review`。他們不是讓 AI 當中性的 "Senior Reviewer"，而是明確告訴它「你的任務是打破對這份改動的信心，不是驗證它」。七類攻擊面、每個 finding 必須回答四個問題、校準規則要求「寧可一個強 finding，不要多個弱 finding」——這套設計哲學讓我很受啟發。
-
-畢竟我們只是 Vibe Coder，能站在巨人的肩膀上看遠一點，何樂而不為。所以就著手改進了 `pi-code-review` 和 `pi-multi-review` 的 prompt 架構：引入 adversarial stance、定義分工攻擊面（Codex 攻擊 security、Gemini 攻擊 design/UX）、加入 finding bar 和校準規則。概念是借來的，但融入我們既有的 confidence scoring framework 和 domain-aware weighting 之後，反而變成了我們自己的東西。
-
-開源的美好大概就是這樣吧。
-
-*更新 — 2026-04-03（下午）*
-
-今天自己用 `npm install -g` 安裝了 claude-prism，裝完信心滿滿地以為搞定了——結果 commands 根本沒進到 `~/.claude/`。才發現 `npm install -g` 只是把 binary 放進 PATH，你還得手動跑一次 `claud-prism-aireview` 才會真正部署。
-
-這大概是 Vibe Coder 新手最容易踩的坑：以為 `npm install` 就等於安裝完成。我甚至一度想加 `postinstall` 來自動觸發 install.sh，省掉這一步。但研究之後才知道，`postinstall` 現在是 npm 供應鏈攻擊的頭號入口——2026 年 3 月的 Axios 事件（北韓駭客透過 postinstall 植入 RAT，上線不到三小時就影響了數百萬環境）就是血淋淋的例子。pnpm v10 和 Bun 已經預設封鎖所有 lifecycle scripts，整個生態系正在系統性地淘汰它。
-
-最後的做法是：不加 postinstall，改把 README 的安裝說明寫清楚，讓使用者知道兩步驟是刻意的安全設計，不是偷懶。順便才想起來我們其實有 SHA256 checksum 驗證和 npm OIDC provenance，整條安全鏈比我自己以為的還完整。
-
-身為菜鳥的好處是，踩過的坑會讓你認真去理解「為什麼要這樣設計」，而不是照抄別人的做法卻不知道原因。
+[docs/privacy.zh-TW.md](docs/privacy.zh-TW.md) 與 [docs/supply-chain-security.zh-TW.md](docs/supply-chain-security.zh-TW.md)。
 
 ---
 
@@ -777,12 +536,6 @@ OpenAI 出了 [codex-plugin-cc](https://github.com/openai/codex-plugin-cc)。第
 ## 致謝
 
 `/pi-fact-check` 一開始有參考 [newtype-os](https://github.com/newtype-01/newtype-os) 的 `super-fact-checker` 方法論（作者是我很喜歡的 YouTuber）。後來覺得直接搬別人的框架不太對，就整個砍掉重寫了，加入跨 provider 驗證、對抗性證據這些我們自己的東西。但起點的功勞還是值得大書特書的。
-
----
-
-## 更新紀錄
-
-完整版本歷史請見 [CHANGELOG.md](CHANGELOG.md)。
 
 ---
 

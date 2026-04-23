@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v0.14.1 (2026-04-24)
+
+**Documentation restructure.** Split the 798-line README into a leaner 550-line entry point plus a `docs/` tree for deep-dive topics, and surface the empirical research behind the sub-agent fan-out design.
+
+### Added
+
+- **`## Empirical Foundation` section** in both README variants (~80 lines). Summarizes the N=36+ controlled experiments that identified Claude Code's main-conversation Bash tool as a structural FIFO queue (`delta/first_exec = 1.00` across 7 runs in two capacity windows) while sub-agent Bash is genuinely parallel (median dispatch delta 2.8s, N=13). Includes a MECE layer behavior matrix and a sequenceDiagram contrasting the anti-pattern vs the sub-agent fan-out design
+- **`docs/research/bash-tool-parallelism.md`** (English, 102-line research summary). Publishes the experiment groups (A/B/C/F/D), the resulting layered conclusions, and the product decisions traced back to the data (sub-agent fan-out, asymmetric commit, rejection of fire-and-forget + polling, v0.14.0 soft-timeout as the next hardening step). Full per-run data and methodology deferred to a separate long-form write-up
+- **`docs/` tree with six deep-dive topics** (bilingual): `observability`, `ci-cd`, `cost`, `supply-chain-security`, `privacy`, `reflections`. Each exists in native English and Traditional Chinese variants per the bilingual convention — not machine translations
+
+### Changed
+
+- **README.md / README.zh-TW.md both reduced from 798 → 550 lines** (-31%). Six heavy chapters (Observability / CI/CD Integration / Cost Estimation / Supply Chain Security / Privacy & Data Flow / Reflections) moved to `docs/`. The README now focuses on 30-second pitch + 10-minute onboarding; anything beyond that points into `docs/`
+- **New `## Documentation` index section** at the end of both README variants lists all `docs/` entries with bilingual links
+
+### Notes
+
+- Runtime behavior, scripts, commands, and `checksums.sha256` are unchanged. `docs/` is not in the npm `files:` list, so this release is documentation-only for npm consumers
+- Internal experiment scaffold (prompts, runner scripts, raw jsonl) remains in the gitignored `internal/` directory. Future publication as a reproducible scaffold is deferred
+
 ## v0.14.0 (2026-04-23)
 
 **Soft-timeout wall-clock guard for `call-*.sh`.** Bounds provider-CLI execution to a configurable wall-clock limit so the script exits with a structured marker before the ~130s Claude Code harness watchdog SIGKILLs it silently. Addresses the F-group silent-death signature (N=1/7, evening-bad) identified in the 2026-04-20→21 bg-regression experiments.

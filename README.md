@@ -114,7 +114,7 @@ npm install -g claud-prism-aireview
 claud-prism-aireview   # ← Required: deploys commands and scripts to ~/.claude/
 ```
 
-> **Important:** `npm install -g` only places the binary in your PATH. You must run `claud-prism-aireview` once to actually deploy the commands. This is by design — we intentionally avoid `postinstall` scripts for [supply chain security](https://socket.dev/blog/pnpm-10-0-0-blocks-lifecycle-scripts-by-default).
+> **Important:** `npm install -g` only places the binary in your PATH. You must run `claud-prism-aireview` once to actually deploy the commands. This is by design — we intentionally avoid `postinstall` scripts for [supply chain security](docs/supply-chain-security.md).
 
 **Homebrew (macOS)**
 
@@ -131,11 +131,7 @@ cd claude-prism
 ./install.sh
 ```
 
-The installer:
-- Checks for prerequisites and reports what's available
-- Verifies file integrity via SHA256 checksums (if `checksums.sha256` is present)
-- Backs up any existing files before overwriting
-- Copies commands to `~/.claude/commands/` and scripts to `~/.claude/scripts/`
+The installer checks prerequisites, verifies file integrity via SHA256 checksums, backs up existing files, then copies commands to `~/.claude/commands/` and scripts to `~/.claude/scripts/`.
 
 ### Verify
 
@@ -296,12 +292,75 @@ flowchart LR
 1. User types a slash command in Claude Code (e.g., `/pi-code-review src/auth.ts`)
 2. Claude Code reads the command definition (Markdown with instructions)
 3. Claude reads the relevant code, builds a prompt
-4. Claude calls the shell script via Bash tool → script invokes the external CLI
-5. External AI processes the request and returns results
-6. Claude presents the results, adding its own perspective where relevant
-7. For review commands, Claude interprets the providers' output (severity, category, source) and appends a structured record to `review-insights.jsonl` for later trend analysis
+4. For commands that call two or more providers, Claude fans out via **sub-agents** (see [Empirical Foundation](#empirical-foundation) below)
+5. Each sub-agent calls its shell script via Bash tool → script invokes the external CLI
+6. External AIs process requests in parallel, return results
+7. Claude presents the synthesis, adding its own perspective where relevant
+8. For review commands, Claude interprets providers' output (severity, category, source) and appends a structured record to `review-insights.jsonl` for trend analysis
 
-For details on what data crosses trust boundaries, see [Privacy & Data Flow](#privacy--data-flow).
+---
+
+## Empirical Foundation
+
+Most AI orchestration tools claim "we call multiple providers in parallel." We ran controlled experiments across three execution layers to verify that claim actually holds inside Claude Code — and found it doesn't, unless you architect specifically for it.
+
+### The question
+
+When Claude Code dispatches two Bash tool calls "in parallel" (same message, `call-codex.sh` + `call-gemini.sh`), are they actually running concurrently? Or is there a hidden queue?
+
+### The experiments (N=36+)
+
+Five groups, three candidate hypotheses (queue / provider contention / capacity):
+
+| Group | Setup | Tests |
+|---|---|---|
+| **A** | Main conversation, 2 Bash calls (Codex + Gemini) | Queue at main-conversation layer |
+| **B** | Main conversation → 2 sub-agents, each runs 1 CLI | Queue at sub-agent layer |
+| **B-hold15 / B-sleep / B-swap** | Variable isolation | Rule out CLI / provider / order |
+| **F** | 2 sub-agents, both Gemini | Rule out provider heterogeneity |
+| **D** | Raw OS shell `&` fork | Baseline (below Claude Code) |
+
+### The result — layered behavior (MECE)
+
+| Layer | Queue Serialize | Long-silence Watchdog | Sleep Guard | Auto-bg |
+|---|---|---|---|---|
+| OS shell `&` fork | ❌ | ❌ | ❌ | ❌ |
+| Sub-agent Bash | ❌ (true parallel) | ❓ untested | ✅ | 🔥 rare |
+| **Main-conversation Bash** | ✅ (structural FIFO) | ❌ | ❌ | ❌ |
+
+- **Layer A: N=7 runs, `delta/first_exec` = 1.00 across two capacity windows.** The cleanest signature: Codex executed for 150s, Gemini's invoke timestamp aligned with Codex's end timestamp *to the second*. Zero variance.
+- **Layer B: N=13, median dispatch delta 2.8s.** `B-hold15` showed Gemini dispatches while Codex is still in `sleep 15`; `B-sleep` showed Gemini dispatches with no Codex CLI present at all.
+- **OS layer: N=6, delta ≈ 0s.** No constraint below Claude Code.
+
+### Visual — same work, different layout
+
+```mermaid
+sequenceDiagram
+    participant M as Main conversation
+    participant S1 as Sub-agent 1
+    participant S2 as Sub-agent 2
+
+    Note over M: Anti-pattern (structural FIFO)
+    M->>M: Bash: call-codex.sh (10s)
+    M->>M: Bash: call-gemini.sh (queued)
+    Note over M: Total: 20s
+
+    Note over M,S2: Correct pattern (sub-agent fan-out)
+    M->>S1: Agent (codex side)
+    M->>S2: Agent (gemini side)
+    par
+      S1->>S1: Bash: call-codex.sh (10s)
+    and
+      S2->>S2: Bash: call-gemini.sh (10s)
+    end
+    Note over M,S2: Total: ~13s (10s exec + 2.8s dispatch)
+```
+
+### Why this matters
+
+`pi-askall`, `pi-plan`, `pi-multi-review`, `pi-fact-check` — every command that calls 2+ providers — uses **sub-agent fan-out**, not direct parallel Bash. That's not an architectural preference. It's the only layer that delivers real concurrency under Claude Code's structural FIFO.
+
+Summary, per-layer data, and product decision trace: [docs/research/bash-tool-parallelism.md](docs/research/bash-tool-parallelism.md).
 
 ---
 
@@ -311,7 +370,7 @@ For details on what data crosses trust boundaries, see [Privacy & Data Flow](#pr
 |------------|---------|-------|
 | Bash | CLI wrapper scripts | Handles binary detection, logging, stdin piping |
 | Markdown | Slash command definitions | Claude Code reads these as instructions |
-| Claude Code | Orchestrator | Reads commands, dispatches to external CLIs |
+| Claude Code | Orchestrator | Reads commands, dispatches via sub-agent fan-out |
 | Codex CLI | OpenAI access | Code review and Q&A (model configurable) |
 | Gemini CLI | Google access | Research, UI review, Q&A (model configurable) |
 | GitHub Actions | CI/CD integration | Automated PR review via REST APIs |
@@ -323,33 +382,23 @@ claude-prism/
 ├── .github/workflows/
 │   ├── ai-review.yml           # GitHub Actions workflow for CI review
 │   └── shellcheck.yml          # ShellCheck static analysis for shell scripts
+├── docs/                       # Deep-dive documentation (see Documentation below)
 ├── spec/                       # Standalone specifications
 │   └── confidence-scoring-v1.md  # Evidence-based noise filtering framework
 ├── commands/                   # Slash command definitions (Markdown)
-│   ├── pi-ask-codex.md
-│   ├── pi-ask-gemini.md
-│   ├── pi-askall.md
-│   ├── pi-code-review.md
-│   ├── pi-fact-check.md
-│   ├── pi-multi-review.md
-│   ├── pi-plan.md
-│   ├── pi-research.md
-│   ├── pi-ui-design.md
-│   └── pi-ui-review.md
 ├── scripts/                    # CLI wrappers & utilities (Bash)
-│   ├── call-codex.sh           # Codex CLI wrapper
-│   ├── call-gemini.sh          # Gemini CLI wrapper
+│   ├── call-codex.sh           # Codex CLI wrapper (with soft-timeout)
+│   ├── call-gemini.sh          # Gemini CLI wrapper (with soft-timeout)
 │   ├── detect-domain.sh        # Domain detection for smart routing
+│   ├── analyze-log.sh          # Invocation lifecycle diagnostics
 │   ├── ci-review.sh            # CI/CD review orchestrator (curl APIs)
 │   ├── usage-summary.sh        # API usage statistics
 │   └── review-insights.sh      # Review pattern analysis
-├── tests/
-│   └── smoke-test.sh
+├── tests/smoke-test.sh
 ├── checksums.sha256            # SHA256 checksums for integrity verification
-├── install.sh
-├── uninstall.sh
-├── README.md
-└── README.zh-TW.md
+├── install.sh / uninstall.sh
+├── README.md / README.zh-TW.md
+└── CHANGELOG.md
 ```
 
 Installed to:
@@ -361,10 +410,6 @@ Installed to:
 └── logs/
     ├── multi-ai.log            # Call logs (timestamps, prompt/response lengths)
     └── review-insights.jsonl   # Structured review history (auto-recorded)
-
-# Created at runtime by /pi-plan and /pi-research:
-.claude/pi-plans/               # ← plan files (project-local, cross-session)
-.claude/pi-research/            # ← saved research results (optional)
 ```
 
 ---
@@ -384,12 +429,12 @@ Installed to:
 | `MULTI_AI_LOG_DIR` | `~/.claude/logs` | Log directory |
 | `CLAUDE_PRISM_TIMEOUT` (v0.14.0+) | `110` | Soft-timeout wall-clock limit in seconds, range 1..3600. Invalid values fall back to 110 with a WARN log entry. When exceeded, the wrapper emits rc=124 + stderr sentinel + `soft_timeout` log event instead of being silently SIGKILL'd by Claude Code's harness watchdog around the 130s mark. Widen per-invocation for known-long runs: `CLAUDE_PRISM_TIMEOUT=180 ./call-codex.sh "40KB review prompt"` |
 
-By default, scripts defer to each CLI's built-in default model — no configuration needed. As CLIs update, you automatically get the latest model. To pin a specific model:
+By default, scripts defer to each CLI's built-in default model — no configuration needed. To pin a specific model:
 
 ```bash
 # Shell profile (~/.zshrc or ~/.bashrc)
-export GEMINI_MODEL="gemini-3-flash-preview"   # Default: fast, stable
-export GEMINI_MODEL_DEEP="gemini-3-pro-preview"  # Heavy reasoning: fact-check, research, review, planning
+export GEMINI_MODEL="gemini-3-flash-preview"
+export GEMINI_MODEL_DEEP="gemini-3-pro-preview"
 export CODEX_MODEL="gpt-5.3-codex"
 
 # Optional: use your own API key for direct quota control
@@ -405,293 +450,39 @@ Both wrapper scripts support:
 
 | Feature | Description |
 |---------|-------------|
-| **Streaming output** | CLI responses stream directly to stdout via `tee` — no buffering. Callers that background the script (e.g. Claude Code auto-backgrounding) can capture output in real time |
+| **Streaming output** | CLI responses stream directly to stdout via `tee` — no buffering |
 | **SIGHUP survival** | Scripts ignore `SIGHUP`, so they survive terminal detach when backgrounded |
-| **Background fallback** | Output persisted to `~/.claude/logs/pi-{codex,gemini}-last.out`. All commands include a fallback directive — if the Bash tool was backgrounded or returned empty output, Claude reads the result from the log file |
+| **Background fallback** | Output persisted to `~/.claude/logs/pi-{codex,gemini}-last.out`; commands read the log on empty output |
 | **Binary detection** | Searches multiple paths for the CLI binary |
 | **Logging** | Every call logged to `~/.claude/logs/multi-ai.log` with timestamps |
 | **`--dry-run`** | Test without calling the API (no tokens consumed) |
 | **Stdin piping** | `echo "code" \| call-gemini.sh "prompt"` for long inputs |
 | **Model override** | `-m model-name` to use a different model |
-| **Soft-timeout** (v0.14.0+) | Provider CLI calls capped at `CLAUDE_PRISM_TIMEOUT` seconds (default 110, range 1..3600). When exceeded, the wrapper exits with rc=124, prints `[CLAUDE-PRISM: soft-timeout at STAGE=exec after Ns]` to stderr, and emits a `soft_timeout` log event that `analyze-log.sh` classifies as SOFT_TIMEOUT — fires *before* Claude Code's ~130s harness watchdog so you see a structured error instead of silent SIGKILL |
+| **Soft-timeout** (v0.14.0+) | Provider CLI calls capped at `CLAUDE_PRISM_TIMEOUT` seconds (default 110, range 1..3600). On exceed: rc=124, stderr sentinel, `soft_timeout` log event classified as SOFT_TIMEOUT by `analyze-log.sh` — fires *before* Claude Code's ~130s harness watchdog |
 
 ### Customization
 
-**Adding a new provider:**
+**Adding a new provider:** create `scripts/call-newprovider.sh` and `commands/ask-newprovider.md` following existing patterns, then run `./install.sh`.
 
-1. Create `scripts/call-newprovider.sh` following the pattern of existing scripts
-2. Create `commands/ask-newprovider.md` with the command definition
-3. Run `./install.sh` to deploy
-
-**Changing the review prompt:**
-
-Edit the command `.md` files in `commands/`. The prompt templates are inline and easy to modify.
+**Changing review prompts:** edit the `.md` files in `commands/` — prompt templates are inline.
 
 ---
 
-## Observability
-
-### Usage Summary
-
-Track API call volume and estimated token consumption:
-
-```bash
-~/.claude/scripts/usage-summary.sh            # today
-~/.claude/scripts/usage-summary.sh --week      # last 7 days
-~/.claude/scripts/usage-summary.sh --all       # all time
-~/.claude/scripts/usage-summary.sh --date 2026-02-24  # specific date
-```
-
-Output includes per-provider call counts, success/error/dry-run breakdown, and a rough token estimate (~4 chars/token).
-
-### Review Insights
-
-After each `/pi-code-review` or `/pi-multi-review`, Claude interprets the providers' output — mapping emoji severity to strings, inferring discovery source, filtering by the confidence threshold — and appends a structured record to `~/.claude/logs/review-insights.jsonl`. The script below reads that file with `jq` for raw counts; ask Claude to layer interpretation on top of the numbers:
-
-```bash
-~/.claude/scripts/review-insights.sh              # raw counts (no AI interpretation)
-~/.claude/scripts/review-insights.sh --recent 10  # last 10 reviews
-~/.claude/scripts/review-insights.sh --project my-app  # filter by project
-```
-
-Output includes:
-- **Category distribution** — security, performance, design, logic, etc. (with bar chart)
-- **Severity breakdown** — critical / medium / suggestion
-- **Discovery source** — consensus vs. single-provider findings
-- **Most frequent issues** — recurring patterns highlighted
-- **Recent review timeline** — last 5 reviews with issue counts
-
-Each review record follows this schema:
-
-```json
-{
-  "date": "2026-02-24T10:30:00Z",
-  "project": "my-app",
-  "scope": "pr",
-  "domain": "backend",
-  "providers": ["codex", "gemini", "claude"],
-  "issues": [
-    {
-      "category": "security",
-      "severity": "critical",
-      "confidence": 95,
-      "title": "SQL injection in user input handler",
-      "source": "consensus"
-    }
-  ]
-}
-```
-
-Categories: `security`, `performance`, `design`, `logic`, `maintainability`, `guideline`, `accessibility`, `other`. The `guideline` category tracks violations of project-specific rules (`CLAUDE.md` / `Agents.md`).
-
-### Invocation Diagnostics
-
-When something goes wrong — a `/pi-*` command hangs, returns empty output, or a log file is unexpectedly 0 bytes — `analyze-log.sh` groups `multi-ai.log` events by pid and classifies each invocation's outcome:
-
-```bash
-~/.claude/scripts/analyze-log.sh              # analyze the default log
-~/.claude/scripts/analyze-log.sh /path/to/log  # inspect a specific log file
-```
-
-Each invocation falls into one of five categories:
-
-- **SUCCESS** — completed normally
-- **ERROR** — the CLI returned non-zero (error class shown: `TIMEOUT`, `RATE_LIMIT`, `AUTH_ERROR`, `PERMISSION`, `SANDBOX`, `NETWORK`, `CLI_ERROR`, `CLI_NOT_FOUND`)
-- **SIGNAL** — the script caught `HUP` / `INT` / `TERM` mid-run (the stage the script died at is recorded)
-- **SOFT_TIMEOUT** (v0.14.0+) — the wrapper's `CLAUDE_PRISM_TIMEOUT` wall-clock guard fired; we killed the CLI with a structured marker, so this is distinguishable from the silent-death pattern below
-- **SILENT** — invoked but produced no completion event — the signature of `SIGKILL`, commonly caused by Claude Code's Bash tool auto-backgrounding a call and killing its child
-
-Silent deaths are the most actionable diagnostic signal: if you see one, your command was terminated before it could finish. The `pi-*` commands shipped in v0.12.3+ include a "Bash invocation rules" preamble that tells Claude to call scripts in foreground synchronous mode, bypassing this failure mode. See [CHANGELOG.md](CHANGELOG.md) for the full regression writeup.
-
-### Cache TTL Behavior
-
-Claude Code currently uses a 5-minute prompt cache TTL for all subscribers — Pro and Max alike. When a `/pi-*` command takes longer than 5 minutes to return (Codex or Gemini occasionally runs past this window on complex tasks), the next turn in Claude Code pays full input price instead of reading from cache at the usual 10x discount.
-
-This isn't a claude-prism bug — it reflects a Claude Code-wide shift from a 1-hour default back to 5 minutes around 2026-03-08 (see [GitHub issue #46829](https://github.com/anthropics/claude-code/issues/46829)). Anthropic's official [prompt caching documentation](https://platform.claude.com/docs/en/build-with-claude/prompt-caching) does not gate TTL by subscription tier; community claims that Max subscribers automatically receive a 1-hour TTL remain unverified.
-
-In practice, this overhead hasn't produced noticeable cost spikes for claude-prism users so far. If your usage pattern changes that, file an issue.
-
----
-
-## CI/CD Integration
-
-Automate multi-provider reviews on every PR via GitHub Actions. The CI path uses REST APIs directly (no CLI installation needed on runners).
-
-### Quick Setup
-
-1. Copy the workflow file to your project:
-
-```bash
-mkdir -p .github/workflows
-cp path/to/claude-prism/.github/workflows/ai-review.yml .github/workflows/
-cp path/to/claude-prism/scripts/ci-review.sh scripts/
-```
-
-2. Add API keys as GitHub Secrets (at least one required):
-
-| Secret | Provider | Required? |
-|--------|----------|-----------|
-| `GEMINI_API_KEY` | Gemini review | Optional |
-| `OPENAI_API_KEY` | OpenAI review | Optional |
-| `ANTHROPIC_API_KEY` | Claude synthesis | Optional |
-
-3. Add the `ai-review` label to a PR to trigger the review.
-
-### Trigger Modes
-
-**Label trigger (default):** Add `ai-review` label to a PR → workflow runs. Best for cost control.
-
-**Auto trigger:** Uncomment the `pull_request: [opened, synchronize]` block in the workflow file → runs on every PR update.
-
-### How It Works (CI)
-
-1. GitHub Actions checks out the PR and fetches the diff
-2. `ci-review.sh` auto-discovers `CLAUDE.md` / `Agents.md` for guideline context
-3. Historical PR comments on the same files are queried via GraphQL (single API call) and included as recurring-issue context
-4. Diff is sent to available providers (Gemini API, OpenAI API) in parallel, with inline annotation compliance checks and false-positive exclusion rules
-5. If `ANTHROPIC_API_KEY` is set, Claude synthesizes with confidence scoring (only issues ≥ 80 posted)
-6. If not, results are concatenated directly
-7. If the review includes concrete code fixes, they are posted as **inline PR review comments** with GitHub suggestion blocks (one-click accept). Remaining output is posted as the review body. Falls back to a regular PR comment if the Reviews API is unavailable
-
-### CI Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `GEMINI_MODEL` | `gemini-2.0-flash` | Gemini model for CI review |
-| `OPENAI_MODEL` | `gpt-4o` | OpenAI model for CI review |
-| `ANTHROPIC_MODEL` | `claude-sonnet-4-20250514` | Claude model for synthesis |
-| `MAX_DIFF_CHARS` | `32000` | Diff truncation limit |
-
-### Security Notes
-
-- **Fork PRs**: The workflow uses `pull_request` (not `pull_request_target`), so fork PRs cannot access your secrets. This is intentional — fork PRs are skipped.
-- **API keys**: Use GitHub repository secrets. Never commit API keys to the repo.
-- **Concurrency**: Only one review runs per PR at a time; new pushes cancel in-progress reviews.
-- **Checksums**: `checksums.sha256` verifies file integrity against transit corruption or accidental modification. It does **not** protect against a compromised repository — for that, verify against the GitHub Release artifacts page.
-
-### CLI Version Compatibility
-
-The wrapper scripts depend on specific CLI behaviors that are not part of official stable APIs:
-
-| CLI | Behavior Used | Verified Range |
-|-----|---------------|----------------|
-| Gemini CLI | `-p " "` headless mode (stdin + prompt) | v0.1.x – v0.3.x |
-| Codex CLI | `codex exec - ` stdin mode | v0.100.x – v0.106.x |
-
-If a CLI update breaks functionality, pin the working version or open an issue. For the March 25, 2026 Gemini service update, see the [notice in Prerequisites](#prerequisites).
-
----
-
-## Cost Estimation
-
-claude-prism is a local wrapper — it does not process or bill tokens itself. Each command may trigger one or more API calls to external providers (Codex, Gemini) via their CLIs. Claude Code's own orchestration tokens (reading files, building prompts, synthesizing results) are separate and covered by your Claude subscription or API plan.
-
-### Token Consumption by Command
-
-| Command | External Calls | Typical Input Tokens | Typical Output Tokens | Notes |
-|---------|---------------|---------------------|----------------------|-------|
-| `/pi-ask-codex` | 1 (Codex) | 500–2K | 500–2K | Scales with question complexity |
-| `/pi-ask-gemini` | 1 (Gemini) | 500–2K | 500–2K | Scales with question complexity |
-| `/pi-askall` | 2 (Codex + Gemini) | 500–2K each | 500–2K each | Both providers called in parallel |
-| `/pi-fact-check` | 1 (Gemini) + N (WebSearch) | 1K–5K | 2K–8K | Scales with number of claims; WebSearch runs in parallel |
-| `/pi-code-review` | 1 (Codex) | 2K–10K | 1K–4K | Scales with diff size |
-| `/pi-ui-review` | 1 (Gemini) | 2K–10K | 1K–4K | Scales with file count |
-| `/pi-ui-design` | 1 (Gemini) | 1K–3K | 3K–8K | Output-heavy (HTML generation) |
-| `/pi-research` | 1 (Gemini) + 2–4 (WebSearch) | 1K–5K | 2K–8K | Dual-track search; scales with topic complexity |
-| `/pi-multi-review` | 2 (Codex + Gemini) | Above ×2 | Above ×2 | Both providers called in parallel |
-| `/pi-plan` | 0–2 (optional) | 1K–5K each | 1K–4K each | Providers consulted only if available |
-Token ranges are approximate and vary with input size (diff length, file count, question complexity). Different providers use different tokenization methods — these figures are order-of-magnitude estimates, not billing-accurate counts.
-
-### Controlling Costs
-
-- **`--dry-run`** — test the request path without calling the provider (no tokens consumed)
-- **`usage-summary.sh`** — review historical call counts and rough token volume:
-  ```bash
-  ~/.claude/scripts/usage-summary.sh --week
-  ```
-- **Provider pricing** — check current rates at your provider's pricing page:
-  - [OpenAI API Pricing](https://openai.com/api/pricing/)
-  - [Google AI Pricing](https://ai.google.dev/pricing)
-
----
-
-## Supply Chain Security
-
-claude-prism takes supply chain security seriously. In 2025-2026, `postinstall` scripts became the [#1 attack vector](https://snyk.io/articles/npm-security-best-practices-shai-hulud-attack/) for npm supply chain attacks — from the Shai-Hulud worm (800+ packages infected) to the [Axios RAT compromise](https://www.microsoft.com/en-us/security/blog/2026/04/01/mitigating-the-axios-npm-supply-chain-compromise/) (North Korean state actor). We designed our install pipeline to avoid these risks entirely.
-
-### Defense Layers
-
-| Layer | Protects Against | How |
-|-------|-----------------|-----|
-| **No `postinstall` scripts** | Silent execution on install | pnpm/Bun users aren't blocked; Socket.dev raises no flags |
-| **Explicit user execution** | Unauthorized operations | `npx` or `claud-prism-aireview` requires deliberate action |
-| **SHA256 checksums** | File tampering in transit | `install.sh` verifies every file before deploying; aborts on mismatch |
-| **npm OIDC provenance** | Account hijacking | Packages can only be published from GitHub Actions CI, not manually |
-| **Pre-install backup** | Accidental overwrites | Existing files backed up to `~/.claude/.multi-ai-backup-*` |
-
-### Verify Integrity Yourself
-
-```bash
-# After cloning, verify all files match their checksums:
-cd claude-prism
-shasum -a 256 -c checksums.sha256
-
-# Check npm package provenance:
-npm audit signatures
-```
-
----
-
-## Privacy & Data Flow
-
-claude-prism is a local Bash wrapper, not a hosted proxy or relay service. There is no intermediary server between your machine and the AI providers.
-
-### Data Flow
-
-```mermaid
-sequenceDiagram
-    participant L as Your Machine
-    participant C as Claude Code
-    participant S as claude-prism scripts
-    participant P as Provider API (Google / OpenAI)
-
-    L->>C: User runs /pi-command
-    C->>C: Reads files, builds prompt
-    C->>S: Passes prompt + code context
-    Note over S: Logs metadata locally (timestamps, lengths only)
-    S->>P: HTTPS via provider CLI
-    P-->>S: AI response
-    S-->>C: Returns output
-    C-->>L: Presents results
-```
-
-### What Gets Sent to External Providers
-
-- Code snippets, diffs, or file contents relevant to your command
-- The prompt assembled by Claude Code (review instructions, context)
-- Model selection metadata (model name, flags)
-
-### What Stays Local
-
-- **Logs**: `~/.claude/logs/multi-ai.log` records metadata only (timestamps, prompt/response byte lengths) — no code content
-- **Review history**: `~/.claude/logs/review-insights.jsonl` — one structured JSON line per review. Each record is Claude's interpretation of the providers' output (category, severity, confidence, source, and an issue title derived from the AI response), not a raw transcript
-- **Plans and research**: `.claude/pi-plans/` and `.claude/pi-research/` files stay on your machine
-- **No telemetry**: claude-prism has no analytics, no phone-home, no intermediary server
-
-### What We Don't Control
-
-Each provider's data handling is governed by their own API/business terms, not by claude-prism:
-
-- **Data retention** — whether and how long providers store your prompts/responses
-- **Model training** — whether your data is used to improve their models (API terms typically exclude this, but verify your specific tier)
-- **Sub-processors** — the cloud infrastructure providers use (AWS, Google Cloud, Azure)
-
-Provider terms:
-- [Anthropic Commercial Terms](https://www.anthropic.com/policies/commercial-terms)
-- [OpenAI API Terms](https://openai.com/policies/row-terms-of-use/)
-- [Google AI Terms](https://ai.google.dev/gemini-api/terms)
-
-> **For regulated or confidential projects**: If your codebase is subject to HIPAA, SOC 2, NDA, or similar compliance requirements, verify the full chain — Claude Code terms, provider API terms, data retention settings, and your organization's internal approval process — before sending code to external APIs.
+## Documentation
+
+Everything beyond "how to install and use" lives in [`docs/`](docs/):
+
+| Topic | English | 繁體中文 |
+|---|---|---|
+| Observability — usage stats, review insights, invocation diagnostics, cache TTL | [docs/observability.md](docs/observability.md) | [docs/observability.zh-TW.md](docs/observability.zh-TW.md) |
+| CI/CD Integration — GitHub Actions workflow, CI env vars, security notes | [docs/ci-cd.md](docs/ci-cd.md) | [docs/ci-cd.zh-TW.md](docs/ci-cd.zh-TW.md) |
+| Cost Estimation — per-command token ranges, cost control tools | [docs/cost.md](docs/cost.md) | [docs/cost.zh-TW.md](docs/cost.zh-TW.md) |
+| Supply Chain Security — `postinstall`-free design, defense layers, self-verification | [docs/supply-chain-security.md](docs/supply-chain-security.md) | [docs/supply-chain-security.zh-TW.md](docs/supply-chain-security.zh-TW.md) |
+| Privacy & Data Flow — what leaves your machine, what stays local, provider terms | [docs/privacy.md](docs/privacy.md) | [docs/privacy.zh-TW.md](docs/privacy.zh-TW.md) |
+| Reflections — design notes and lessons learned | [docs/reflections.md](docs/reflections.md) | [docs/reflections.zh-TW.md](docs/reflections.zh-TW.md) |
+| Research — Bash tool parallelism study behind the sub-agent fan-out design | [docs/research/bash-tool-parallelism.md](docs/research/bash-tool-parallelism.md) | — |
+| [Confidence Scoring Framework](spec/confidence-scoring-v1.md) | normative spec | — |
+| [CHANGELOG](CHANGELOG.md) | version history | — |
 
 ---
 
@@ -711,7 +502,7 @@ Claude handles it. If Codex or Gemini doesn't follow the requested emoji/score f
 
 **Q: How much does this cost?**
 
-See the [Cost Estimation](#cost-estimation) section for per-command token consumption ranges and cost control tools.
+See [docs/cost.md](docs/cost.md) for per-command token consumption ranges and cost control tools.
 
 **Q: Gemini CLI keeps timing out or responding very slowly?**
 
@@ -721,41 +512,9 @@ Likely caused by Pro model rate limiting. Two fixes: (1) Set `GEMINI_MODEL="gemi
 
 Yes. The commands and scripts are standalone — they only depend on `~/.claude/` directory conventions that Claude Code uses.
 
----
+**Q: Where's the Privacy / Supply Chain Security info?**
 
-## Reflections
-
-*First entry — 2026-03*
-
-In the age of AI-assisted coding, most developers have access to the "big three" CLIs: Claude, Codex, and Gemini. After subscribing to Claude Code, I kept thinking: since I already have a powerful orchestrator at hand, why not leverage other providers' CLIs at the same time? Whether it's code review, technical research, or UI/UX design, having different AIs approach the same problem from different angles yields more comprehensive results than any single source.
-
-I looked around, but the existing tools I found were either too heavy or didn't integrate well with Claude Code's workflow. So I decided to build my own.
-
-It started as a few simple wrapper scripts to handle everyday review tasks. But as I kept building, more possibilities emerged: triple-provider adversarial review, review trend analysis, CI/CD automation... None of these were in the original plan, yet each one felt genuinely useful.
-
-So here we are. I hope this tool helps you too.
-
-*Update — 2026-04-03*
-
-OpenAI released [codex-plugin-cc](https://github.com/openai/codex-plugin-cc). My first reaction was honestly a bit of a gut punch — wait, they're officially building a Codex plugin for Claude Code themselves?
-
-But after studying it closely, I calmed down. The architectures are fundamentally different: theirs is a heavy-duty Node.js + JSONRPC + Unix socket broker setup; ours is a lightweight Bash shell script approach. The positioning is different too — they're deep single-provider integration, we're cross-provider orchestration. There's no replacement story here.
-
-That said, one thing in their repo really caught my eye: `adversarial-review`. Instead of casting the AI as a neutral "Senior Reviewer," they explicitly tell it: "your job is to break confidence in this change, not to validate it." Seven attack surface categories, every finding must answer four questions, calibration rules demanding "prefer one strong finding over several weak ones" — this design philosophy gave me a lot of inspiration.
-
-After all, we're just Vibe Coders — standing on the shoulders of giants to see a little further is nothing but a good thing. So I went ahead and reworked the prompt architecture for `pi-code-review` and `pi-multi-review`: adversarial stance, divided attack surfaces (Codex attacks security, Gemini attacks design/UX), finding bars, and calibration rules. The concepts were borrowed, but once they were fused with our existing confidence scoring framework and domain-aware weighting, they became something of our own.
-
-That's the beauty of open source, I suppose.
-
-*Update — 2026-04-03 (afternoon)*
-
-Today I ran `npm install -g` on claude-prism myself, fully confident it was done — only to find that none of the commands had actually been deployed to `~/.claude/`. Turns out `npm install -g` only places the binary in your PATH; you still need to run `claud-prism-aireview` once to actually deploy everything.
-
-This is probably the easiest pitfall for a Vibe Coder to stumble into: assuming `npm install` equals "fully installed." I even considered adding a `postinstall` script to auto-trigger `install.sh` and skip that extra step. But after digging into it, I learned that `postinstall` is now the #1 entry point for npm supply chain attacks — the March 2026 Axios incident (a North Korean state actor planted a RAT via postinstall; it was live for under three hours but reached millions of environments) is a sobering example. pnpm v10 and Bun now block all lifecycle scripts by default, and the entire ecosystem is systematically moving away from them.
-
-So the final approach: no `postinstall`. Instead, make the README crystal clear that the two-step install is a deliberate security design, not laziness. In the process, I also realized we already had SHA256 checksum verification and npm OIDC provenance in place — the full security chain was more robust than I thought.
-
-The upside of being a beginner is that every pitfall forces you to actually understand *why* things are designed a certain way, rather than just copying patterns without knowing the reason.
+In [docs/privacy.md](docs/privacy.md) and [docs/supply-chain-security.md](docs/supply-chain-security.md).
 
 ---
 
@@ -777,12 +536,6 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 ## Acknowledgments
 
 `/pi-fact-check` started by referencing the `super-fact-checker` methodology from [newtype-os](https://github.com/newtype-01/newtype-os) (whose author is a YouTuber I really enjoy). We later realized borrowing someone else's framework didn't feel right, so we rewrote the whole thing from scratch with our own approach: cross-provider verification, adversarial evidence, and a simplified verdict system. Huge thanks for the starting point.
-
----
-
-## Changelog
-
-See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 
 ---
 
