@@ -382,6 +382,7 @@ claude-prism/
 | `GEMINI_BIN` | （自動偵測） | Gemini 執行檔路徑 |
 | `CODEX_BIN` | （自動偵測） | Codex 執行檔路徑 |
 | `MULTI_AI_LOG_DIR` | `~/.claude/logs` | 紀錄檔目錄 |
+| `CLAUDE_PRISM_TIMEOUT`（v0.14.0+） | `110` | Soft-timeout 掛鐘時限（整數秒，範圍 1..3600）。無效值自動 fallback 到 110 並寫入 WARN log。超時時 wrapper 會發出 rc=124 + stderr sentinel + `soft_timeout` log event，取代原本被 Claude Code harness 在 130 秒附近悄悄 SIGKILL 的黑洞。已知會跑比較久的任務可以 per-invocation 調寬：`CLAUDE_PRISM_TIMEOUT=180 ./call-codex.sh "40KB review prompt"` |
 
 預設不指定模型，由各 CLI 使用內建預設值——零設定即可用。CLI 更新時自動使用最新模型。如需指定模型：
 
@@ -412,6 +413,7 @@ export GEMINI_API_KEY="your-key-from-ai-studio"
 | **`--dry-run`** | 測試模式，不呼叫 API（不消耗 token） |
 | **Stdin 管線** | `echo "code" \| call-gemini.sh "prompt"` 處理長輸入 |
 | **Model 切換** | `-m model-name` 指定不同模型 |
+| **Soft-timeout**（v0.14.0+） | Provider CLI 呼叫被 `CLAUDE_PRISM_TIMEOUT` 掛鐘限制（預設 110 秒，範圍 1..3600）。超時時 wrapper 會結構化退出：rc=124、stderr 印出 `[CLAUDE-PRISM: soft-timeout at STAGE=exec after Ns]`、寫入 `soft_timeout` log event 讓 `analyze-log.sh` 歸類為 SOFT_TIMEOUT——比 Claude Code ~130 秒的 harness watchdog 更早觸發，讓你看到明確錯誤而不是靜默 SIGKILL |
 
 ### 自訂
 
@@ -491,11 +493,12 @@ export GEMINI_API_KEY="your-key-from-ai-studio"
 ~/.claude/scripts/analyze-log.sh /path/to/log  # 指定 log 檔
 ```
 
-每次呼叫會被歸類為四種結局之一：
+每次呼叫會被歸類為五種結局之一：
 
 - **SUCCESS** — 正常完成
 - **ERROR** — CLI 回非零 exit code（會標示錯誤分類：`TIMEOUT`、`RATE_LIMIT`、`AUTH_ERROR`、`PERMISSION`、`SANDBOX`、`NETWORK`、`CLI_ERROR`、`CLI_NOT_FOUND`）
 - **SIGNAL** — 執行中收到 `HUP` / `INT` / `TERM`（會附上當下卡在哪個執行階段）
+- **SOFT_TIMEOUT**（v0.14.0+）— wrapper 的 `CLAUDE_PRISM_TIMEOUT` 掛鐘時限觸發；CLI 是被我們主動殺掉並留下結構化訊號，和下面 SILENT 的被動死亡可以明確區分
 - **SILENT** — 有啟動但沒有任何完成事件——這是 `SIGKILL` 的特徵，通常發生在 Claude Code 的 Bash tool 把某次呼叫 auto-background 後直接把 child process 殺掉
 
 SILENT death 是最有用的診斷訊號：看到就表示你的指令被提前終止。v0.12.3+ 的 `pi-*` commands 都在 preamble 指示 Claude 用前台同步方式呼叫 script，從源頭繞過這個 regression。完整背景見 [CHANGELOG.md](CHANGELOG.md)。

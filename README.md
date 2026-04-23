@@ -382,6 +382,7 @@ Installed to:
 | `GEMINI_BIN` | (auto-detect) | Path to gemini binary |
 | `CODEX_BIN` | (auto-detect) | Path to codex binary |
 | `MULTI_AI_LOG_DIR` | `~/.claude/logs` | Log directory |
+| `CLAUDE_PRISM_TIMEOUT` (v0.14.0+) | `110` | Soft-timeout wall-clock limit in seconds, range 1..3600. Invalid values fall back to 110 with a WARN log entry. When exceeded, the wrapper emits rc=124 + stderr sentinel + `soft_timeout` log event instead of being silently SIGKILL'd by Claude Code's harness watchdog around the 130s mark. Widen per-invocation for known-long runs: `CLAUDE_PRISM_TIMEOUT=180 ./call-codex.sh "40KB review prompt"` |
 
 By default, scripts defer to each CLI's built-in default model — no configuration needed. As CLIs update, you automatically get the latest model. To pin a specific model:
 
@@ -412,6 +413,7 @@ Both wrapper scripts support:
 | **`--dry-run`** | Test without calling the API (no tokens consumed) |
 | **Stdin piping** | `echo "code" \| call-gemini.sh "prompt"` for long inputs |
 | **Model override** | `-m model-name` to use a different model |
+| **Soft-timeout** (v0.14.0+) | Provider CLI calls capped at `CLAUDE_PRISM_TIMEOUT` seconds (default 110, range 1..3600). When exceeded, the wrapper exits with rc=124, prints `[CLAUDE-PRISM: soft-timeout at STAGE=exec after Ns]` to stderr, and emits a `soft_timeout` log event that `analyze-log.sh` classifies as SOFT_TIMEOUT — fires *before* Claude Code's ~130s harness watchdog so you see a structured error instead of silent SIGKILL |
 
 ### Customization
 
@@ -491,11 +493,12 @@ When something goes wrong — a `/pi-*` command hangs, returns empty output, or 
 ~/.claude/scripts/analyze-log.sh /path/to/log  # inspect a specific log file
 ```
 
-Each invocation falls into one of four categories:
+Each invocation falls into one of five categories:
 
 - **SUCCESS** — completed normally
 - **ERROR** — the CLI returned non-zero (error class shown: `TIMEOUT`, `RATE_LIMIT`, `AUTH_ERROR`, `PERMISSION`, `SANDBOX`, `NETWORK`, `CLI_ERROR`, `CLI_NOT_FOUND`)
 - **SIGNAL** — the script caught `HUP` / `INT` / `TERM` mid-run (the stage the script died at is recorded)
+- **SOFT_TIMEOUT** (v0.14.0+) — the wrapper's `CLAUDE_PRISM_TIMEOUT` wall-clock guard fired; we killed the CLI with a structured marker, so this is distinguishable from the silent-death pattern below
 - **SILENT** — invoked but produced no completion event — the signature of `SIGKILL`, commonly caused by Claude Code's Bash tool auto-backgrounding a call and killing its child
 
 Silent deaths are the most actionable diagnostic signal: if you see one, your command was terminated before it could finish. The `pi-*` commands shipped in v0.12.3+ include a "Bash invocation rules" preamble that tells Claude to call scripts in foreground synchronous mode, bypassing this failure mode. See [CHANGELOG.md](CHANGELOG.md) for the full regression writeup.
