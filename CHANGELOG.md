@@ -20,7 +20,7 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking changes
 
-- **`GEMINI_MODEL_DEEP` is no longer read** by any skill. Users who set `GEMINI_MODEL_DEEP` to force the deep tier for `pi-plan` / `pi-multi-review` / `pi-fact-check` / `pi-research` will, after upgrade, fall through to whatever `GEMINI_MODEL` is set to (or the CLI's own default if unset). **Migration**: if you previously set `GEMINI_MODEL_DEEP=gemini-3-pro-preview` to keep the deep tier for reviews while running Flash for general Q&A, either (a) set `GEMINI_MODEL=gemini-3-pro-preview` globally and accept the deep tier everywhere, (b) set it per-command via `GEMINI_MODEL=... /pi-plan ...`, or (c) leave it unset and let the CLI default apply
+- **`GEMINI_MODEL_DEEP` is no longer read** by any skill. Users who set `GEMINI_MODEL_DEEP` to force the deep tier for `pi-plan` / `pi-multi-review` / `pi-fact-check` / `pi-research` will, after upgrade, fall through to whatever `GEMINI_MODEL` is set to (or the CLI's own default if unset). **Migration**: if you previously set `GEMINI_MODEL_DEEP=gemini-3-pro-preview` to keep the deep tier for reviews while running Flash for general Q&A, either (a) set `GEMINI_MODEL=gemini-3-pro-preview` globally and accept the deep tier everywhere, (b) launch Claude Code with the env var set for that session only, e.g. `GEMINI_MODEL=gemini-3-pro-preview claude`, or (c) leave it unset and let the CLI default apply
 - **Downstream skill authors** extending `pi-askall` / `pi-plan` / `pi-multi-review` verbatim must follow the new sub-agent fan-out pattern — the old "two parallel Bash tool calls" prescription is gone
 
 ### Notes

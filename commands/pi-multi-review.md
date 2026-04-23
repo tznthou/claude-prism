@@ -166,6 +166,12 @@ $(code)
 
 **Step 3c — Send ONE response with two `Agent` tool calls in parallel.** Both use `subagent_type: "general-purpose"`. Fill `<CODEX_PROMPT>` / `<GEMINI_PROMPT>` with the actual paths from Step 3b.
 
+<!-- Keep in sync with commands/pi-askall.md and commands/pi-plan.md — the sub-agent Bash template shape is shared across these three skills. -->
+
+**Why the Bash template below uses `wrapper_out=$(...) < "<PATH>"` rather than `cat <PATH> | ...`** (skill-maintainer note — NOT shipped to the sub-agent):
+- `< "<PATH>"` direct redirect keeps `$?` as the wrapper's true exit code. A `cat | wrapper` pipeline without `set -o pipefail` would mask wrapper failure — `$?` on a pipe only reflects the tail command's rc, so a missing / unreadable prompt file could silently run the wrapper on empty stdin.
+- The `wrapper_out=$(...)` capture lets the emptiness check run BEFORE the META block is printed. If we echoed META first, stdout would never be empty (META always fills it), so the `pi-*-last.out` fallback for silent-kill / auto-bg regressions would never trigger.
+
 **Codex agent** (description: "Codex adversarial review — security focus"):
 
 ```
@@ -186,10 +192,6 @@ Step 1. Run this exact Bash command (timeout 600000 ms; no `&`, `nohup`, or `run
     echo "rc=$rc"
     echo "runtime=$((end_ts - start_ts))s"
     echo "response_bytes=$(wc -c < ~/.claude/logs/pi-codex-last.out 2>/dev/null || echo NA)"
-
-Two design notes on this Bash shape:
-- `< "<CODEX_PROMPT>"` feeds the prompt directly to the wrapper's stdin — NO `cat |` pipe. Without `set -o pipefail`, a pipeline's `$?` is only the tail command's exit code, so a missing / unreadable prompt file would silently run the wrapper on empty stdin. Direct redirect keeps `$?` as the wrapper's real rc.
-- The `wrapper_out` capture lets the emptiness check run BEFORE the META block is printed. If we echoed META first, stdout would never be empty (META would always fill it), so the `pi-codex-last.out` fallback for silent-kill / auto-bg regressions would never trigger.
 
 Step 2. Return to me: the complete printed output verbatim (do NOT summarize, paraphrase, or reformat the Codex review — it will feed Claude's synthesis and confidence scoring with full fidelity), including the META block. If the Bash command printed a `[FALLBACK: ...]` line, relay that too — it signals the wrapper was silently killed and the response came from the tee safety net. If rc != 0, include any stderr — the wrapper classifies failures as TIMEOUT / RATE_LIMIT / AUTH_ERROR / SANDBOX / NETWORK / CLI_ERROR / CLI_NOT_FOUND.
 

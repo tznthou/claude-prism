@@ -50,6 +50,12 @@ $(end if)
 
 **Step 2c — Send ONE response with two `Agent` tool calls in parallel.** Both use `subagent_type: "general-purpose"`. Fill `<PROMPT_FILE>` with the actual path from Step 2b.
 
+<!-- Keep in sync with commands/pi-plan.md and commands/pi-multi-review.md — the sub-agent Bash template shape is shared across these three skills. -->
+
+**Why the Bash template below uses `wrapper_out=$(...) < "<PATH>"` rather than `cat <PATH> | ...`** (skill-maintainer note — NOT shipped to the sub-agent):
+- `< "<PATH>"` direct redirect keeps `$?` as the wrapper's true exit code. A `cat | wrapper` pipeline without `set -o pipefail` would mask wrapper failure — `$?` on a pipe only reflects the tail command's rc, so a missing / unreadable prompt file could silently run the wrapper on empty stdin.
+- The `wrapper_out=$(...)` capture lets the emptiness check run BEFORE the META block is printed. If we echoed META first, stdout would never be empty (META always fills it), so the `pi-*-last.out` fallback for silent-kill / auto-bg regressions would never trigger.
+
 **Codex agent** (description: "Codex perspective"):
 
 ```
@@ -71,10 +77,6 @@ Step 1. Run this exact Bash command (timeout 600000 ms; no `&`, `nohup`, or `run
     echo "runtime=$((end_ts - start_ts))s"
     echo "response_bytes=$(wc -c < ~/.claude/logs/pi-codex-last.out 2>/dev/null || echo NA)"
 
-Two design notes on this Bash shape:
-- `< "<PROMPT_FILE>"` feeds the prompt directly to the wrapper's stdin — NO `cat |` pipe. Without `set -o pipefail`, a pipeline's `$?` is only the tail command's exit code, so a missing / unreadable prompt file would silently run the wrapper on empty stdin. Direct redirect keeps `$?` as the wrapper's real rc.
-- The `wrapper_out` capture lets the emptiness check run BEFORE the META block is printed. If we echoed META first, stdout would never be empty (META would always fill it), so the `pi-codex-last.out` fallback for silent-kill / auto-bg regressions would never trigger.
-
 Step 2. Return to me: the complete printed output verbatim (do NOT summarize, paraphrase, or reformat the Codex response), including the META block. If the Bash command printed a `[FALLBACK: ...]` line, relay that too — it signals the wrapper was silently killed and the response came from the tee safety net. If rc != 0, include any stderr — the wrapper classifies failures as TIMEOUT / RATE_LIMIT / AUTH_ERROR / SANDBOX / NETWORK / CLI_ERROR / CLI_NOT_FOUND.
 
 Only use Bash and Read tools.
@@ -86,7 +88,7 @@ Same template as the Codex agent, with these substitutions:
 - Replace `~/.claude/scripts/call-codex.sh` → `~/.claude/scripts/call-gemini.sh`
 - Do NOT set or override `GEMINI_MODEL` — the user's environment passes through to the sub-agent's Bash, then to `call-gemini.sh`, then to the CLI. Skills do not pin model tiers on the user's behalf. If a call fails with RATE_LIMIT or capacity, surface the error and let the user decide whether to switch models.
 - Fallback file: `~/.claude/logs/pi-gemini-last.out`
-- Classifier list adds PERMISSION (Gemini-specific).
+- Classifier list adds PERMISSION (Gemini-specific) and has no SANDBOX.
 
 Both agents dispatch in parallel because they share a single main-conversation response. When both sub-agents return, proceed to Step 3. The CLI argument (`"perspective request"`) is a short label for the call — the actual question is passed via stdin from the temp file.
 
