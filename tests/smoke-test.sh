@@ -372,10 +372,11 @@ T13_RC1=$?
 set -e
 if [[ $T13_RC1 -eq 0 ]] && \
    ! grep -q "CLAUDE-PRISM: soft-timeout" "$T13_LD1/err" && \
+   ! grep -q "soft_timeout" "$T13_LD1/multi-ai.log" && \
    grep -q "success response_len" "$T13_LD1/multi-ai.log"; then
-    pass "T13.1 codex normal completion under timeout (rc=0, no sentinel)"
+    pass "T13.1 codex normal completion under timeout (rc=0, no sentinel, no soft_timeout log event)"
 else
-    fail "T13.1 codex normal: expected rc=0 + no sentinel + success log, got rc=$T13_RC1; err=$(cat "$T13_LD1/err")"
+    fail "T13.1 codex normal: expected rc=0 + no sentinel + no soft_timeout log + success log, got rc=$T13_RC1; err=$(cat "$T13_LD1/err")"
 fi
 
 # T13.2 Timeout fires (codex, slow CLI, TIMEOUT=2)
@@ -415,6 +416,24 @@ if [[ -z "$T13_ORPHAN" ]]; then
     pass "T13.4 no orphan fake-slow-cli processes after timeout fires"
 else
     fail "T13.4 orphan pids found: $T13_ORPHAN"
+fi
+
+# T13.6 Invalid TIMEOUT value (Codex review Finding 1 regression guard):
+# Large values like 9999999999 are rejected by macOS BSD sleep, which would
+# silently disable the timeout guard entirely if the validation only checked
+# integer format. Upper bound 3600 forces these into the fallback path.
+T13_LD6=$(mktemp -d); T13_LOGDIRS+=("$T13_LD6")
+set +e
+MULTI_AI_LOG_DIR="$T13_LD6" CODEX_BIN="$T13_FAKE_FAST" CLAUDE_PRISM_TIMEOUT=9999999999 \
+    "$SCRIPT_DIR/scripts/call-codex.sh" "q" > "$T13_LD6/out" 2> "$T13_LD6/err"
+T13_RC6=$?
+set -e
+if [[ $T13_RC6 -eq 0 ]] && \
+   grep -q "invalid CLAUDE_PRISM_TIMEOUT=9999999999" "$T13_LD6/multi-ai.log" && \
+   grep -q "success response_len" "$T13_LD6/multi-ai.log"; then
+    pass "T13.6 overflow TIMEOUT falls back to 110 with WARN log (Finding 1 regression guard)"
+else
+    fail "T13.6 overflow TIMEOUT: expected rc=0 + WARN fallback log, got rc=$T13_RC6"
 fi
 
 # T13.5 Gemini mirror fires identically (sanity check on byte-sync)
