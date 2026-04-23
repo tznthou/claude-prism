@@ -9,7 +9,9 @@ Analyze the codebase and generate a structured implementation plan with cross-pr
 
 ## Execution
 
-> **Bash invocation rules (v0.12.3+)**: Call `call-codex.sh` / `call-gemini.sh` in **foreground synchronous mode** with `timeout: 600000` (Bash tool's 10-minute ceiling). **Do not** use `&`, **do not** set `run_in_background: true`, **do not** use `nohup` — Claude Code 2026-04+ has an auto-background child-lifecycle regression that silently kills the process (output file stays 0 bytes). Parallel providers still run concurrently by sending two Bash tool calls in a single response, each foreground-synchronous. Use `run_in_background: true` + BashOutput polling only as an exception when the call is genuinely expected to exceed 10 minutes.
+> **Dispatch rules (v0.13.0+)**: For **parallel provider consultation**, use the `Agent` tool with `subagent_type: "general-purpose"` to spawn two parallel sub-agents — NOT two `Bash` tool calls in a single main-conversation response. Main-conversation Bash is a structural FIFO queue: the second Bash waits for the first to finish (`delta ≈ first_exec` precisely, measured N=7 across two capacity slots), which defeats the parallel intent. Sub-agent fan-out dispatches Bash calls truly in parallel (median delta 2.8s, N=13), saving roughly 28% wall-clock on a two-provider call.
+>
+> Inside each sub-agent, run `call-codex.sh` / `call-gemini.sh` in **foreground synchronous mode** with `timeout: 600000` (Bash tool's 10-minute ceiling). Do not use `&`, `nohup`, or `run_in_background: true` — Claude Code 2026-04+ has an auto-background child-lifecycle regression that silently kills the child (output file stays 0 bytes). If a sub-agent's Bash returns empty stdout, fall back to reading `~/.claude/logs/pi-{codex,gemini}-last.out` (the wrapper's `tee` safety net).
 
 ### 1. Parse arguments
 
@@ -41,13 +43,14 @@ If the task is greenfield (no existing files to modify), infer domain from the t
 
 If the script is not found, infer manually and continue.
 
-### 4. Consult external providers (optional, parallel)
+### 4. Consult external providers (optional, parallel via sub-agent fan-out)
 
-If both providers are available, call them in parallel for independent analysis. Use **two parallel Bash tool calls**:
+If both providers are available, consult them in parallel for independent analysis. **Sub-agent fan-out required** — see Dispatch rules above for why main-conversation parallel Bash does NOT work here.
 
-**Codex Analysis:**
-```bash
-~/.claude/scripts/call-codex.sh "You are a software architect. Analyze this task and provide:
+**Step 4a — Build the shared architect prompt** (used by both providers):
+
+```
+You are a software architect. Analyze this task and provide:
 1. Key technical challenges
 2. Recommended approach (with alternatives considered)
 3. Potential risks and edge cases
@@ -56,22 +59,48 @@ If both providers are available, call them in parallel for independent analysis.
 Task: $ARGUMENTS
 
 Relevant codebase context:
-$(relevant code snippets — keep under 4000 chars)"
+$(relevant code snippets — keep under 4000 chars)
 ```
 
-**Gemini Analysis:**
-```bash
-GEMINI_MODEL="${GEMINI_MODEL_DEEP:-${GEMINI_MODEL:-}}" ~/.claude/scripts/call-gemini.sh "You are a software architect. Analyze this task and provide:
-1. Key technical challenges
-2. Recommended approach (with alternatives considered)
-3. Potential risks and edge cases
-4. Estimated complexity (S/M/L/XL)
+**Step 4b — Persist the prompt to a temp file**:
 
-Task: $ARGUMENTS
+1. Bash: `PROMPT_FILE=$(mktemp -t prism-plan-XXXXXX.md) && echo "$PROMPT_FILE"` — capture the path.
+2. Use the Write tool to write the architect prompt from Step 4a to that path.
 
-Relevant codebase context:
-$(relevant code snippets — keep under 4000 chars)"
+**Step 4c — Send ONE response with two `Agent` tool calls in parallel.** Both use `subagent_type: "general-purpose"`. Fill `<PROMPT_FILE>` with the actual path from Step 4b.
+
+**Codex agent** (description: "Codex architect perspective"):
+
 ```
+Task: run one foreground-synchronous Bash command and return its output verbatim.
+
+Step 1. Run this exact Bash command (timeout 600000 ms; no `&`, `nohup`, or `run_in_background: true`):
+
+    start_ts=$(date +%s)
+    cat <PROMPT_FILE> | ~/.claude/scripts/call-codex.sh "architect review" 2>&1
+    rc=$?
+    end_ts=$(date +%s)
+    echo "===META==="
+    echo "rc=$rc"
+    echo "runtime=$((end_ts - start_ts))s"
+    echo "response_bytes=$(wc -c < ~/.claude/logs/pi-codex-last.out 2>/dev/null || echo NA)"
+
+Step 2. If stdout is empty, Read `~/.claude/logs/pi-codex-last.out` — the wrapper's `tee` safety net persists the response there even when the Bash tool returns 0 bytes.
+
+Step 3. Return to me: the complete stdout verbatim (do NOT summarize, paraphrase, or reformat the Codex response), the META block, and any stderr if rc != 0 (classifier: TIMEOUT / RATE_LIMIT / AUTH_ERROR / SANDBOX / NETWORK / CLI_ERROR / CLI_NOT_FOUND).
+
+Only use Bash and Read tools.
+```
+
+**Gemini agent** (description: "Gemini architect perspective"):
+
+Same template as the Codex agent, with these substitutions:
+- Replace `~/.claude/scripts/call-codex.sh` → `~/.claude/scripts/call-gemini.sh`
+- Do NOT set or override `GEMINI_MODEL` in the Bash command — the user's environment passes through to the sub-agent, then to `call-gemini.sh`, then to the CLI. Skills do not pin model tiers on the user's behalf.
+- Fallback file: `~/.claude/logs/pi-gemini-last.out`
+- Classifier list adds PERMISSION (Gemini-specific) and has no SANDBOX.
+
+Both agents dispatch in parallel because they share a single main-conversation response. When both return, proceed to Step 5.
 
 ### 5. Handle partial failures (graceful degradation)
 
@@ -79,7 +108,7 @@ $(relevant code snippets — keep under 4000 chars)"
 - If both fail → Claude generates the plan solo. Note: "⚠️ Both providers unavailable ([Codex reason] / [Gemini reason]) — plan generated by Claude only."
 - Always note which providers contributed in the plan file.
 
-If the Bash tool was backgrounded or returned empty output, read the results from `~/.claude/logs/pi-codex-last.out` and/or `~/.claude/logs/pi-gemini-last.out` (persisted by the scripts' `tee` safety net).
+If a sub-agent reported empty stdout, it should already have fallen back to reading `~/.claude/logs/pi-codex-last.out` or `~/.claude/logs/pi-gemini-last.out` (the wrapper's `tee` safety net). If even that file is 0 bytes, treat the provider as unavailable and record the failure reason in the plan's Metadata section.
 
 ### 6. Synthesize and generate plan file
 

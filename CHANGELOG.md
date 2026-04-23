@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v0.13.0 (2026-04-23)
+
+**Skill layer hardening — sub-agent fan-out + `GEMINI_MODEL` passthrough.** Two related policy changes to the `pi-*` command surface, both prompted by bg-regression experiment data (N=36+ runs) showing the prior prescription did not deliver its stated guarantee.
+
+### Changed
+
+- **Sub-agent fan-out replaces main-conversation parallel Bash** for `pi-askall`, `pi-plan`, and `pi-multi-review`. Main-conversation Bash is a structural FIFO queue — the second parallel Bash waits for the first to finish (`delta ≈ first_exec` precisely, N=7 across two capacity slots). The v0.12.3 prescription "send two Bash tool calls in a single response" was therefore semantically a no-op: provider calls ran sequentially, not concurrently. v0.13.0 dispatches via two parallel `Agent` tool calls (`subagent_type: "general-purpose"`), each invoking its CLI wrapper inside the sub-agent's own Bash — sub-agent Bash dispatches in parallel (median delta 2.8s, N=13). Live POC captured during this release confirms the pattern works. This is primarily a correctness fix (restore parallel semantics); for long provider calls it also saves wall-clock (pi-plan baseline ~156s via fan-out vs ~218s hypothetical FIFO = 28% saved)
+- **Skills no longer set `GEMINI_MODEL`** — the user's shell environment passes through to the sub-agent's Bash, then `call-gemini.sh`, then the Gemini CLI, with no skill-side override. Previously `pi-plan`, `pi-multi-review`, `pi-fact-check`, and `pi-research` all wrapped their Gemini call with `GEMINI_MODEL="${GEMINI_MODEL_DEEP:-${GEMINI_MODEL:-}}"`, which gave `GEMINI_MODEL_DEEP` priority over the user's explicit `GEMINI_MODEL` choice. The layering looked user-respectful but silently promoted the deep tier whenever `GEMINI_MODEL_DEEP` was set. If a call fails with `RATE_LIMIT` / capacity, the skill surfaces the error and leaves the tier decision to the user
+
+### Documentation
+
+- **Dispatch rules preamble** in `pi-askall`, `pi-plan`, and `pi-multi-review` replaces the v0.12.3 "Bash invocation rules" notice. Explains why main-conversation parallel Bash fails (FIFO), how sub-agent fan-out differs (separate dispatch layer), and when `run_in_background: true` still applies (unchanged escape hatch for genuinely-long calls)
+- **`GEMINI_MODEL` passthrough note** in `pi-askall` spells out the policy so future skill authors don't reintroduce layering
+
+### Notes
+
+- Breaking change for downstream skill authors who extend `pi-askall` / `pi-plan` / `pi-multi-review` verbatim (must follow the new sub-agent pattern). For end-users calling `/pi-askall` etc., no behaviour change beyond "parallel now actually parallel"
+- `pi-fact-check` and `pi-research` make one Gemini Bash call + N `WebSearch` calls. They don't trigger the two-Bash FIFO, so sub-agent fan-out is not applied there — only the `GEMINI_MODEL` passthrough change affects them. The Bash + WebSearch queue interaction is untested; a future investigation tied to the `call-*.sh` soft-timeout work may surface additional changes
+
 ## v0.12.6 (2026-04-20)
 
 **Regression test hardening** — lock in the v0.12.3→v0.12.5 stdin fixes with six dedicated test cases so future edits to the stdin block in `call-codex.sh` / `call-gemini.sh` fail fast instead of silently regressing.

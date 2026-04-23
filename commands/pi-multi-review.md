@@ -9,7 +9,9 @@ Send the same code to both Codex and Gemini for **adversarial review with divide
 
 ## Execution
 
-> **Bash invocation rules (v0.12.3+)**: Call `call-codex.sh` / `call-gemini.sh` in **foreground synchronous mode** with `timeout: 600000` (Bash tool's 10-minute ceiling). **Do not** use `&`, **do not** set `run_in_background: true`, **do not** use `nohup` — Claude Code 2026-04+ has an auto-background child-lifecycle regression that silently kills the process (output file stays 0 bytes). Parallel providers still run concurrently by sending two Bash tool calls in a single response, each foreground-synchronous. Use `run_in_background: true` + BashOutput polling only as an exception when the call is genuinely expected to exceed 10 minutes.
+> **Dispatch rules (v0.13.0+)**: For **parallel provider consultation**, use the `Agent` tool with `subagent_type: "general-purpose"` to spawn two parallel sub-agents — NOT two `Bash` tool calls in a single main-conversation response. Main-conversation Bash is a structural FIFO queue: the second Bash waits for the first to finish (`delta ≈ first_exec` precisely, measured N=7 across two capacity slots), which defeats the parallel intent. Sub-agent fan-out dispatches Bash calls truly in parallel (median delta 2.8s, N=13), saving roughly 28% wall-clock on a two-provider call.
+>
+> Inside each sub-agent, run `call-codex.sh` / `call-gemini.sh` in **foreground synchronous mode** with `timeout: 600000` (Bash tool's 10-minute ceiling). Do not use `&`, `nohup`, or `run_in_background: true` — Claude Code 2026-04+ has an auto-background child-lifecycle regression that silently kills the child (output file stays 0 bytes). If a sub-agent's Bash returns empty stdout, fall back to reading `~/.claude/logs/pi-{codex,gemini}-last.out` (the wrapper's `tee` safety net).
 
 ### 1. Determine review scope
 
@@ -78,23 +80,20 @@ The script outputs one of: `frontend`, `backend`, or `fullstack`. Store this res
 
 If the script is not found or fails, default to `fullstack` (balanced weighting) and continue.
 
-### 3. Call Codex + Gemini in parallel
+### 3. Adversarial review (parallel via sub-agent fan-out)
 
-Use **two parallel Bash tool calls**:
+**Sub-agent fan-out required** — see Dispatch rules above. The two providers receive **different attack-surface framings** (Codex attacks security/data integrity; Gemini attacks design/UX/maintainability), so each gets its own temp file.
 
-**Codex Review** (adversarial — security & data integrity focus):
-```bash
-~/.claude/scripts/call-codex.sh "You are performing an adversarial code review focused on security, data integrity, and infrastructure resilience.
+**Step 3a — Build each provider's adversarial prompt.** Both share a common template; only the focus statement and attack surface list differ.
+
+Shared template:
+
+```
+You are performing an adversarial code review focused on <FOCUS>.
 Your job is to break confidence in this change, not to validate it. Default to skepticism.
 
 Attack surface — prioritize these failure modes:
-1. Auth, permissions, tenant isolation, trust boundary violations
-2. Data loss, corruption, duplication, irreversible state changes
-3. Rollback safety, retry logic, partial failure, idempotency gaps
-4. Race conditions, ordering assumptions, stale state, re-entrancy
-5. Version skew, schema drift, migration hazards
-6. Observability gaps that would hide failures in production
-7. Inline annotation violations (IMPORTANT/WARNING/FIXME/TODO/NOTE comments)
+<ATTACK_SURFACE_LIST>
 $(if guidelines found)8. Project guideline violations (see guidelines below)$(end if)
 
 Scope constraint: Focus on the diff provided. Do not speculate about code outside the diff unless directly referenced by the changed lines.
@@ -104,6 +103,11 @@ Project Guidelines:
 --- BEGIN GUIDELINES ---
 $(guideline content from Step 2.3)
 --- END GUIDELINES ---
+$(end if)
+
+$(if historical comments found from Step 2.4)
+Historical Review Context (previous review comments on the same files — recurring issues are high-confidence signals):
+$(historical comments)
 $(end if)
 
 Finding bar — every finding MUST answer:
@@ -126,55 +130,75 @@ Label each issue with severity (🔴/🟡/🟢) and line numbers.
 End with an overall score (1-10).
 
 Code:
-$(code)"
+$(code)
 ```
 
-**Gemini Review** (adversarial — design, UX & maintainability focus):
-```bash
-GEMINI_MODEL="${GEMINI_MODEL_DEEP:-${GEMINI_MODEL:-}}" ~/.claude/scripts/call-gemini.sh "You are performing an adversarial code review focused on design quality, UX impact, and long-term maintainability.
-Your job is to break confidence in this change, not to validate it. Default to skepticism.
+**Codex substitutions** (security & data integrity focus):
+- `<FOCUS>` → `security, data integrity, and infrastructure resilience`
+- `<ATTACK_SURFACE_LIST>`:
+  ```
+  1. Auth, permissions, tenant isolation, trust boundary violations
+  2. Data loss, corruption, duplication, irreversible state changes
+  3. Rollback safety, retry logic, partial failure, idempotency gaps
+  4. Race conditions, ordering assumptions, stale state, re-entrancy
+  5. Version skew, schema drift, migration hazards
+  6. Observability gaps that would hide failures in production
+  7. Inline annotation violations (IMPORTANT/WARNING/FIXME/TODO/NOTE comments)
+  ```
 
-Attack surface — prioritize these failure modes:
-1. Empty-state, null, timeout, degraded dependency behavior from a user's perspective
-2. Accessibility violations, broken responsive behavior, inconsistent UI states
-3. API contract mismatches, missing error feedback to users, silent failures
-4. Abstraction leaks, tight coupling, violation of single responsibility
-5. Missing or misleading test coverage that creates false confidence
-6. Breaking changes to public interfaces without migration path
-7. Inline annotation violations (IMPORTANT/WARNING/FIXME/TODO/NOTE comments)
-$(if guidelines found)8. Project guideline violations (see guidelines below)$(end if)
+**Gemini substitutions** (design, UX & maintainability focus):
+- `<FOCUS>` → `design quality, UX impact, and long-term maintainability`
+- `<ATTACK_SURFACE_LIST>`:
+  ```
+  1. Empty-state, null, timeout, degraded dependency behavior from a user's perspective
+  2. Accessibility violations, broken responsive behavior, inconsistent UI states
+  3. API contract mismatches, missing error feedback to users, silent failures
+  4. Abstraction leaks, tight coupling, violation of single responsibility
+  5. Missing or misleading test coverage that creates false confidence
+  6. Breaking changes to public interfaces without migration path
+  7. Inline annotation violations (IMPORTANT/WARNING/FIXME/TODO/NOTE comments)
+  ```
 
-Scope constraint: Focus on the diff provided. Do not speculate about code outside the diff unless directly referenced by the changed lines.
+**Step 3b — Persist each prompt to its own temp file**:
 
-$(if guidelines found)
-Project Guidelines:
---- BEGIN GUIDELINES ---
-$(guideline content from Step 2.3)
---- END GUIDELINES ---
-$(end if)
+1. Bash: `CODEX_PROMPT=$(mktemp -t prism-review-codex-XXXXXX.md) && GEMINI_PROMPT=$(mktemp -t prism-review-gemini-XXXXXX.md) && echo "CODEX=$CODEX_PROMPT" && echo "GEMINI=$GEMINI_PROMPT"` — capture both paths.
+2. Use the Write tool twice — write the Codex-focus prompt to `$CODEX_PROMPT` and the Gemini-focus prompt to `$GEMINI_PROMPT`.
 
-Finding bar — every finding MUST answer:
-1. What can go wrong?
-2. Why is this code path vulnerable?
-3. What is the likely impact?
-4. What concrete change would reduce the risk?
+**Step 3c — Send ONE response with two `Agent` tool calls in parallel.** Both use `subagent_type: "general-purpose"`. Fill `<CODEX_PROMPT>` / `<GEMINI_PROMPT>` with the actual paths from Step 3b.
 
-DO NOT flag:
-- Pre-existing issues not introduced in this diff
-- Issues linters/formatters would catch (eslint, prettier, etc.)
-- Style preferences without guideline backing or concrete failure scenario
-- Lines with explicit lint-ignore / noqa / @ts-ignore comments
+**Codex agent** (description: "Codex adversarial review — security focus"):
 
-Calibration: Prefer one strong finding over several weak ones. If the change looks safe, say so directly.
-
-Final self-check: Verify each finding is adversarial (not stylistic), tied to concrete code, and plausible under a real failure scenario.
-
-Label each issue with severity (🔴/🟡/🟢) and line numbers.
-End with an overall score (1-10).
-
-Code:
-$(code)"
 ```
+Task: run one foreground-synchronous Bash command and return its output verbatim.
+
+Step 1. Run this exact Bash command (timeout 600000 ms; no `&`, `nohup`, or `run_in_background: true`):
+
+    start_ts=$(date +%s)
+    cat <CODEX_PROMPT> | ~/.claude/scripts/call-codex.sh "adversarial review" 2>&1
+    rc=$?
+    end_ts=$(date +%s)
+    echo "===META==="
+    echo "rc=$rc"
+    echo "runtime=$((end_ts - start_ts))s"
+    echo "response_bytes=$(wc -c < ~/.claude/logs/pi-codex-last.out 2>/dev/null || echo NA)"
+
+Step 2. If stdout is empty, Read `~/.claude/logs/pi-codex-last.out` — the wrapper's `tee` safety net persists the response there even when the Bash tool returns 0 bytes.
+
+Step 3. Return to me: the complete stdout verbatim (do NOT summarize, paraphrase, or reformat the Codex review — it will feed Claude's synthesis and confidence scoring with full fidelity), the META block, and any stderr if rc != 0 (classifier: TIMEOUT / RATE_LIMIT / AUTH_ERROR / SANDBOX / NETWORK / CLI_ERROR / CLI_NOT_FOUND).
+
+Only use Bash and Read tools.
+```
+
+**Gemini agent** (description: "Gemini adversarial review — design focus"):
+
+Same template as the Codex agent, with these substitutions:
+- Replace `<CODEX_PROMPT>` → `<GEMINI_PROMPT>`
+- Replace `~/.claude/scripts/call-codex.sh` → `~/.claude/scripts/call-gemini.sh`
+- Do NOT set or override `GEMINI_MODEL` in the Bash command — the user's environment passes through to the sub-agent, then to `call-gemini.sh`, then to the CLI. Skills do not pin model tiers on the user's behalf.
+- Fallback file: `~/.claude/logs/pi-gemini-last.out`
+- Classifier list adds PERMISSION (Gemini-specific) and has no SANDBOX.
+
+Both agents dispatch in parallel because they share a single main-conversation response. When both return, proceed to Step 4.
 
 ### 4. Handle partial failures (graceful degradation)
 
@@ -185,7 +209,7 @@ If one provider fails (script exits non-zero or returns an error message):
 - In the output, clearly note: "⚠️ [Provider] unavailable ([reason]) — continuing with [other provider] + Claude."
 - If **both** external providers fail, Claude performs a solo review and notes: "⚠️ Both external providers unavailable ([Codex reason] / [Gemini reason]) — single-perspective review. For single-provider review, try `/pi-code-review` (Codex) or `/pi-ui-review` (Gemini) when they recover."
 
-If the Bash tool was backgrounded or returned empty output, read the results from `~/.claude/logs/pi-codex-last.out` and/or `~/.claude/logs/pi-gemini-last.out` (persisted by the scripts' `tee` safety net).
+If a sub-agent reported empty stdout, it should already have fallen back to reading `~/.claude/logs/pi-codex-last.out` or `~/.claude/logs/pi-gemini-last.out` (the wrapper's `tee` safety net). If even that file is 0 bytes, treat the provider as unavailable and note the failure reason in the Provider Status table.
 
 ### 5. Handle non-conforming output
 

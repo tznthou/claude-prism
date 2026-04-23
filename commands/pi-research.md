@@ -38,7 +38,7 @@ Use the Bash tool with timeout parameter (90 seconds):
 
 ```bash
 # Use Bash tool with timeout: 90000
-echo "$PROJECT_CONTEXT" | GEMINI_MODEL="${GEMINI_MODEL_DEEP:-${GEMINI_MODEL:-}}" ~/.claude/scripts/call-gemini.sh "You are a technical researcher. Conduct in-depth research.
+echo "$PROJECT_CONTEXT" | ~/.claude/scripts/call-gemini.sh "You are a technical researcher. Conduct in-depth research.
 
 Research topic: $ARGUMENTS
 
