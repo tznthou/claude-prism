@@ -4,10 +4,11 @@
 # Diagnoses the Claude Code 2026-04+ auto-background regression by reading
 # pid-tagged lifecycle events added in v0.12.3. Groups log entries by pid,
 # classifies each invocation:
-#   ✅ SUCCESS  — completed normally
-#   ❌ ERROR    — CLI returned non-zero, classified by call-*.sh
-#   ⚠️  SIGNAL   — caught HUP/INT/TERM (has recorded death stage)
-#   💀 SILENT   — INVOKE but no outcome — likely SIGKILL from Claude Code
+#   ✅ SUCCESS      — completed normally
+#   ❌ ERROR        — CLI returned non-zero, classified by call-*.sh
+#   ⚠️  SIGNAL       — caught HUP/INT/TERM (has recorded death stage)
+#   ⏱  SOFT_TIMEOUT — v0.14.0+ wall-clock guard fired (CLAUDE_PRISM_TIMEOUT)
+#   💀 SILENT       — INVOKE but no outcome — likely SIGKILL from Claude Code
 #
 # Usage: analyze-log.sh [LOG_FILE]
 #        Default: ~/.claude/logs/multi-ai.log
@@ -75,14 +76,29 @@ function fmt_dur(s) {
         outcome[pid] = "SUCCESS"
         end_epoch[pid] = to_epoch(ts)
         details[pid] = "dry-run"
+    } else if (msg ~ /^soft_timeout /) {
+        # v0.14.0+ wall-clock guard — takes priority over subsequent ERROR/SIGNAL events
+        # because call-*.sh logs both after timeout fires (WARN then ERROR), and analyzer
+        # would otherwise see the last event win.
+        outcome[pid] = "SOFT_TIMEOUT"
+        end_epoch[pid] = to_epoch(ts)
+        if (match(msg, /elapsed_s=[0-9]+/)) {
+            details[pid] = substr(msg, RSTART, RLENGTH)
+        } else {
+            details[pid] = "soft timeout fired"
+        }
     } else if (level == "ERROR") {
-        outcome[pid] = "ERROR"
-        end_epoch[pid] = to_epoch(ts)
-        details[pid] = substr(msg, 1, 80)
+        if (outcome[pid] != "SOFT_TIMEOUT") {
+            outcome[pid] = "ERROR"
+            end_epoch[pid] = to_epoch(ts)
+            details[pid] = substr(msg, 1, 80)
+        }
     } else if (msg ~ /^signal /) {
-        outcome[pid] = "SIGNAL"
-        end_epoch[pid] = to_epoch(ts)
-        details[pid] = msg
+        if (outcome[pid] != "SOFT_TIMEOUT") {
+            outcome[pid] = "SIGNAL"
+            end_epoch[pid] = to_epoch(ts)
+            details[pid] = msg
+        }
     }
 
     # Track last observed stage for silent-death forensics
@@ -98,7 +114,7 @@ END {
         exit 0
     }
 
-    n_success = 0; n_error = 0; n_signal = 0; n_silent = 0
+    n_success = 0; n_error = 0; n_signal = 0; n_soft_timeout = 0; n_silent = 0
 
     printf "%-7s | %-7s | %-22s | %-8s | %-11s | %s\n", \
         "PID", "Prov", "Started (UTC)", "Duration", "Outcome", "Details"
@@ -109,11 +125,12 @@ END {
         oc = outcome[pid]
         d = details[pid]
 
-        if (oc == "SUCCESS")      { icon = "OK"; n_success++ }
-        else if (oc == "ERROR")   { icon = "ER"; n_error++ }
-        else if (oc == "SIGNAL")  { icon = "SG"; n_signal++ }
-        else                      { icon = "!!"; n_silent++
-                                    d = "last_stage=" last_stage[pid] " (SIGKILL suspected)" }
+        if (oc == "SUCCESS")             { icon = "OK"; n_success++ }
+        else if (oc == "ERROR")          { icon = "ER"; n_error++ }
+        else if (oc == "SIGNAL")         { icon = "SG"; n_signal++ }
+        else if (oc == "SOFT_TIMEOUT")   { icon = "TO"; n_soft_timeout++ }
+        else                             { icon = "!!"; n_silent++
+                                           d = "last_stage=" last_stage[pid] " (SIGKILL suspected)" }
 
         dur = (end_epoch[pid] > 0 && invoke_epoch[pid] > 0) ? end_epoch[pid] - invoke_epoch[pid] : -1
 
@@ -126,6 +143,7 @@ END {
     printf "  OK  Success:      %d\n", n_success
     printf "  ER  Error:        %d\n", n_error
     printf "  SG  Signal:       %d\n", n_signal
+    printf "  TO  Soft-timeout: %d\n", n_soft_timeout
     printf "  !!  Silent death: %d", n_silent
     if (n_silent > 0) print "  <- possible Claude Code auto-background SIGKILLs"
     else              print ""

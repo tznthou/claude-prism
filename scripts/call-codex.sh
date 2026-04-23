@@ -127,16 +127,53 @@ STAGE="exec"
 CMD=("$CODEX_BIN" exec --sandbox "$SANDBOX")
 [[ -n "$MODEL" ]] && CMD+=(--model "$MODEL")
 
-LOG_DIR="${HOME}/.claude/logs"
 mkdir -p "$LOG_DIR"
 ERR_TMP=$(mktemp)
 OUT_TMP="${LOG_DIR}/pi-codex-last.out"
-trap 'rm -f "$ERR_TMP"' EXIT  # Keep OUT_TMP as last-run safety net
-# SIGHUP handled by _log_signal HUP trap above (log + continue) — preserves
-# background detach survival without silencing the signal.
 
-printf '%s' "$PROMPT" | "${CMD[@]}" - 2>"$ERR_TMP" | tee "$OUT_TMP" || {
-    rc=$?
+# --- Soft-timeout: wall-clock guard (v0.14.0+) ---
+# Keep in sync with scripts/call-gemini.sh — any edit to the timeout block must mirror.
+# Fires before the ~130s Claude Code harness watchdog so the script exits with a
+# structured marker (sentinel + log event + rc=124) rather than silent SIGKILL.
+# Mechanism: bg pipeline + watcher subshell + pkill -P parent. Validated on
+# Bash 5.3.9 + Bash 3.2.57 (see .claude/pi-plans/soft-timeout-call-scripts.md).
+TIMEOUT_S="${CLAUDE_PRISM_TIMEOUT:-110}"
+if ! [[ "$TIMEOUT_S" =~ ^[1-9][0-9]*$ ]]; then
+    _log WARN "invalid CLAUDE_PRISM_TIMEOUT=$TIMEOUT_S — falling back to 110"
+    TIMEOUT_S=110
+fi
+
+printf '%s' "$PROMPT" | "${CMD[@]}" - 2>"$ERR_TMP" | tee "$OUT_TMP" &
+LAST=$!
+
+# Watcher: sleep T → emit log event → TERM all pipeline members (parent's direct
+# children). Watcher kills itself via pkill -P $$; KILL escalation is in parent
+# EXIT trap, not here.
+(
+    sleep "$TIMEOUT_S"
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [codex] [WARN] [pid=$$] soft_timeout stage=exec elapsed_s=$TIMEOUT_S" >> "$LOG_FILE"
+    pkill -TERM -P $$ 2>/dev/null || true
+) &
+WPID=$!
+
+# EXIT trap: kill watcher + KILL-escalate any surviving pipeline members + rm ERR_TMP.
+# SIGHUP still handled by _log_signal HUP trap (set earlier — preserves bg detach).
+trap 'kill "$WPID" 2>/dev/null || true; pkill -KILL -P $$ 2>/dev/null || true; rm -f "$ERR_TMP"' EXIT
+
+set +e
+wait "$LAST" 2>/dev/null
+rc=$?
+set -e
+
+# Soft-timeout classification: rc=143/137 + our log event = it's our timeout, not harness.
+# pid-scoped grep avoids false match from prior invocations in shared log file.
+if { [[ $rc -eq 143 ]] || [[ $rc -eq 137 ]]; } && grep -q "\[pid=$$\] soft_timeout" "$LOG_FILE"; then
+    echo "[CLAUDE-PRISM: soft-timeout at STAGE=exec after ${TIMEOUT_S}s]" >&2
+    _log ERROR "soft_timeout killed codex CLI after ${TIMEOUT_S}s"
+    exit 124
+fi
+
+if [[ $rc -ne 0 ]]; then
     err_text=$(cat "$ERR_TMP")
     # Classify the error for better diagnostics
     err_lower=$(printf '%s' "$err_text" | tr '[:upper:]' '[:lower:]')
@@ -161,7 +198,7 @@ printf '%s' "$PROMPT" | "${CMD[@]}" - 2>"$ERR_TMP" | tee "$OUT_TMP" || {
     echo "Error: $diag" >&2
     [[ -n "$err_text" ]] && echo "Details: $err_text" >&2
     exit $rc
-}
+fi
 
 STAGE="done"
 _log INFO "success response_len=$(wc -c < "$OUT_TMP" | tr -d ' ')"

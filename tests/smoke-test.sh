@@ -283,7 +283,13 @@ echo "12. Stdin regression..."
 
 STDIN_FIXTURE_DIR=$(mktemp -d)
 STDIN_CODEX_REPO=$(mktemp -d)
-trap 'rm -rf "$STDIN_FIXTURE_DIR" "$STDIN_CODEX_REPO"' EXIT
+T13_DIR=""
+T13_LOGDIRS=()
+# shellcheck disable=SC2329  # invoked via trap
+_t12_t13_cleanup() {
+    rm -rf "$STDIN_FIXTURE_DIR" "$STDIN_CODEX_REPO" ${T13_DIR:+"$T13_DIR"} "${T13_LOGDIRS[@]}"
+}
+trap _t12_t13_cleanup EXIT
 
 STDIN_FIXTURE="$STDIN_FIXTURE_DIR/fixture.txt"
 STDIN_PAYLOAD="hi from stdin"
@@ -327,6 +333,104 @@ STDIN_OUT=$(cd "$STDIN_CODEX_REPO" && "$SCRIPT_DIR/scripts/call-codex.sh" --dry-
 _check_prompt_len "call-codex.sh stdin from /dev/null skipped" "$STDIN_OUT" "$STDIN_EXPECT_SKIPPED"
 
 # Cleanup handled by EXIT trap set above.
+
+# ─── Test 13: Soft-timeout regression scenarios (v0.14.0+) ───
+# Guards against regressions in the CLAUDE_PRISM_TIMEOUT wall-clock guard block
+# in call-{codex,gemini}.sh. Uses fake CLI binaries (shell scripts) injected via
+# CODEX_BIN / GEMINI_BIN env vars so no real API calls are made.
+# 5 assertions: normal path (rc=0), timeout fires (rc=124 + sentinel + log event),
+# custom TIMEOUT=5 honoured, no orphan processes, gemini mirror fires identically.
+echo ""
+echo "13. Soft-timeout regression..."
+
+T13_DIR=$(mktemp -d)
+T13_FAKE_SLOW="$T13_DIR/fake-slow-cli"
+T13_FAKE_FAST="$T13_DIR/fake-fast-cli"
+
+cat > "$T13_FAKE_SLOW" <<'FAKESLOW'
+#!/bin/bash
+# Consume stdin first (avoids SIGPIPE on printf upstream), then hang.
+cat > /dev/null 2>&1 || true
+sleep 30
+echo "slow-done"
+FAKESLOW
+chmod +x "$T13_FAKE_SLOW"
+
+cat > "$T13_FAKE_FAST" <<'FAKEFAST'
+#!/bin/bash
+cat > /dev/null 2>&1 || true
+echo "fake-done"
+FAKEFAST
+chmod +x "$T13_FAKE_FAST"
+
+# T13.1 Normal completion under timeout (codex, fast CLI, TIMEOUT=10)
+T13_LD1=$(mktemp -d); T13_LOGDIRS+=("$T13_LD1")
+set +e
+MULTI_AI_LOG_DIR="$T13_LD1" CODEX_BIN="$T13_FAKE_FAST" CLAUDE_PRISM_TIMEOUT=10 \
+    "$SCRIPT_DIR/scripts/call-codex.sh" "q" > "$T13_LD1/out" 2> "$T13_LD1/err"
+T13_RC1=$?
+set -e
+if [[ $T13_RC1 -eq 0 ]] && \
+   ! grep -q "CLAUDE-PRISM: soft-timeout" "$T13_LD1/err" && \
+   grep -q "success response_len" "$T13_LD1/multi-ai.log"; then
+    pass "T13.1 codex normal completion under timeout (rc=0, no sentinel)"
+else
+    fail "T13.1 codex normal: expected rc=0 + no sentinel + success log, got rc=$T13_RC1; err=$(cat "$T13_LD1/err")"
+fi
+
+# T13.2 Timeout fires (codex, slow CLI, TIMEOUT=2)
+T13_LD2=$(mktemp -d); T13_LOGDIRS+=("$T13_LD2")
+set +e
+MULTI_AI_LOG_DIR="$T13_LD2" CODEX_BIN="$T13_FAKE_SLOW" CLAUDE_PRISM_TIMEOUT=2 \
+    "$SCRIPT_DIR/scripts/call-codex.sh" "q" > "$T13_LD2/out" 2> "$T13_LD2/err"
+T13_RC2=$?
+set -e
+if [[ $T13_RC2 -eq 124 ]] && \
+   grep -q "CLAUDE-PRISM: soft-timeout at STAGE=exec after 2s" "$T13_LD2/err" && \
+   grep -q "soft_timeout stage=exec elapsed_s=2" "$T13_LD2/multi-ai.log"; then
+    pass "T13.2 codex timeout fires (rc=124 + sentinel + log event)"
+else
+    fail "T13.2 codex timeout: expected rc=124 + sentinel + log, got rc=$T13_RC2; err=$(cat "$T13_LD2/err")"
+fi
+
+# T13.3 Custom CLAUDE_PRISM_TIMEOUT=5 honoured (~5s, tolerance ±2s)
+T13_LD3=$(mktemp -d); T13_LOGDIRS+=("$T13_LD3")
+T13_START=$(date +%s)
+set +e
+MULTI_AI_LOG_DIR="$T13_LD3" CODEX_BIN="$T13_FAKE_SLOW" CLAUDE_PRISM_TIMEOUT=5 \
+    "$SCRIPT_DIR/scripts/call-codex.sh" "q" > /dev/null 2>&1
+set -e
+T13_ELAPSED=$(( $(date +%s) - T13_START ))
+if (( T13_ELAPSED >= 3 && T13_ELAPSED <= 8 )); then
+    pass "T13.3 codex custom TIMEOUT=5 honoured (elapsed=${T13_ELAPSED}s)"
+else
+    fail "T13.3 codex custom TIMEOUT=5: expected elapsed~5s, got ${T13_ELAPSED}s"
+fi
+
+# T13.4 No orphan processes after timeout fires
+# Brief settle delay to let OS reap zombies.
+sleep 1
+T13_ORPHAN=$(pgrep -f "fake-slow-cli" 2>/dev/null | head -3 || true)
+if [[ -z "$T13_ORPHAN" ]]; then
+    pass "T13.4 no orphan fake-slow-cli processes after timeout fires"
+else
+    fail "T13.4 orphan pids found: $T13_ORPHAN"
+fi
+
+# T13.5 Gemini mirror fires identically (sanity check on byte-sync)
+T13_LD5=$(mktemp -d); T13_LOGDIRS+=("$T13_LD5")
+set +e
+MULTI_AI_LOG_DIR="$T13_LD5" GEMINI_BIN="$T13_FAKE_SLOW" CLAUDE_PRISM_TIMEOUT=2 \
+    "$SCRIPT_DIR/scripts/call-gemini.sh" "q" > "$T13_LD5/out" 2> "$T13_LD5/err"
+T13_RC5=$?
+set -e
+if [[ $T13_RC5 -eq 124 ]] && \
+   grep -q "CLAUDE-PRISM: soft-timeout at STAGE=exec after 2s" "$T13_LD5/err" && \
+   grep -q "\[gemini\].*soft_timeout stage=exec elapsed_s=2" "$T13_LD5/multi-ai.log"; then
+    pass "T13.5 gemini timeout mirrors codex (rc=124 + sentinel + [gemini] log event)"
+else
+    fail "T13.5 gemini timeout: expected rc=124 + sentinel + [gemini] log, got rc=$T13_RC5"
+fi
 
 # ─── Summary ───
 echo ""

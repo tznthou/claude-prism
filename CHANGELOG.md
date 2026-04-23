@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v0.14.0 (2026-04-23)
+
+**Soft-timeout wall-clock guard for `call-*.sh`.** Bounds provider-CLI execution to a configurable wall-clock limit so the script exits with a structured marker before the ~130s Claude Code harness watchdog SIGKILLs it silently. Addresses the F-group silent-death signature (N=1/7, evening-bad) identified in the 2026-04-20→21 bg-regression experiments.
+
+### Added
+
+- **`CLAUDE_PRISM_TIMEOUT` environment variable** (integer seconds, default 110). Invalid values (non-integer, zero, negative) fall back to 110 with a `WARN` log entry. Power users can widen per-invocation for known-long runs: `CLAUDE_PRISM_TIMEOUT=180 ./call-codex.sh "40KB review prompt"`
+- **Soft-timeout mechanism** in both `scripts/call-codex.sh` and `scripts/call-gemini.sh`: background pipeline + watcher subshell. On timeout, watcher writes a `soft_timeout stage=exec elapsed_s=N` event to the shared log and issues `pkill -TERM -P $$` to terminate all pipeline members (pipeline members are direct children of the parent shell in Bash's pipeline semantics). Parent's `EXIT` trap handles KILL-escalation for any survivors. Exit code 124 (GNU `timeout` convention) for external consumers; stderr sentinel `[CLAUDE-PRISM: soft-timeout at STAGE=exec after ${TIMEOUT_S}s]` for human-readable diagnosis
+- **`SOFT_TIMEOUT` outcome in `scripts/analyze-log.sh`** — log-event-driven classification via `msg ~ /^soft_timeout /` match, prioritized over subsequent `ERROR` / `SIGNAL` events from the same pid (both of which `call-*.sh` also emits during teardown). Summary now shows `TO  Soft-timeout: N` alongside the existing `OK / ER / SG / !!` counters
+
+### Testing
+
+- **Added Test 13** (5 regression cases) to `tests/smoke-test.sh`: codex normal completion, codex timeout fires (sentinel + log + rc=124), custom `CLAUDE_PRISM_TIMEOUT=5` honoured within ±2s tolerance, no orphan `fake-slow-cli` processes after timeout, gemini mirror fires identically. Uses injected fake CLI binaries via `CODEX_BIN` / `GEMINI_BIN` env vars — no real API calls, no credentials required. smoke-test total: 37 → 42
+
+### Mechanism design (rationale in `.claude/pi-plans/soft-timeout-call-scripts.md`)
+
+Three provider-proposed mechanisms were refuted by local POC during plan revision:
+- **SIGALRM-to-parent trap does not interrupt foreground pipelines.** Bash queues the signal until the shell regains control, so `trap '...' ALRM` only fires after the pipeline completes naturally — timeout effectively useless. Verified on Bash 5.3.9 + 3.2.57. Fix: background the pipeline with `&` so `wait` is interruptible; use a watcher subshell instead of parent trap
+- **rc=124 cannot drive analyzer classification** because `analyze-log.sh` doesn't inspect exit codes — it matches log message patterns. SOFT_TIMEOUT is therefore log-event-driven (cleaner — no cross-layer exit-code leak) while still exiting 124 for external consumers
+- **Killing pipeline middle-stage via `$!` alone is insufficient.** `$!` captures the last pipeline member (`tee`), and SIGPIPE does not propagate to middle-stage CLIs that don't write stdout. `pkill -TERM -P $$` targets all parent's direct children, which includes every pipeline member
+
+### Notes
+
+- Mechanism B (Gemini service-side tail event → harness drops output silently) is NOT addressed by this change — that requires skill-layer log fallback, deferred
+- Byte-sync between `call-codex.sh` and `call-gemini.sh` enforced by `Keep in sync` comment header; future CI lint check to be added (deferred, not v0.14.0 scope)
+
 ## v0.13.0 (2026-04-23)
 
 **Skill layer hardening — sub-agent fan-out + `GEMINI_MODEL` passthrough.** Two related policy changes to the `pi-*` command surface, both prompted by bg-regression experiment data (N=36+ runs) showing the prior prescription did not deliver its stated guarantee.
