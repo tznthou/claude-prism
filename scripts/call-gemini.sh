@@ -170,7 +170,10 @@ set -e
 # partial output from soft-timeout or error paths stays readable by skill diagnostics.
 # Concurrent invocations each own their mktemp file; last ln -sf wins the symlink,
 # matching "latest" semantics of the fallback. Keep in sync with scripts/call-codex.sh.
-ln -sf "$(basename "$OUT_TMP")" "${LOG_DIR}/pi-gemini-last.out"
+# `|| true`: symlink is best-effort observability; its failure must NOT mask the
+# soft-timeout rc=143/137 classification that runs below (otherwise set -e exits
+# with ln's rc and skill layer can't tell "timed out" from "CLI error").
+ln -sf "$(basename "$OUT_TMP")" "${LOG_DIR}/pi-gemini-last.out" || true
 
 # Soft-timeout classification: rc=143/137 + non-empty marker = our watcher fired.
 # Marker is per-invocation (mktemp), eliminating PID-reuse false positives that
