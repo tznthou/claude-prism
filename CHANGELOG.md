@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### v0.14.3 (target ≥ 2026-05-01) — Phase 2: `CLAUDE_PRISM_OUT_TMP` env-var contract
+
+**Resolves v0.14.2 Known Limitation for sub-agent fan-out skills.** Callers (skill layer) pre-allocate a `mktemp` path via `CLAUDE_PRISM_OUT_TMP` env-var; the wrapper writes directly to that path and the shared `pi-{codex,gemini}-last.out` symlink is not updated (legacy-mode only). Skill-side fallback now reads the caller-owned path — no cross-session race. **Known Limitation partially preserved**: the 7 direct skills (`pi-ask-codex`, `pi-ask-gemini`, `pi-code-review`, `pi-fact-check`, `pi-research`, `pi-ui-design`, `pi-ui-review`) keep the shared-symlink legacy fallback in their narrative instructions. Low-frequency silent-hallucination risk (no cross-provider verification safety net in direct skills) — not rewritten because the 7-skill narrative-update cost was disproportionate to an unobserved-in-production risk.
+
+#### Changed
+
+- **`scripts/call-codex.sh` / `scripts/call-gemini.sh`** — `OUT_TMP` accepts `CLAUDE_PRISM_OUT_TMP` env-var override (defaults to `mktemp` in `LOG_DIR` if unset). Symlink update wrapped in `if [ -z "${CLAUDE_PRISM_OUT_TMP:-}" ]`: legacy mode preserves v0.14.2 behavior; env-var mode skips symlink since the caller owns the path. Byte-sync contract between the two scripts preserved
+- **`commands/pi-askall.md` / `pi-plan.md` / `pi-multi-review.md`** — sub-agent Bash template creates per-invocation `OUT_PATH=$(mktemp "${TMPDIR:-/tmp}/prism-{codex,gemini}-out-XXXXXX")` and prefixes wrapper call with `CLAUDE_PRISM_OUT_TMP="$OUT_PATH"`. Fallback `cat` reads `$OUT_PATH`, not the shared symlink. Gemini substitution list gains a new rule: replace `prism-codex-out` → `prism-gemini-out` in the `mktemp` template
+- **Explicit `/` separator** in `${TMPDIR:-/tmp}/prism-...` — mirrors wrapper's `${TMPDIR:-/tmp}/claude-prism-timeout.XXXXXX` pattern. Avoids malformed paths on systems where `$TMPDIR` has no trailing `/`
+
+#### Security / Concurrency
+
+- **Eliminates cross-session same-provider fallback wrong-file selection** for sub-agent fan-out skills. v0.14.2 behavior: concurrent same-provider invocations each own a `mktemp` file but share one symlink; if Claude Code auto-bg silences stdout and a skill falls back to `cat`-ing the symlink, it may read another session's output. Now: sub-agent skills pass their own `mktemp` path via env-var; wrapper writes there directly; skill reads its own file
+- **Preserved Known Limitation** — direct skills' narrative fallback ("If Bash returns empty, read `pi-{codex,gemini}-last.out`") still uses the shared symlink. Two concurrent Claude Code sessions using the same direct skill on the same provider can theoretically cross-read. Low-frequency (requires auto-bg + empty-stdout + same-provider + time overlap); unlike `pi-multi-review`, direct skills have no cross-provider verification (`references_exist_in_codebase` -50pt signal) to catch hallucinated references from wrong-file content
+
+#### Testing
+
+- **`internal/experiments/phase2-cross-session-race/run.sh`** — fake-CLI harness (`fake-codex`, `fake-gemini`) + 2 race scenarios (same-session concurrent + cross-session concurrent) × 2 providers × 2 Bash versions (5.3.9 Homebrew + 3.2.57 macOS system). All 32 assertions pass: `OUT_A` and `OUT_B` get separate non-empty distinct content; shared symlink is not created in env-var mode (`[ -z ... ]` gate honored)
+- Smoke suite unchanged at 43/43 passing; `scripts/call-{codex,gemini}.sh` shellcheck clean
+
+#### Notes
+
+- **Release policy**: committed to main after implementation; tag + 三通路發版 held until ≥ 2026-05-01 (v0.14.2 7-day soak to avoid v0.14.x churn signal)
+- **BSD `mktemp -t` quirk discovered in precheck**: `mktemp -t <prefix>` on BSD leaves `XXXXXX` as literal, not a placeholder (produces `prism-test-XXXXXX.RANDOM`). Sibling skills (pre-Phase 2) use this form with literal `XXXXXX` in filenames as a known quirk; Phase 2 sidesteps this with `mktemp "${TMPDIR:-/tmp}/prefix-XXXXXX"` absolute-template form (XXXXXX replaced correctly)
+- **Not changed**: wrapper's EXIT trap (still doesn't `rm "$OUT_TMP"` — contract strengthens in env-var mode since the path is caller-owned). Legacy-mode symlink behavior unchanged when env-var unset
+
 ## v0.14.2 (2026-04-24)
 
 **Wrapper: per-invocation `OUT_TMP` + atomic symlink.** Eliminates **byte-level `tee` interleaving** on the safety-net log file (pre-existing MEDIUM-severity finding). When two sub-agents or two Claude Code sessions invoke the same provider simultaneously, each gets its own `mktemp`-named output file; `pi-{codex,gemini}-last.out` becomes an atomic symlink to the latest invocation. The 10 `pi-*` skills are unchanged — the symlink is transparent to `cat`. **Known limitation**: this fix closes byte-level corruption; it does **not** solve fallback file-selection under concurrent same-provider invocation — the shared `pi-*-last.out` symlink still points to the last writer, so a skill that falls back to `cat` it may read another concurrent invocation's response. See Notes for the deferred env-var `OUT_TMP` contract that resolves this.

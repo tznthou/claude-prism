@@ -11,7 +11,7 @@ Send the same code to both Codex and Gemini for **adversarial review with divide
 
 > **Dispatch rules (v0.13.0+)**: For **parallel provider consultation**, use the `Agent` tool with `subagent_type: "general-purpose"` to spawn two parallel sub-agents — NOT two `Bash` tool calls in a single main-conversation response. Main-conversation Bash is a structural FIFO queue: the second Bash waits for the first to finish (`delta ≈ first_exec` precisely, measured N=7 across two capacity slots), which defeats the parallel intent. Sub-agent fan-out dispatches Bash calls truly in parallel (median delta 2.8s, N=13), saving roughly 28% wall-clock on a two-provider call.
 >
-> Inside each sub-agent, run `call-codex.sh` / `call-gemini.sh` in **foreground synchronous mode** with `timeout: 600000` (Bash tool's 10-minute ceiling). Do not use `&`, `nohup`, or `run_in_background: true` — Claude Code 2026-04+ has an auto-background child-lifecycle regression that silently kills the child (output file stays 0 bytes). If a sub-agent's Bash returns empty stdout, fall back to reading `~/.claude/logs/pi-{codex,gemini}-last.out` (the wrapper's `tee` safety net).
+> Inside each sub-agent, run `call-codex.sh` / `call-gemini.sh` in **foreground synchronous mode** with `timeout: 600000` (Bash tool's 10-minute ceiling). Do not use `&`, `nohup`, or `run_in_background: true` — Claude Code 2026-04+ has an auto-background child-lifecycle regression that silently kills the child (output file stays 0 bytes). If a sub-agent's Bash returns empty stdout, the Bash template below falls back to reading the caller-owned `$OUT_PATH` file (v0.14.3+, wrapper `tee`s here via `CLAUDE_PRISM_OUT_TMP`).
 
 ### 1. Determine review scope
 
@@ -179,19 +179,20 @@ Task: run one foreground-synchronous Bash command and return its output verbatim
 
 Step 1. Run this exact Bash command (timeout 600000 ms; no `&`, `nohup`, or `run_in_background: true`):
 
+    OUT_PATH=$(mktemp "${TMPDIR:-/tmp}/prism-codex-out-XXXXXX")
     start_ts=$(date +%s)
-    wrapper_out=$(~/.claude/scripts/call-codex.sh "adversarial review" < "<CODEX_PROMPT>" 2>&1)
+    wrapper_out=$(CLAUDE_PRISM_OUT_TMP="$OUT_PATH" ~/.claude/scripts/call-codex.sh "adversarial review" < "<CODEX_PROMPT>" 2>&1)
     rc=$?
     end_ts=$(date +%s)
     if [ -z "$wrapper_out" ]; then
-        wrapper_out=$(cat ~/.claude/logs/pi-codex-last.out 2>/dev/null)
-        [ -n "$wrapper_out" ] && echo "[FALLBACK: wrapper stdout was empty — loaded from pi-codex-last.out]"
+        wrapper_out=$(cat "$OUT_PATH" 2>/dev/null)
+        [ -n "$wrapper_out" ] && echo "[FALLBACK: wrapper stdout was empty — loaded from caller-owned OUT_TMP]"
     fi
     printf '%s\n' "$wrapper_out"
     echo "===META==="
     echo "rc=$rc"
     echo "runtime=$((end_ts - start_ts))s"
-    echo "response_bytes=$(wc -c < ~/.claude/logs/pi-codex-last.out 2>/dev/null || echo NA)"
+    echo "response_bytes=$(wc -c < "$OUT_PATH" 2>/dev/null || echo NA)"
 
 Step 2. Return to me: the complete printed output verbatim (do NOT summarize, paraphrase, or reformat the Codex review — it will feed Claude's synthesis and confidence scoring with full fidelity), including the META block. If the Bash command printed a `[FALLBACK: ...]` line, relay that too — it signals the wrapper was silently killed and the response came from the tee safety net. If rc != 0, include any stderr — the wrapper classifies failures as TIMEOUT / RATE_LIMIT / AUTH_ERROR / SANDBOX / NETWORK / CLI_ERROR / CLI_NOT_FOUND.
 
@@ -203,8 +204,8 @@ Only use Bash and Read tools.
 Same template as the Codex agent, with these substitutions:
 - Replace `<CODEX_PROMPT>` → `<GEMINI_PROMPT>`
 - Replace `~/.claude/scripts/call-codex.sh` → `~/.claude/scripts/call-gemini.sh`
+- Replace `prism-codex-out` → `prism-gemini-out` (in the `mktemp` template)
 - Do NOT set or override `GEMINI_MODEL` in the Bash command — the user's environment passes through to the sub-agent, then to `call-gemini.sh`, then to the CLI. Skills do not pin model tiers on the user's behalf.
-- Fallback file: `~/.claude/logs/pi-gemini-last.out`
 - Classifier list adds PERMISSION (Gemini-specific) and has no SANDBOX.
 
 Both agents dispatch in parallel because they share a single main-conversation response. When both return, proceed to Step 4.
@@ -218,7 +219,7 @@ If one provider fails (script exits non-zero or returns an error message):
 - In the output, clearly note: "⚠️ [Provider] unavailable ([reason]) — continuing with [other provider] + Claude."
 - If **both** external providers fail, Claude performs a solo review and notes: "⚠️ Both external providers unavailable ([Codex reason] / [Gemini reason]) — single-perspective review. For single-provider review, try `/pi-code-review` (Codex) or `/pi-ui-review` (Gemini) when they recover."
 
-If a sub-agent reported empty stdout, it should already have fallen back to reading `~/.claude/logs/pi-codex-last.out` or `~/.claude/logs/pi-gemini-last.out` (the wrapper's `tee` safety net). If even that file is 0 bytes, treat the provider as unavailable and note the failure reason in the Provider Status table.
+If a sub-agent reported empty stdout, it should already have fallen back to reading its caller-owned `$OUT_PATH` file (the wrapper's `tee` safety net, v0.14.3+). If even that file is 0 bytes, treat the provider as unavailable and note the failure reason in the Provider Status table.
 
 ### 5. Handle non-conforming output
 

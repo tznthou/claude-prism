@@ -113,7 +113,10 @@ ERR_TMP=$(mktemp)
 # sub-agents / sessions invoke this wrapper simultaneously. Symlink updated post-wait
 # below. Keep in sync with scripts/call-codex.sh — mktemp + symlink block mirrors.
 # BSD mktemp requires XXXXXX at end of template (pattern verified at TIMEOUT_MARKER).
-OUT_TMP=$(mktemp "${LOG_DIR}/pi-gemini-last-XXXXXX")
+# Phase 2 (v0.14.3+): CLAUDE_PRISM_OUT_TMP env-var lets caller (skill layer) own
+# the path — eliminates cross-session same-provider fallback wrong-file selection
+# on shared symlink. When unset, falls back to v0.14.2 legacy (mktemp in LOG_DIR).
+OUT_TMP="${CLAUDE_PRISM_OUT_TMP:-$(mktemp "${LOG_DIR}/pi-gemini-last-XXXXXX")}"
 
 # --- Soft-timeout: wall-clock guard (v0.14.0+) ---
 # Keep in sync with scripts/call-codex.sh — any edit to the timeout block must mirror.
@@ -173,7 +176,12 @@ set -e
 # `|| true`: symlink is best-effort observability; its failure must NOT mask the
 # soft-timeout rc=143/137 classification that runs below (otherwise set -e exits
 # with ln's rc and skill layer can't tell "timed out" from "CLI error").
-ln -sf "$(basename "$OUT_TMP")" "${LOG_DIR}/pi-gemini-last.out" || true
+# Phase 2 (v0.14.3+): legacy mode only. Env-var callers own $CLAUDE_PRISM_OUT_TMP
+# path (may be outside LOG_DIR, where basename-relative symlink would dangle);
+# they read their own OUT_TMP directly and don't need shared symlink.
+if [ -z "${CLAUDE_PRISM_OUT_TMP:-}" ]; then
+    ln -sf "$(basename "$OUT_TMP")" "${LOG_DIR}/pi-gemini-last.out" || true
+fi
 
 # Soft-timeout classification: rc=143/137 + non-empty marker = our watcher fired.
 # Marker is per-invocation (mktemp), eliminating PID-reuse false positives that

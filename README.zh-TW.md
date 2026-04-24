@@ -452,7 +452,7 @@ export GEMINI_API_KEY="your-key-from-ai-studio"
 |------|------|
 | **Streaming 輸出** | CLI 回應透過 `tee` 即時串流到 stdout，不做 buffering |
 | **SIGHUP 防禦** | Script 忽略 `SIGHUP`，背景化時不會被終止 |
-| **背景化 Fallback** | 每次呼叫的輸出各自寫到 `~/.claude/logs/pi-{codex,gemini}-last-XXXXXX`；`pi-{codex,gemini}-last.out` 是原子 symlink，永遠指向最新那次（v0.14.2+）。指令會在 stdout 為空時讀 symlink；並發呼叫各擁其檔，不會彼此交織 |
+| **背景化 Fallback** | 每次呼叫的輸出各自寫到 `mktemp` 檔（v0.14.2+，byte-sync）。Sub-agent fan-out skills（`pi-askall` / `pi-plan` / `pi-multi-review`）傳 `$CLAUDE_PRISM_OUT_TMP` 取得 caller-owned 隔離 OUT_TMP（v0.14.3+，解 cross-session race）；direct skills 仍讀 shared `pi-{codex,gemini}-last.out` symlink 做 empty-stdout fallback（legacy best-effort） |
 | **Binary 偵測** | 自動搜尋多個路徑找 CLI 執行檔 |
 | **Logging** | 每次呼叫記錄到 `~/.claude/logs/multi-ai.log`（含時間戳） |
 | **`--dry-run`** | 測試模式，不呼叫 API（不消耗 token） |

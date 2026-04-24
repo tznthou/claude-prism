@@ -452,7 +452,7 @@ Both wrapper scripts support:
 |---------|-------------|
 | **Streaming output** | CLI responses stream directly to stdout via `tee` — no buffering |
 | **SIGHUP survival** | Scripts ignore `SIGHUP`, so they survive terminal detach when backgrounded |
-| **Background fallback** | Output persisted per-invocation to `~/.claude/logs/pi-{codex,gemini}-last-XXXXXX`; `pi-{codex,gemini}-last.out` is an atomic symlink to the latest (v0.14.2+). Commands read the symlink on empty stdout; concurrent invocations each own their file — no `tee` interleaving |
+| **Background fallback** | Each invocation writes to its own `mktemp` file (v0.14.2+, byte-sync). Sub-agent fan-out skills (`pi-askall` / `pi-plan` / `pi-multi-review`) pass `$CLAUDE_PRISM_OUT_TMP` for caller-owned isolated reads (v0.14.3+, resolves cross-session race); direct skills still read the shared `pi-{codex,gemini}-last.out` symlink on empty stdout (legacy best-effort) |
 | **Binary detection** | Searches multiple paths for the CLI binary |
 | **Logging** | Every call logged to `~/.claude/logs/multi-ai.log` with timestamps |
 | **`--dry-run`** | Test without calling the API (no tokens consumed) |
