@@ -35,6 +35,7 @@ sequenceDiagram
 
 - **Logs**: `~/.claude/logs/multi-ai.log` records metadata only (timestamps, prompt/response byte lengths) — no code content
 - **Review history**: `~/.claude/logs/review-insights.jsonl` — one structured JSON line per review. Each record is Claude's interpretation of the providers' output (category, severity, confidence, source, and an issue title derived from the AI response), not a raw transcript
+- **Provider CLI output** (v0.14.2+): `~/.claude/logs/pi-{codex,gemini}-last-XXXXXX` holds the raw provider response per invocation, one file per call. `pi-{codex,gemini}-last.out` is a symlink that always points to the latest. These files contain the **full response body**, not metadata — if your prompt carried sensitive code you'd rather not retain, delete them manually after the review. **Cross-session caveat**: the symlink is one shared stable pointer per provider; if you run two Claude Code sessions on the same machine and both invoke the same provider concurrently, a fallback `cat` on the symlink may land on the other session's response. Not a data leak to third parties, but it is cross-session within your own machine — worth knowing when handling unrelated confidential contexts in parallel
 - **Plans and research**: `.claude/pi-plans/` and `.claude/pi-research/` files stay on your machine
 - **No telemetry**: claude-prism has no analytics, no phone-home, no intermediary server
 

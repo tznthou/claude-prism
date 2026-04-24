@@ -109,7 +109,11 @@ CMD=("$GEMINI_BIN")
 [[ -n "$MODEL" ]] && CMD+=(-m "$MODEL")
 
 ERR_TMP=$(mktemp)
-OUT_TMP="${LOG_DIR}/pi-gemini-last.out"
+# Per-invocation OUT_TMP (v0.14.2+): prevents concurrent-tee interleaving when two
+# sub-agents / sessions invoke this wrapper simultaneously. Symlink updated post-wait
+# below. Keep in sync with scripts/call-codex.sh — mktemp + symlink block mirrors.
+# BSD mktemp requires XXXXXX at end of template (pattern verified at TIMEOUT_MARKER).
+OUT_TMP=$(mktemp "${LOG_DIR}/pi-gemini-last-XXXXXX")
 
 # --- Soft-timeout: wall-clock guard (v0.14.0+) ---
 # Keep in sync with scripts/call-codex.sh — any edit to the timeout block must mirror.
@@ -153,12 +157,20 @@ WPID=$!
 
 # EXIT trap: kill watcher + KILL-escalate any surviving pipeline members + clean temp files.
 # SIGHUP still handled by _log_signal HUP trap (set earlier — preserves bg detach).
+# DO NOT rm "$OUT_TMP" here — skill fallback reads it after this wrapper exits (v0.14.2 contract).
 trap 'kill "$WPID" 2>/dev/null || true; pkill -KILL -P $$ 2>/dev/null || true; rm -f "$ERR_TMP" "$TIMEOUT_MARKER"' EXIT
 
 set +e
 wait "$LAST" 2>/dev/null
 rc=$?
 set -e
+
+# Atomic symlink update (v0.14.2+): "pi-gemini-last.out" points to this invocation's
+# OUT_TMP. Runs after wait so OUT_TMP is fully written. Not conditioned on rc —
+# partial output from soft-timeout or error paths stays readable by skill diagnostics.
+# Concurrent invocations each own their mktemp file; last ln -sf wins the symlink,
+# matching "latest" semantics of the fallback. Keep in sync with scripts/call-codex.sh.
+ln -sf "$(basename "$OUT_TMP")" "${LOG_DIR}/pi-gemini-last.out"
 
 # Soft-timeout classification: rc=143/137 + non-empty marker = our watcher fired.
 # Marker is per-invocation (mktemp), eliminating PID-reuse false positives that

@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v0.14.2 (2026-04-24)
+
+**Wrapper: per-invocation `OUT_TMP` + atomic symlink.** Eliminates **byte-level `tee` interleaving** on the safety-net log file (pre-existing MEDIUM-severity finding). When two sub-agents or two Claude Code sessions invoke the same provider simultaneously, each gets its own `mktemp`-named output file; `pi-{codex,gemini}-last.out` becomes an atomic symlink to the latest invocation. The 10 `pi-*` skills are unchanged — the symlink is transparent to `cat`. **Known limitation**: this fix closes byte-level corruption; it does **not** solve fallback file-selection under concurrent same-provider invocation — the shared `pi-*-last.out` symlink still points to the last writer, so a skill that falls back to `cat` it may read another concurrent invocation's response. See Notes for the deferred env-var `OUT_TMP` contract that resolves this.
+
+### Changed
+
+- **`scripts/call-codex.sh` / `scripts/call-gemini.sh`** — `OUT_TMP` now points to a per-invocation `mktemp "${LOG_DIR}/pi-{codex,gemini}-last-XXXXXX"` file. After `wait "$LAST"` completes, `ln -sf "$(basename "$OUT_TMP")" "${LOG_DIR}/pi-{codex,gemini}-last.out"` atomically updates the stable path to the newest file. The `ln -sf` runs after `wait` (so the target is fully written) and is not conditioned on `rc` — partial output from soft-timeout or error paths still reaches the skill diagnostic fallback. Byte-sync mirror between the two scripts preserved; Keep-in-sync comment extended to cover the new block
+
+### Security
+
+- **Eliminates byte-level `tee` interleaving** (MEDIUM-severity finding). Prior behavior: concurrent writers to the fixed path `~/.claude/logs/pi-{codex,gemini}-last.out` interleaved at the byte level inside `tee`, corrupting any skill fallback that reads the file after the wrapper exits. The race was latent under v0.12.x because main-conversation Bash is a structural FIFO (empirically N=7, ratio 1.00, zero variance). v0.13.0 sub-agent fan-out introduced genuine parallelism (N=13, median dispatch delta 2.8s), activating the race pathway. After this change, each concurrent invocation owns its own `mktemp` file; byte-level interleaving is impossible
+- **Remaining exposure — cross-session same-provider fallback file-selection**: the `pi-{codex,gemini}-last.out` symlink is a single stable pointer, "last `ln -sf` wins". If two Claude Code sessions on the same machine both invoke the same provider and one of them triggers the empty-stdout fallback, it may `cat` the symlink and read the *other* session's response. Frequency is low (requires cross-session + same-provider + empty-stdout concurrently) but non-zero. Mitigation before env-var contract ships: avoid running two Claude Code instances that concurrently use the same provider for unrelated tasks, or rely on sub-agent output fields rather than re-reading the symlink
+
+### Testing
+
+- **Race-regression test** — two parallel invocations under controlled fake-CLI fixtures on both Bash 5.3.9 (Homebrew) and Bash 3.2.57 (macOS system), both scripts. All four combinations verified to produce uncorrupted per-file output (exactly one BEGIN/END marker per file) with symlink pointing to a complete file. Test script resides under developer `/tmp/` (not shipped — requires fake-CLI injection and a throwaway log dir)
+- Existing smoke suite unchanged at **43/43 passing**. Test 13 soft-timeout regression (6 cases) verified to still pass — `ln -sf` is placed after `wait` and before classification, so timeout path still writes the symlink before exiting 124
+
+### Notes
+
+- **Backward-compatible**: the 10 `pi-*` skill fallback reads (`cat ~/.claude/logs/pi-{codex,gemini}-last.out`) transparently follow the symlink. No skill markdown files changed
+- **Not addressed** (deferred): same-provider 3+ fan-out within a single skill. The symlink-points-to-latest model is non-deterministic under 3+ concurrent same-provider invocations. Today's pi-* skills all use 1 Codex + 1 Gemini pairs; when a real 3+ fan-out pattern emerges, migration is an env-var `OUT_TMP` path-return contract (caller sets `OUT_TMP`, wrapper respects it, skill reads that specific path). Out of scope for this release
+- **BSD `mktemp` template**: `XXXXXX` at end of template, no suffix. Matches the pre-existing verified pattern for `TIMEOUT_MARKER` in `call-*.sh`
+- **Cleanup of stale `pi-*-last-*` files** is deferred — text logs are ~1–100 KB each; 50 calls/day = ~5 MB/day is not a storage problem. If needed later, cleanup will anchor to `install.sh` upgrade rather than a hot-path `find` on every wrapper invocation
+
 ## v0.14.1 (2026-04-24)
 
 **Documentation restructure.** Split the 798-line README into a leaner 550-line entry point plus a `docs/` tree for deep-dive topics, and surface the empirical research behind the sub-agent fan-out design.
