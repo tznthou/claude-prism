@@ -186,9 +186,14 @@ fi
 # Soft-timeout classification: rc=143/137 + non-empty marker = our watcher fired.
 # Marker is per-invocation (mktemp), eliminating PID-reuse false positives that
 # would occur if we grepped the shared log file by pid alone.
+# output_bytes: 0 = upstream stall (no byte before kill); >0 = slow but progressing.
+# `-f` guard rejects FIFO / device / symlink-to-blocking-source paths (Phase 2 env-var
+# caller may supply non-regular file; wc would read-block indefinitely → re-hang).
+# Keep in sync with scripts/call-codex.sh.
 if { [[ $rc -eq 143 ]] || [[ $rc -eq 137 ]]; } && [[ -s "$TIMEOUT_MARKER" ]]; then
+    out_bytes=$([ -f "$OUT_TMP" ] && wc -c < "$OUT_TMP" 2>/dev/null | tr -d ' ' || echo 0)
     echo "[CLAUDE-PRISM: soft-timeout at STAGE=exec after ${TIMEOUT_S}s]" >&2
-    _log ERROR "soft_timeout killed gemini CLI after ${TIMEOUT_S}s"
+    _log ERROR "soft_timeout killed gemini CLI after ${TIMEOUT_S}s output_bytes=$out_bytes"
     exit 124
 fi
 
