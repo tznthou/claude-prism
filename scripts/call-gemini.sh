@@ -191,7 +191,10 @@ fi
 # caller may supply non-regular file; wc would read-block indefinitely → re-hang).
 # Keep in sync with scripts/call-codex.sh.
 if { [[ $rc -eq 143 ]] || [[ $rc -eq 137 ]]; } && [[ -s "$TIMEOUT_MARKER" ]]; then
-    out_bytes=$([ -f "$OUT_TMP" ] && wc -c < "$OUT_TMP" 2>/dev/null | tr -d ' ' || echo 0)
+    # tr strips space AND newline: BSD wc may emit leading \n; unsanitized newline
+    # in $out_bytes would split the log line (OWASP A09 Log Injection — same vector
+    # err_text_safe defends below).
+    out_bytes=$([ -f "$OUT_TMP" ] && wc -c < "$OUT_TMP" 2>/dev/null | tr -d ' \n' || echo 0)
     echo "[CLAUDE-PRISM: soft-timeout at STAGE=exec after ${TIMEOUT_S}s]" >&2
     _log ERROR "soft_timeout killed gemini CLI after ${TIMEOUT_S}s output_bytes=$out_bytes"
     exit 124
