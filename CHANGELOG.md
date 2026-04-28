@@ -2,9 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
-
-### v0.14.3 (target ≥ 2026-05-01) — Phase 2: `CLAUDE_PRISM_OUT_TMP` env-var contract
+## v0.14.3 (2026-04-28) — Phase 2: `CLAUDE_PRISM_OUT_TMP` env-var contract + stall observability
 
 **Resolves v0.14.2 Known Limitation for sub-agent fan-out skills.** Callers (skill layer) pre-allocate a `mktemp` path via `CLAUDE_PRISM_OUT_TMP` env-var; the wrapper writes directly to that path and the shared `pi-{codex,gemini}-last.out` symlink is not updated (legacy-mode only). Skill-side fallback now reads the caller-owned path — no cross-session race. **Known Limitation partially preserved**: the 7 direct skills (`pi-ask-codex`, `pi-ask-gemini`, `pi-code-review`, `pi-fact-check`, `pi-research`, `pi-ui-design`, `pi-ui-review`) keep the shared-symlink legacy fallback in their narrative instructions. Low-frequency silent-hallucination risk (no cross-provider verification safety net in direct skills) — not rewritten because the 7-skill narrative-update cost was disproportionate to an unobserved-in-production risk.
 
@@ -19,14 +17,19 @@ All notable changes to this project will be documented in this file.
 - **Eliminates cross-session same-provider fallback wrong-file selection** for sub-agent fan-out skills. v0.14.2 behavior: concurrent same-provider invocations each own a `mktemp` file but share one symlink; if Claude Code auto-bg silences stdout and a skill falls back to `cat`-ing the symlink, it may read another session's output. Now: sub-agent skills pass their own `mktemp` path via env-var; wrapper writes there directly; skill reads its own file
 - **Preserved Known Limitation** — direct skills' narrative fallback ("If Bash returns empty, read `pi-{codex,gemini}-last.out`") still uses the shared symlink. Two concurrent Claude Code sessions using the same direct skill on the same provider can theoretically cross-read. Low-frequency (requires auto-bg + empty-stdout + same-provider + time overlap); unlike `pi-multi-review`, direct skills have no cross-provider verification (`references_exist_in_codebase` -50pt signal) to catch hallucinated references from wrong-file content
 
+#### Observability
+
+- **`scripts/call-codex.sh` / `scripts/call-gemini.sh`** — soft-timeout `ERROR` log line gains an `output_bytes=N` field. `0` distinguishes upstream stall (no byte received before kill) from `>0` slow-but-progressing — enables triage between transient codex/OpenAI/network stall and structural latency issues without re-running the same prompt. Computed as `wc -c < "$OUT_TMP"` guarded by `[ -f ]` (rejects FIFO / device / blocking-symlink paths that a Phase 2 env-var caller could supply, which would otherwise re-hang the wrapper at the diagnostic step). `tr -d ' \n'` sanitization closes OWASP A09 log-injection vector (BSD `wc` may emit leading `\n`; matches existing `err_text_safe` prior art elsewhere in the same file)
+
 #### Testing
 
 - **`internal/experiments/phase2-cross-session-race/run.sh`** — fake-CLI harness (`fake-codex`, `fake-gemini`) + 2 race scenarios (same-session concurrent + cross-session concurrent) × 2 providers × 2 Bash versions (5.3.9 Homebrew + 3.2.57 macOS system). All 32 assertions pass: `OUT_A` and `OUT_B` get separate non-empty distinct content; shared symlink is not created in env-var mode (`[ -z ... ]` gate honored)
 - Smoke suite unchanged at 43/43 passing; `scripts/call-{codex,gemini}.sh` shellcheck clean
+- **Observability patch validation**: FIFO smoke (caller supplies `mkfifo` path → wrapper completes in 2.5s, log writes `output_bytes=0`, no read-block) + full /gogo quality pipeline (codex review → simplify → security lint → final verify) ran clean before tag
 
 #### Notes
 
-- **Release policy**: committed to main after implementation; tag + 三通路發版 held until ≥ 2026-05-01 (v0.14.2 7-day soak to avoid v0.14.x churn signal)
+- **Release policy exception**: shipped 2026-04-28 instead of the originally communicated ≥ 2026-05-01 target. Bundled with `output_bytes` observability patch (single soak window covers both)
 - **BSD `mktemp -t` quirk discovered in precheck**: `mktemp -t <prefix>` on BSD leaves `XXXXXX` as literal, not a placeholder (produces `prism-test-XXXXXX.RANDOM`). Sibling skills (pre-Phase 2) use this form with literal `XXXXXX` in filenames as a known quirk; Phase 2 sidesteps this with `mktemp "${TMPDIR:-/tmp}/prefix-XXXXXX"` absolute-template form (XXXXXX replaced correctly)
 - **Not changed**: wrapper's EXIT trap (still doesn't `rm "$OUT_TMP"` — contract strengthens in env-var mode since the path is caller-owned). Legacy-mode symlink behavior unchanged when env-var unset
 
