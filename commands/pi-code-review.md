@@ -71,7 +71,7 @@ git diff main...HEAD
 ### 3. Build prompt and call Codex
 
 ```bash
-~/.claude/scripts/call-codex.sh "You are performing an adversarial code review.
+CLAUDE_PRISM_TIMEOUT=540 ~/.claude/scripts/call-codex.sh "You are performing an adversarial code review.
 Your job is to break confidence in this change, not to validate it. Default to skepticism — assume the change can fail in subtle, high-cost, or user-visible ways until the evidence says otherwise. Do not give credit for good intent, partial fixes, or likely follow-up work.
 
 Attack surface — prioritize these failure modes:

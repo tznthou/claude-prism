@@ -181,7 +181,7 @@ Step 1. Run this exact Bash command (timeout 600000 ms; no `&`, `nohup`, or `run
 
     OUT_PATH=$(mktemp "${TMPDIR:-/tmp}/prism-codex-out-XXXXXX")
     start_ts=$(date +%s)
-    wrapper_out=$(CLAUDE_PRISM_OUT_TMP="$OUT_PATH" ~/.claude/scripts/call-codex.sh "adversarial review" < "<CODEX_PROMPT>" 2>&1)
+    wrapper_out=$(CLAUDE_PRISM_OUT_TMP="$OUT_PATH" CLAUDE_PRISM_TIMEOUT=540 ~/.claude/scripts/call-codex.sh "adversarial review" < "<CODEX_PROMPT>" 2>&1)
     rc=$?
     end_ts=$(date +%s)
     if [ -z "$wrapper_out" ]; then
