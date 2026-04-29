@@ -454,6 +454,60 @@ else
     fail "T13.5 gemini timeout: expected rc=124 + sentinel + [gemini] log, got rc=$T13_RC5"
 fi
 
+# ─── Test 14: Phase A1 observability (v0.14.4+) ───
+# Guards regressions in: invoke-line caller/cwd/cc_ver fields, success-line
+# elapsed_s/first_byte_ms fields, soft_timeout-line first_byte_ms field.
+# Heartbeat firing is verified out-of-band (ad-hoc) due to 30s interval cost;
+# smoke守 fast assertions only — heartbeat code is < 10 lines and shellcheck-clean.
+echo ""
+echo "14. Phase A1 observability fields..."
+
+# T14.1 invoke line contains caller/cwd/cc_ver (dry-run path, fast)
+T14_LD1=$(mktemp -d); T13_LOGDIRS+=("$T14_LD1")
+MULTI_AI_LOG_DIR="$T14_LD1" CLAUDE_PRISM_CALLER="smoke-T14" \
+    "$SCRIPT_DIR/scripts/call-codex.sh" --dry-run "q" > /dev/null 2>&1
+if grep -q 'invoke .*caller="smoke-T14"' "$T14_LD1/multi-ai.log" && \
+   grep -q 'invoke .*cwd="' "$T14_LD1/multi-ai.log" && \
+   grep -q 'invoke .*cc_ver="' "$T14_LD1/multi-ai.log"; then
+    pass "T14.1 codex invoke line contains caller/cwd/cc_ver fields"
+else
+    fail "T14.1 codex invoke missing observability fields"
+fi
+
+# T14.2 gemini mirror — same fields (Keep in sync sibling guard)
+T14_LD2=$(mktemp -d); T13_LOGDIRS+=("$T14_LD2")
+MULTI_AI_LOG_DIR="$T14_LD2" CLAUDE_PRISM_CALLER="smoke-T14" \
+    "$SCRIPT_DIR/scripts/call-gemini.sh" --dry-run "q" > /dev/null 2>&1
+if grep -q 'invoke .*caller="smoke-T14"' "$T14_LD2/multi-ai.log" && \
+   grep -q 'invoke .*cwd="' "$T14_LD2/multi-ai.log" && \
+   grep -q 'invoke .*cc_ver="' "$T14_LD2/multi-ai.log"; then
+    pass "T14.2 gemini invoke line mirrors codex (caller/cwd/cc_ver fields)"
+else
+    fail "T14.2 gemini invoke missing observability fields"
+fi
+
+# T14.3 success line contains elapsed_s + first_byte_ms (codex fast CLI)
+T14_LD3=$(mktemp -d); T13_LOGDIRS+=("$T14_LD3")
+MULTI_AI_LOG_DIR="$T14_LD3" CODEX_BIN="$T13_FAKE_FAST" CLAUDE_PRISM_TIMEOUT=10 \
+    "$SCRIPT_DIR/scripts/call-codex.sh" "q" > /dev/null 2>&1
+if grep -qE 'success.*elapsed_s=[0-9]+.*first_byte_ms=NA' "$T14_LD3/multi-ai.log"; then
+    pass "T14.3 success line contains elapsed_s + first_byte_ms"
+else
+    fail "T14.3 success line missing observability end fields"
+fi
+
+# T14.4 soft_timeout ERROR line contains first_byte_ms
+T14_LD4=$(mktemp -d); T13_LOGDIRS+=("$T14_LD4")
+set +e
+MULTI_AI_LOG_DIR="$T14_LD4" CODEX_BIN="$T13_FAKE_SLOW" CLAUDE_PRISM_TIMEOUT=2 \
+    "$SCRIPT_DIR/scripts/call-codex.sh" "q" > /dev/null 2>&1
+set -e
+if grep -q 'soft_timeout killed.*first_byte_ms=NA' "$T14_LD4/multi-ai.log"; then
+    pass "T14.4 soft_timeout ERROR contains first_byte_ms"
+else
+    fail "T14.4 soft_timeout ERROR missing first_byte_ms"
+fi
+
 # ─── Summary ───
 echo ""
 echo "─────────────────────────────────────────"

@@ -14,6 +14,18 @@ DRY_RUN=false
 LOG_DIR="${MULTI_AI_LOG_DIR:-$HOME/.claude/logs}"
 LOG_FILE="$LOG_DIR/multi-ai.log"
 
+# --- Observability capture (Phase A1, v0.14.4+) ---
+# Captured early so invoke line + heartbeat + end lines all reference same values.
+# Keep in sync with scripts/call-gemini.sh.
+# CWD: tr strips \n and " to prevent log line splitting / quote escape (OWASP A09).
+# CC_VER: AI_AGENT env-var is set by Claude Code harness; fallback "unknown" outside CC.
+# CALLER: optional env-var set by skill template (direct / sub-agent / manual).
+START_TS=$(date +%s)
+MAIN_PID=$$
+CALLER="${CLAUDE_PRISM_CALLER:-unknown}"
+CWD=$(pwd | tr -d '\n"')
+CC_VER="${AI_AGENT:-unknown}"
+
 # --- Logging ---
 _log() {
     local level="$1"; shift
@@ -33,7 +45,7 @@ _log_signal() {
 trap '_log_signal HUP' HUP
 trap '_log_signal INT; exit 130' INT
 trap '_log_signal TERM; exit 143' TERM
-_log INFO "invoke ppid=$PPID stage=entry"
+_log INFO "invoke ppid=$PPID stage=entry caller=\"$CALLER\" cwd=\"$CWD\" cc_ver=\"$CC_VER\""
 
 # --- Parse flags ---
 STAGE="parse_flags"
@@ -162,6 +174,25 @@ TIMEOUT_MARKER=$(mktemp "${TMPDIR:-/tmp}/claude-prism-timeout.XXXXXX")
 printf '%s' "$PROMPT" | "${CMD[@]}" - 2>"$ERR_TMP" | tee "$OUT_TMP" &
 LAST=$!
 
+# --- Heartbeat subshell (Phase A1, v0.14.4+) ---
+# Writes [DEBUG] alive line every 30s while pipeline runs. Two purposes:
+#   1. Forensic timeline — bytes count per heartbeat reveals stall onset
+#      (e.g. bytes stuck at N for 60s = upstream stalled at second 30).
+#   2. Silent-kill death-time estimate — if Claude Code SIGKILLs wrapper,
+#      last heartbeat ≈ death moment (SIGKILL is uncatchable, no exit log).
+# DEBUG level: grep -E '\[(INFO|WARN|ERROR)\]' filters these out for daily monitoring;
+# use `grep pid=N` for forensic full timeline. Keep in sync with scripts/call-gemini.sh.
+HEARTBEAT_INTERVAL_S=30
+(
+    while sleep "$HEARTBEAT_INTERVAL_S"; do
+        kill -0 "$LAST" 2>/dev/null || break
+        bytes=$([ -f "$OUT_TMP" ] && wc -c < "$OUT_TMP" 2>/dev/null | tr -d ' \n' || echo 0)
+        elapsed=$(($(date +%s) - START_TS))
+        echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [codex] [DEBUG] [pid=$MAIN_PID] alive elapsed_s=$elapsed bytes=$bytes" >> "$LOG_FILE"
+    done
+) &
+HBPID=$!
+
 # Watcher: after sleep T, verify pipeline is still alive before firing.
 # `kill -0` gate avoids boundary race where pipeline completes during sleep —
 # without it, a natural-success run could still leave soft_timeout in the log.
@@ -180,7 +211,7 @@ WPID=$!
 # EXIT trap: kill watcher + KILL-escalate any surviving pipeline members + clean temp files.
 # SIGHUP still handled by _log_signal HUP trap (set earlier — preserves bg detach).
 # DO NOT rm "$OUT_TMP" here — skill fallback reads it after this wrapper exits (v0.14.2 contract).
-trap 'kill "$WPID" 2>/dev/null || true; pkill -KILL -P $$ 2>/dev/null || true; rm -f "$ERR_TMP" "$TIMEOUT_MARKER"' EXIT
+trap 'kill "$WPID" "$HBPID" 2>/dev/null || true; pkill -KILL -P $$ 2>/dev/null || true; rm -f "$ERR_TMP" "$TIMEOUT_MARKER"' EXIT
 
 set +e
 wait "$LAST" 2>/dev/null
@@ -215,7 +246,7 @@ if { [[ $rc -eq 143 ]] || [[ $rc -eq 137 ]]; } && [[ -s "$TIMEOUT_MARKER" ]]; th
     # err_text_safe defends below).
     out_bytes=$([ -f "$OUT_TMP" ] && wc -c < "$OUT_TMP" 2>/dev/null | tr -d ' \n' || echo 0)
     echo "[CLAUDE-PRISM: soft-timeout at STAGE=exec after ${TIMEOUT_S}s]" >&2
-    _log ERROR "soft_timeout killed codex CLI after ${TIMEOUT_S}s output_bytes=$out_bytes"
+    _log ERROR "soft_timeout killed codex CLI after ${TIMEOUT_S}s output_bytes=$out_bytes first_byte_ms=NA"
     exit 124
 fi
 
@@ -247,4 +278,4 @@ if [[ $rc -ne 0 ]]; then
 fi
 
 STAGE="done"
-_log INFO "success response_len=$(wc -c < "$OUT_TMP" | tr -d ' ')"
+_log INFO "success response_len=$(wc -c < "$OUT_TMP" | tr -d ' ') elapsed_s=$(($(date +%s) - START_TS)) first_byte_ms=NA"
