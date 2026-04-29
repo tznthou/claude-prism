@@ -2,6 +2,53 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.14.4 (2026-04-29) — Log forensic fields + monthly rotation + sub-agent timeout default
+
+**Forensic-level observability for silent-kill diagnosis, automatic monthly log rotation, and a `CLAUDE_PRISM_TIMEOUT=540` default for review/plan sub-agent skills.** Solves the "wrapper SIGKILL leaves no trace" blindness from the Claude Code 2026-04+ auto-background regression by recording per-invocation `cwd` / `caller` / `cc_ver` plus 30-second heartbeats so the last alive line approximates the death moment when the EXIT trap can't run.
+
+#### Added (Phase A1: Log Forensic Fields)
+
+- **`scripts/call-codex.sh` / `scripts/call-gemini.sh`** — `invoke` line gains `caller="..."` (env `CLAUDE_PRISM_CALLER`), `cwd="..."` (sanitized via `tr -d '\n"'` to defend against log injection / quote escape), and `cc_ver="..."` (read from harness-provided `AI_AGENT` env-var; `unknown` outside Claude Code) fields. Enables per-project / per-session attribution that the previous single-line `invoke ppid=N stage=entry` couldn't provide
+- **30s heartbeat subshell** writes `[DEBUG] [pid=N] alive elapsed_s=N bytes=N` lines while the wrapper pipeline runs. Two diagnostic purposes:
+  1. **Stall onset detection** — `bytes` count per heartbeat reveals where the upstream froze (e.g. bytes stuck at N for 60s = stalled at second 30)
+  2. **Silent-kill death-time estimate** — when Claude Code SIGKILLs the wrapper (uncatchable, EXIT trap doesn't run, no `success` / `soft_timeout` / signal log), the last heartbeat ≈ death moment within ±30s
+- DEBUG level keeps heartbeat out of default `grep -E '\[(INFO|WARN|ERROR)\]'` view; forensic queries use `grep 'pid=N' multi-ai*.log` for full timeline
+- EXIT trap kills the heartbeat subshell PID (no orphan process; ad-hoc verified post-timeout)
+- **`success` / `soft_timeout` ERROR end lines** gain `elapsed_s=N` + `first_byte_ms=NA` placeholder. Real `first_byte_ms` tracking deferred to Phase A2 (requires watcher refactor for byte-level stream sampling)
+
+#### Added (Phase B: Monthly Log Rotation)
+
+- **`scripts/call-codex.sh` / `scripts/call-gemini.sh`** — write to `multi-ai-YYYY-MM.log` (UTC month) instead of single `multi-ai.log`. Year-scale storage scaling: 472KB / 2 months → ~10-15 MB/year split across 12 files
+- `multi-ai.log` becomes a symlink to current month so `analyze-log.sh` / `usage-summary.sh` / external greppers see "latest view" transparently with no tool changes
+- **One-time migration on first run**: pre-rotation regular file archives as `multi-ai-archive-pre-rotation.log` via `mv -n` (BSD-safe; concurrent wrappers race-losing see no-op since source already moved). Symlink atomic via `ln -sf` (POSIX rename). Production migration verified during dev cycle: 485KB pre-rotation log preserved intact, no data loss
+- Historical query: `grep ... ~/.claude/logs/multi-ai-*.log` glob
+
+#### Changed (sub-agent timeout default)
+
+- **`commands/pi-plan.md` / `pi-multi-review.md` / `pi-code-review.md`** — sub-agent / direct call gains `CLAUDE_PRISM_TIMEOUT=540` env-var prefix on `~/.claude/scripts/call-codex.sh` invocation. **60s buffer below the documented Bash tool 600s ceiling** so wrapper soft-timeout fires first (preserving structured `rc=124` + sentinel + `soft_timeout` log event) before the harness force-kills. Real-world trigger: pi-plan elapsed 6m 2s (362s, > previous 110s wrapper default) on 2026-04-29 confirmed the 110s default was systematically too tight for adversarial review / architectural plan workloads
+- **Inline rationale comment** above each invocation explaining `540 vs 600` semantics + `Keep in sync: pi-plan.md, pi-multi-review.md, pi-code-review.md` marker (mirrors v0.12.6 wrapper byte-sync convention so future maintainers can't drift one file independently)
+- **Not changed**: `pi-askall.md` (Q&A simple-query workload dominant; 110s default appropriate; sync marker explicitly excludes per design decision). `pi-research.md` has a separate Bash-tool-side `timeout=90000` conflict (90s outer < 110s inner) — left for a separate fix
+
+#### Fixed
+
+- **`scripts/usage-summary.sh`** — `set -e + pipefail` was killing the sum pipeline when `LINES` lacked a provider tag (first `grep '\[gemini\]'` rc=1 on no match → pipefail propagates → `set -e` exits with no output). Disabled pipefail in the sum section; `awk`'s END always prints `0` so missing matches naturally yield 0. Latent bug since pipefail was added; revealed by `T6` LOG_DIR isolation refactor (rotation made the prod log a symlink to a fresh empty month file, exposing the `[gemini]`-absent code path)
+
+#### Testing
+
+- Smoke 43 → 51 (+8 cases):
+  - **`T14.1-T14.4`** (Phase A1 observability): codex/gemini invoke fields + success-line `elapsed_s` + `first_byte_ms` end fields + soft_timeout ERROR `first_byte_ms`
+  - **`T15.1-T15.4`** (Phase B rotation): fresh-dir creation, archive migration of pre-existing regular file, re-run idempotency (no double-archive), gemini wrapper mirrors codex
+  - **`T6` refactor**: isolated LOG_DIR + fake-fast CLI to make usage-summary deterministic post-rotation
+- All 51 pass; shellcheck clean on all wrappers
+- /gogo quality pipeline ran clean before tag (Step 1 codex review: 1 finding, score 100, fixed; Step 2 simplify: 1 item, fixed; Step 3 security: 0 ≥Medium; Step 4 final verify: PASS)
+
+#### Notes
+
+- **Caller env-var contract**: `CLAUDE_PRISM_CALLER` is optional; sub-agent skills should set it to `sub-agent` (or descriptive label) so log forensics can distinguish direct main-conversation Bash vs sub-agent fan-out paths. Current sub-agent templates do not yet propagate this — future enhancement
+- **Migration is idempotent**: re-running wrappers after upgrade leaves the archive file untouched (`mv -n` no-ops once source is gone) and keeps refreshing the symlink to current month. Cross-month transitions (e.g. May 1) automatically create the new month file and update the symlink
+
+---
+
 ## v0.14.3 (2026-04-28) — Phase 2: `CLAUDE_PRISM_OUT_TMP` env-var contract + stall observability
 
 **Resolves v0.14.2 Known Limitation for sub-agent fan-out skills.** Callers (skill layer) pre-allocate a `mktemp` path via `CLAUDE_PRISM_OUT_TMP` env-var; the wrapper writes directly to that path and the shared `pi-{codex,gemini}-last.out` symlink is not updated (legacy-mode only). Skill-side fallback now reads the caller-owned path — no cross-session race. **Known Limitation partially preserved**: the 7 direct skills (`pi-ask-codex`, `pi-ask-gemini`, `pi-code-review`, `pi-fact-check`, `pi-research`, `pi-ui-design`, `pi-ui-review`) keep the shared-symlink legacy fallback in their narrative instructions. Low-frequency silent-hallucination risk (no cross-provider verification safety net in direct skills) — not rewritten because the 7-skill narrative-update cost was disproportionate to an unobserved-in-production risk.
