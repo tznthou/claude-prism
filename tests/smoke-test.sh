@@ -117,17 +117,24 @@ else
     fail "usage-summary.sh missing or not executable"
 fi
 
-# Dry run to generate some log entries, then test summary
-SUMMARY_OUT=$("$SCRIPT_DIR/scripts/usage-summary.sh" --all 2>&1) || true
+# Isolated LOG_DIR + fake-fast CLI to generate one success entry, then summarise.
+# (Phase B rotation note: prod multi-ai.log became symlink to current month, which
+# may be empty of success entries; isolation makes this test deterministic.)
+T6_LD=$(mktemp -d); T13_LOGDIRS+=("$T6_LD")
+T6_FAKE="$T6_LD/fake-fast"
+cat > "$T6_FAKE" <<'T6FAKE'
+#!/bin/bash
+cat > /dev/null 2>&1 || true
+echo "fake-done"
+T6FAKE
+chmod +x "$T6_FAKE"
+MULTI_AI_LOG_DIR="$T6_LD" CODEX_BIN="$T6_FAKE" \
+    "$SCRIPT_DIR/scripts/call-codex.sh" "q" > /dev/null 2>&1 || true
+SUMMARY_OUT=$(MULTI_AI_LOG_DIR="$T6_LD" "$SCRIPT_DIR/scripts/usage-summary.sh" --all 2>&1) || true
 if echo "$SUMMARY_OUT" | grep -q "Provider"; then
     pass "usage-summary.sh --all produces output"
 else
-    # May have no log entries yet — that's OK
-    if echo "$SUMMARY_OUT" | grep -q "No log"; then
-        pass "usage-summary.sh --all handles empty logs"
-    else
-        fail "usage-summary.sh unexpected output: $SUMMARY_OUT"
-    fi
+    fail "usage-summary.sh unexpected output: $SUMMARY_OUT"
 fi
 
 # ─── Test 7: Review insights script ───
@@ -506,6 +513,58 @@ if grep -q 'soft_timeout killed.*first_byte_ms=NA' "$T14_LD4/multi-ai.log"; then
     pass "T14.4 soft_timeout ERROR contains first_byte_ms"
 else
     fail "T14.4 soft_timeout ERROR missing first_byte_ms"
+fi
+
+# ─── Test 15: Phase B log rotation (v0.14.4+) ───
+# Guards: (1) writes go to monthly file multi-ai-YYYY-MM.log;
+# (2) multi-ai.log becomes symlink pointing to current month;
+# (3) one-time migration archives pre-rotation regular file.
+echo ""
+echo "15. Phase B log rotation..."
+T15_MONTH=$(date -u +%Y-%m)
+
+# T15.1 Fresh dir — wrapper writes to monthly file + creates symlink
+T15_LD1=$(mktemp -d); T13_LOGDIRS+=("$T15_LD1")
+MULTI_AI_LOG_DIR="$T15_LD1" "$SCRIPT_DIR/scripts/call-codex.sh" --dry-run "q" > /dev/null 2>&1
+if [[ -f "$T15_LD1/multi-ai-$T15_MONTH.log" ]] && \
+   [[ -L "$T15_LD1/multi-ai.log" ]] && \
+   [[ "$(readlink "$T15_LD1/multi-ai.log")" == "multi-ai-$T15_MONTH.log" ]]; then
+    pass "T15.1 fresh dir: monthly file + symlink created"
+else
+    fail "T15.1 expected multi-ai-$T15_MONTH.log + symlink, got: $(ls -la "$T15_LD1")"
+fi
+
+# T15.2 Pre-existing regular multi-ai.log → archived on first run
+T15_LD2=$(mktemp -d); T13_LOGDIRS+=("$T15_LD2")
+echo "old-data" > "$T15_LD2/multi-ai.log"
+MULTI_AI_LOG_DIR="$T15_LD2" "$SCRIPT_DIR/scripts/call-codex.sh" --dry-run "q" > /dev/null 2>&1
+if [[ -f "$T15_LD2/multi-ai-archive-pre-rotation.log" ]] && \
+   [[ "$(cat "$T15_LD2/multi-ai-archive-pre-rotation.log")" == "old-data" ]] && \
+   [[ -L "$T15_LD2/multi-ai.log" ]]; then
+    pass "T15.2 pre-existing regular file archived + symlink replaces it"
+else
+    fail "T15.2 archive migration failed: $(ls -la "$T15_LD2")"
+fi
+
+# T15.3 Existing symlink (re-run) → idempotent (no double-archive)
+T15_LD3=$(mktemp -d); T13_LOGDIRS+=("$T15_LD3")
+MULTI_AI_LOG_DIR="$T15_LD3" "$SCRIPT_DIR/scripts/call-codex.sh" --dry-run "q" > /dev/null 2>&1
+MULTI_AI_LOG_DIR="$T15_LD3" "$SCRIPT_DIR/scripts/call-codex.sh" --dry-run "q" > /dev/null 2>&1
+if [[ ! -f "$T15_LD3/multi-ai-archive-pre-rotation.log" ]] && \
+   [[ -L "$T15_LD3/multi-ai.log" ]] && \
+   [[ "$(grep -c 'invoke' "$T15_LD3/multi-ai-$T15_MONTH.log")" == "2" ]]; then
+    pass "T15.3 second run: idempotent, no spurious archive"
+else
+    fail "T15.3 idempotency broken: $(ls -la "$T15_LD3")"
+fi
+
+# T15.4 Gemini mirrors codex (Keep in sync sibling guard)
+T15_LD4=$(mktemp -d); T13_LOGDIRS+=("$T15_LD4")
+MULTI_AI_LOG_DIR="$T15_LD4" "$SCRIPT_DIR/scripts/call-gemini.sh" --dry-run "q" > /dev/null 2>&1
+if [[ -f "$T15_LD4/multi-ai-$T15_MONTH.log" ]] && [[ -L "$T15_LD4/multi-ai.log" ]]; then
+    pass "T15.4 gemini wrapper rotation mirrors codex"
+else
+    fail "T15.4 gemini rotation missing"
 fi
 
 # ─── Summary ───

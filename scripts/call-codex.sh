@@ -12,7 +12,22 @@ MODEL="${CODEX_MODEL:-}"
 SANDBOX="read-only"
 DRY_RUN=false
 LOG_DIR="${MULTI_AI_LOG_DIR:-$HOME/.claude/logs}"
-LOG_FILE="$LOG_DIR/multi-ai.log"
+mkdir -p "$LOG_DIR"
+
+# --- Log rotation (Phase B, v0.14.4+) ---
+# Monthly rotation: actual file is multi-ai-YYYY-MM.log; multi-ai.log is a
+# symlink to the current month so analyze-log.sh / usage-summary.sh / external
+# greppers see "latest view" transparently. Historical query: grep across
+# multi-ai-*.log glob. Keep in sync with scripts/call-gemini.sh.
+LOG_FILE="$LOG_DIR/multi-ai-$(date -u +%Y-%m).log"
+LOG_LATEST="$LOG_DIR/multi-ai.log"
+# One-time migration: pre-rotation regular file → archive (mv -n is BSD-safe;
+# concurrent wrappers race-losing see no-op since source already moved).
+if [[ -e "$LOG_LATEST" && ! -L "$LOG_LATEST" ]]; then
+    mv -n "$LOG_LATEST" "$LOG_DIR/multi-ai-archive-pre-rotation.log" 2>/dev/null || true
+fi
+# Maintain "latest" symlink to current month (ln -sf is POSIX atomic on rename).
+ln -sf "$(basename "$LOG_FILE")" "$LOG_LATEST" 2>/dev/null || true
 
 # --- Observability capture (Phase A1, v0.14.4+) ---
 # Captured early so invoke line + heartbeat + end lines all reference same values.

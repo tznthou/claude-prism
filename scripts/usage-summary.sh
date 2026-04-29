@@ -95,10 +95,16 @@ CODEX_DRYRUN=$(echo "$LINES" | grep -c '\[codex\].*dry run complete' || true)
 GEMINI_DRYRUN=$(echo "$LINES" | grep -c '\[gemini\].*dry run complete' || true)
 
 # --- Sum prompt and response lengths ---
+# Disable pipefail in this section: any grep returning rc=1 on no-match would
+# kill the pipeline under set -e + pipefail (e.g. dry-run-only logs lack
+# response_len; provider-absent logs lack [provider] tag). awk's END always
+# prints "0" so missing matches naturally yield 0.
+set +o pipefail
 CODEX_PROMPT_CHARS=$(echo "$LINES" | grep '\[codex\]' | grep -oE 'prompt_len=[0-9]+' | grep -oE '[0-9]+' | awk '{s+=$1} END {print s+0}')
 CODEX_RESP_CHARS=$(echo "$LINES" | grep '\[codex\]' | grep -oE 'response_len=[0-9]+' | grep -oE '[0-9]+' | awk '{s+=$1} END {print s+0}')
 GEMINI_PROMPT_CHARS=$(echo "$LINES" | grep '\[gemini\]' | grep -oE 'prompt_len=[0-9]+' | grep -oE '[0-9]+' | awk '{s+=$1} END {print s+0}')
 GEMINI_RESP_CHARS=$(echo "$LINES" | grep '\[gemini\]' | grep -oE 'response_len=[0-9]+' | grep -oE '[0-9]+' | awk '{s+=$1} END {print s+0}')
+set -o pipefail
 
 TOTAL_PROMPT=$((CODEX_PROMPT_CHARS + GEMINI_PROMPT_CHARS))
 TOTAL_RESP=$((CODEX_RESP_CHARS + GEMINI_RESP_CHARS))
