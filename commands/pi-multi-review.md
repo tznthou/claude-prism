@@ -181,6 +181,9 @@ Step 1. Run this exact Bash command (timeout 600000 ms; no `&`, `nohup`, or `run
 
     OUT_PATH=$(mktemp "${TMPDIR:-/tmp}/prism-codex-out-XXXXXX")
     start_ts=$(date +%s)
+    # CLAUDE_PRISM_TIMEOUT=540: 60s buffer below 600s Bash tool ceiling so
+    # wrapper soft-timeout fires first (structured error log). Keep in sync:
+    # pi-plan.md, pi-multi-review.md, pi-code-review.md.
     wrapper_out=$(CLAUDE_PRISM_OUT_TMP="$OUT_PATH" CLAUDE_PRISM_TIMEOUT=540 ~/.claude/scripts/call-codex.sh "adversarial review" < "<CODEX_PROMPT>" 2>&1)
     rc=$?
     end_ts=$(date +%s)
