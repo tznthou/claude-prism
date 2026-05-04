@@ -74,7 +74,7 @@ git diff main...HEAD
 # CLAUDE_PRISM_TIMEOUT=540: 60s buffer below 600s Bash tool ceiling so
 # wrapper soft-timeout fires first (structured error log). Keep in sync:
 # pi-plan.md, pi-multi-review.md, pi-code-review.md.
-CLAUDE_PRISM_TIMEOUT=540 ~/.claude/scripts/call-codex.sh "You are performing an adversarial code review.
+CLAUDE_PRISM_TIMEOUT=540 CLAUDE_PRISM_CALLER=pi-code-review ~/.claude/scripts/call-codex.sh "You are performing an adversarial code review.
 Your job is to break confidence in this change, not to validate it. Default to skepticism — assume the change can fail in subtle, high-cost, or user-visible ways until the evidence says otherwise. Do not give credit for good intent, partial fixes, or likely follow-up work.
 
 Attack surface — prioritize these failure modes:
@@ -126,7 +126,7 @@ $(code content)"
 
 For long code (>3000 chars), use stdin mode:
 ```bash
-echo "prompt + code" | ~/.claude/scripts/call-codex.sh "review"
+echo "prompt + code" | CLAUDE_PRISM_TIMEOUT=540 CLAUDE_PRISM_CALLER=pi-code-review ~/.claude/scripts/call-codex.sh "review"
 ```
 
 ### 4. Handle failures and non-conforming output

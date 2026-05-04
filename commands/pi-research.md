@@ -38,7 +38,7 @@ Use the Bash tool with timeout parameter (90 seconds):
 
 ```bash
 # Use Bash tool with timeout: 90000
-echo "$PROJECT_CONTEXT" | ~/.claude/scripts/call-gemini.sh "You are a technical researcher. Conduct in-depth research.
+echo "$PROJECT_CONTEXT" | CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-research ~/.claude/scripts/call-gemini.sh "You are a technical researcher. Conduct in-depth research.
 
 Research topic: $ARGUMENTS
 

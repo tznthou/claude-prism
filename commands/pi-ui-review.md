@@ -64,7 +64,7 @@ $(frontend code content)
 $(if historical review comments were found in Step 1.7)
 Historical Review Context (previous review comments on the same files — recurring issues are high-confidence signals):
 $(historical comments)
-$(end if)" | ~/.claude/scripts/call-gemini.sh "You are a UI/UX expert. Review the following frontend code provided via stdin.
+$(end if)" | CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-ui-review ~/.claude/scripts/call-gemini.sh "You are a UI/UX expert. Review the following frontend code provided via stdin.
 
 Review focus:
 1. ♿ Accessibility (WCAG 2.1 AA) — aria labels, keyboard navigation, color contrast

@@ -65,7 +65,7 @@ Step 1. Run this exact Bash command (timeout 600000 ms; no `&`, `nohup`, or `run
 
     OUT_PATH=$(mktemp "${TMPDIR:-/tmp}/prism-codex-out-XXXXXX")
     start_ts=$(date +%s)
-    wrapper_out=$(CLAUDE_PRISM_OUT_TMP="$OUT_PATH" ~/.claude/scripts/call-codex.sh "perspective request" < "<PROMPT_FILE>" 2>&1)
+    wrapper_out=$(CLAUDE_PRISM_OUT_TMP="$OUT_PATH" CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-askall ~/.claude/scripts/call-codex.sh "perspective request" < "<PROMPT_FILE>" 2>&1)
     rc=$?
     end_ts=$(date +%s)
     if [ -z "$wrapper_out" ]; then

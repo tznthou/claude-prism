@@ -18,13 +18,13 @@ Use `$ARGUMENTS` as the prompt. If the question involves project code, read rele
 ### 2. Call Gemini
 
 ```bash
-~/.claude/scripts/call-gemini.sh "$ARGUMENTS"
+CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-ask-gemini ~/.claude/scripts/call-gemini.sh "$ARGUMENTS"
 ```
 
 If code context is needed, pipe it via stdin (avoids ARG_MAX limits):
 ```bash
 echo "Relevant code:
-$(code content)" | ~/.claude/scripts/call-gemini.sh "$ARGUMENTS"
+$(code content)" | CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-ask-gemini ~/.claude/scripts/call-gemini.sh "$ARGUMENTS"
 ```
 
 ### 3. Handle failures

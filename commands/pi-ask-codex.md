@@ -18,13 +18,13 @@ Use `$ARGUMENTS` as the prompt. If the question involves project code, read rele
 ### 2. Call Codex
 
 ```bash
-~/.claude/scripts/call-codex.sh "$ARGUMENTS"
+CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-ask-codex ~/.claude/scripts/call-codex.sh "$ARGUMENTS"
 ```
 
 If code context is needed, pipe it via stdin (avoids ARG_MAX limits):
 ```bash
 echo "Relevant code:
-$(code content)" | ~/.claude/scripts/call-codex.sh "$ARGUMENTS"
+$(code content)" | CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-ask-codex ~/.claude/scripts/call-codex.sh "$ARGUMENTS"
 ```
 
 ### 3. Handle failures

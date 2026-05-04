@@ -515,6 +515,18 @@ else
     fail "T14.4 soft_timeout ERROR missing first_byte_ms"
 fi
 
+# T14.5 every pi-*.md skill must set CLAUDE_PRISM_CALLER on its wrapper invocation
+# (without it, log entries fall back to caller="unknown" and per-skill p99 analysis breaks)
+T14_MISSING_CALLER=()
+for f in "$SCRIPT_DIR"/commands/pi-*.md; do
+    grep -q "CLAUDE_PRISM_CALLER=" "$f" || T14_MISSING_CALLER+=("$(basename "$f")")
+done
+if [ ${#T14_MISSING_CALLER[@]} -eq 0 ]; then
+    pass "T14.5 all pi-*.md skills set CLAUDE_PRISM_CALLER"
+else
+    fail "T14.5 missing CLAUDE_PRISM_CALLER in: ${T14_MISSING_CALLER[*]}"
+fi
+
 # ─── Test 15: Phase B log rotation (v0.14.4+) ───
 # Guards: (1) writes go to monthly file multi-ai-YYYY-MM.log;
 # (2) multi-ai.log becomes symlink pointing to current month;

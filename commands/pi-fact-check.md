@@ -49,7 +49,7 @@ Split claims into batches of **max 2 claims** each. Each batch call uses the Bas
 
 ```bash
 # Use Bash tool with timeout: 90000
-echo "$BATCH_PROMPT" | ~/.claude/scripts/call-gemini.sh "fact-check batch N"
+echo "$BATCH_PROMPT" | CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-fact-check ~/.claude/scripts/call-gemini.sh "fact-check batch N"
 ```
 
 Prompt sent via stdin. **Preserve original claim numbers** — if a batch contains claims #4, #5, Gemini must return results numbered 4, 5 (not 1, 2):

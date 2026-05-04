@@ -34,7 +34,7 @@ Read the design specification file using the Read tool. Identify the key section
 Pipe the design spec content (read in Step 2) via stdin to avoid ARG_MAX limits:
 
 ```bash
-echo "$SPEC_CONTENT" | ~/.claude/scripts/call-gemini.sh "You are a senior frontend engineer. Generate a single self-contained HTML file that serves as a high-fidelity visual mockup based on the design specification provided via stdin.
+echo "$SPEC_CONTENT" | CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-ui-design ~/.claude/scripts/call-gemini.sh "You are a senior frontend engineer. Generate a single self-contained HTML file that serves as a high-fidelity visual mockup based on the design specification provided via stdin.
 
 Requirements:
 - Use Tailwind CSS via CDN (<script src='https://cdn.tailwindcss.com'></script>)
@@ -61,7 +61,7 @@ Where `$SPEC_CONTENT` is the file content read in Step 2. If the spec exceeds 40
 If the user provided a text description instead of a file, first call Gemini to generate a design spec:
 
 ```bash
-~/.claude/scripts/call-gemini.sh "You are a senior UX/UI designer. Generate a concise design specification for:
+CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-ui-design ~/.claude/scripts/call-gemini.sh "You are a senior UX/UI designer. Generate a concise design specification for:
 
 $ARGUMENTS
 

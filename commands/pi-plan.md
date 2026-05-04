@@ -87,7 +87,7 @@ Step 1. Run this exact Bash command (timeout 600000 ms; no `&`, `nohup`, or `run
     # CLAUDE_PRISM_TIMEOUT=540: 60s buffer below 600s Bash tool ceiling so
     # wrapper soft-timeout fires first (structured error log). Keep in sync:
     # pi-plan.md, pi-multi-review.md, pi-code-review.md.
-    wrapper_out=$(CLAUDE_PRISM_OUT_TMP="$OUT_PATH" CLAUDE_PRISM_TIMEOUT=540 ~/.claude/scripts/call-codex.sh "architect review" < "<PROMPT_FILE>" 2>&1)
+    wrapper_out=$(CLAUDE_PRISM_OUT_TMP="$OUT_PATH" CLAUDE_PRISM_TIMEOUT=540 CLAUDE_PRISM_CALLER=pi-plan ~/.claude/scripts/call-codex.sh "architect review" < "<PROMPT_FILE>" 2>&1)
     rc=$?
     end_ts=$(date +%s)
     if [ -z "$wrapper_out" ]; then
