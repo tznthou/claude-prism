@@ -45,10 +45,10 @@ Launch **both tracks simultaneously** in a single response to eliminate dead-wai
 
 #### Track A — Gemini
 
-Split claims into batches of **max 2 claims** each. Each batch call uses the Bash tool's timeout parameter (90 seconds):
+Split claims into batches of **max 2 claims** each. Each batch call uses the Bash tool's timeout parameter (600 seconds — Bash tool's 10-minute ceiling, matches line 12 rule):
 
 ```bash
-# Use Bash tool with timeout: 90000
+# Use Bash tool with timeout: 600000
 echo "$BATCH_PROMPT" | CLAUDE_PRISM_TIMEOUT=540 CLAUDE_PRISM_CALLER=pi-fact-check ~/.claude/scripts/call-gemini.sh "fact-check batch N"
 ```
 

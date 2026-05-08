@@ -34,10 +34,10 @@ Launch **both tracks simultaneously** in a single response:
 
 #### Track A — Gemini
 
-Use the Bash tool with timeout parameter (90 seconds):
+Use the Bash tool with timeout parameter (600 seconds — Bash tool's 10-minute ceiling, matches line 12 rule):
 
 ```bash
-# Use Bash tool with timeout: 90000
+# Use Bash tool with timeout: 600000
 echo "$PROJECT_CONTEXT" | CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-research ~/.claude/scripts/call-gemini.sh "You are a technical researcher. Conduct in-depth research.
 
 Research topic: $ARGUMENTS
@@ -145,6 +145,6 @@ Create the directory if it doesn't exist.
 
 ### Notes
 
-- Gemini call uses 90s timeout — same rationale as pi-fact-check (search grounding can be slow)
+- Gemini call uses `CLAUDE_PRISM_TIMEOUT=300` (small-class wrapper soft-timeout) inside 600s Bash ceiling — pi-fact-check uses 540 (heavy-class) for the same rationale: search grounding can be slow, 60s+ buffer lets wrapper soft-timeout fire first
 - WebSearch provides reliable URLs; Gemini provides deeper analysis but URLs may be hallucinated
 - For fact-checking specific claims (not exploratory research), use `/pi-fact-check` instead
