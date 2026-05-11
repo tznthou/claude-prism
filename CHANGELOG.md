@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.14.5 (2026-05-11) — codex-cli 0.130.0 sandbox interface drift fix + small-skill timeout calibration
+
+**Resolves a 0-second failure in `pi-*` skills when invoked from non-git-repo working directories.** codex-cli 0.130.0 dropped `none` from `--sandbox <SANDBOX_MODE>`'s `[possible values]` list and added an independent "trusted directory" check that refuses to run outside a git repo for any sandbox mode unless `--skip-git-repo-check` is passed. The wrapper's legacy `read-only → none` downgrade path produced `invalid value 'none' for '--sandbox'` and exited at argument validation — silently breaking `pi-askall` etc. when cwd was `/tmp` or any other non-repo directory. Bundled with three accumulated timeout calibration fixes since v0.14.4.
+
+#### Fixed (codex sandbox interface drift)
+
+- **`scripts/call-codex.sh`** — replace sandbox-value downgrade with `--skip-git-repo-check` flag. Introduce `SKIP_GIT_CHECK=false` default; the `git_check` block now sets `SKIP_GIT_CHECK=true` (instead of mutating `SANDBOX`), and the codex `exec` command conditionally appends the flag. Sandbox stays `read-only` (preserves Q&A intent — no writes); the new flag solves the trusted-directory check independently
+- **`--sandbox` validator + diag** — valid-list realigned to codex 0.130.0 (`read-only | workspace-write | danger-full-access`). Previous `read-only | sandbox | none` had **all three values drifted** from the actual CLI surface. `SANDBOX` error diagnostic now suggests `--sandbox workspace-write for Q&A` instead of the invalid `none`
+- **Log schema** — `invoke` line gains `skip_git_check=$SKIP_GIT_CHECK` field for forensic attribution of which path the wrapper took per call
+
+#### Fixed (skill caller export + timeout calibration since v0.14.4)
+
+- **`CLAUDE_PRISM_CALLER` export across all 13 wrapper invocations** (commit `71f997d`) — v0.14.4 added wrapper-side read but skill-side export was missed; 3-day log analysis (35 invokes, 100% `caller="unknown"`, 4 soft_timeout) surfaced the gap. Future grep can now partition per-skill p99
+- **Per-skill `CLAUDE_PRISM_TIMEOUT` split** (commit `71f997d`) — empirical p99=255s on 44 v0.14.4-onward successes means ~36% of real invocations need >110s; all 4 observed soft_timeouts sat on small skills inheriting the 110s default. Split: 7 small-Q&A skills → 300s (p99=255s + 18% buffer); 3 heavy skills (`pi-plan`, `pi-multi-review`, `pi-code-review`) keep 540s
+- **`pi-askall` + `pi-fact-check` promoted 300s → 540s** (commit `6de0666`) — both run multi-batch / multi-provider workloads where individual calls already approach 300s on real traffic. Aligned with the three heavy skills
+- **`pi-research` + `pi-fact-check` Bash tool timeout aligned to 600000ms** (commit `0b95f7a`) — body text had drifted to obsolete 90s/90000ms, shorter than the inner `CLAUDE_PRISM_TIMEOUT` (300/540), which would hard-kill before the wrapper soft-timeout could fire a structured error
+
+#### Testing
+
+- **`tests/smoke-test.sh` Test 11 rewritten — drift-proof.** The prior assertion grepped `sandbox downgraded to 'none'` in dry-run output, treating the wrapper-internal string as spec while silently masking the actual bug (codex CLI rejecting `none`). New form asserts (a) `--skip-git-repo-check` appears in dry-run output, and (b) wrapper's `--sandbox <value>` is **in `codex exec --help`'s `[possible values: ...]` list**. The (b) assertion catches future codex CLI rename / removal of sandbox modes that would otherwise reproduce this class of silent breakage
+- All 53 smoke tests pass; shellcheck clean on wrappers
+- **End-to-end verified**: `cd /tmp && call-codex.sh "..."` now returns real codex response (previously 0-second `invalid value 'none'` exit at arg validation)
+
+#### Notes
+
+- **Root cause + L4 reflection stored to ccRecall (#117, discovery)** — wrapper-layer hardcode of external CLI **sub-parameter values** (vs flag names) is a structural drift risk. `call-gemini.sh` escaped only because Gemini has no equivalent sub-mode concept. Future wrappers that hardcode external CLI sub-values must pair a drift-proof smoke check
+- **No new feature**: patch release. The four bundled fixes are all bug-class — sandbox interface drift, missing caller export, undersized small-skill timeout, drifted Bash-tool timeout
+
+---
+
 ## v0.14.4 (2026-04-29) — Log forensic fields + monthly rotation + sub-agent timeout default
 
 **Forensic-level observability for silent-kill diagnosis, automatic monthly log rotation, and a `CLAUDE_PRISM_TIMEOUT=540` default for review/plan sub-agent skills.** Solves the "wrapper SIGKILL leaves no trace" blindness from the Claude Code 2026-04+ auto-background regression by recording per-invocation `cwd` / `caller` / `cc_ver` plus 30-second heartbeats so the last alive line approximates the death moment when the EXIT trap can't run.
