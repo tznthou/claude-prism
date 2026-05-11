@@ -266,10 +266,21 @@ if command -v codex &>/dev/null || [[ -x "$HOME/.npm-global/bin/codex" ]]; then
     TEMP_DIR=$(mktemp -d)
     NO_GIT_RESULT=$(cd "$TEMP_DIR" && "$SCRIPT_DIR/scripts/call-codex.sh" --dry-run "test" 2>&1 || true)
     rm -rf "$TEMP_DIR"
-    if echo "$NO_GIT_RESULT" | grep -q "sandbox downgraded to 'none'"; then
-        pass "call-codex.sh downgrades sandbox outside git repo"
+    if echo "$NO_GIT_RESULT" | grep -q -- "--skip-git-repo-check"; then
+        pass "call-codex.sh passes --skip-git-repo-check outside git repo"
     else
-        fail "call-codex.sh no-git sandbox downgrade message unexpected: $NO_GIT_RESULT"
+        fail "call-codex.sh no-git --skip-git-repo-check missing: $NO_GIT_RESULT"
+    fi
+
+    # Drift-proof: wrapper's sandbox value MUST appear in codex CLI's possible values list.
+    # Guards against codex CLI renaming/removing sandbox modes (e.g. 0.130.0 dropped 'none')
+    # silently breaking the wrapper. Extracts both sides and asserts subset.
+    WRAPPER_SANDBOX=$(echo "$NO_GIT_RESULT" | grep -oE -- "--sandbox [a-z-]+" | head -1 | awk '{print $2}')
+    CODEX_VALID=$(codex exec --help 2>&1 | grep -A 4 -- "--sandbox <SANDBOX_MODE>" | grep -oE "\[possible values:.*\]" | head -1)
+    if [[ -n "$WRAPPER_SANDBOX" ]] && echo "$CODEX_VALID" | grep -q -- "$WRAPPER_SANDBOX"; then
+        pass "call-codex.sh sandbox value '$WRAPPER_SANDBOX' is in codex CLI valid list"
+    else
+        fail "DRIFT: wrapper uses sandbox='$WRAPPER_SANDBOX' but codex valid list is $CODEX_VALID"
     fi
 else
     skip "Codex no-git sandbox test skipped (Codex CLI not installed)"

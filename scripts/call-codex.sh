@@ -10,6 +10,7 @@ set -euo pipefail
 
 MODEL="${CODEX_MODEL:-}"
 SANDBOX="read-only"
+SKIP_GIT_CHECK=false
 DRY_RUN=false
 LOG_DIR="${MULTI_AI_LOG_DIR:-$HOME/.claude/logs}"
 mkdir -p "$LOG_DIR"
@@ -72,8 +73,8 @@ while [[ $# -gt 0 ]]; do
         --sandbox)
             [[ $# -ge 2 ]] || { echo "Error: --sandbox requires a mode" >&2; exit 1; }
             case "$2" in
-                read-only|sandbox|none) : ;;
-                *) echo "Error: invalid sandbox mode '$2'. Valid: read-only, sandbox, none" >&2; exit 1 ;;
+                read-only|workspace-write|danger-full-access) : ;;
+                *) echo "Error: invalid sandbox mode '$2'. Valid: read-only, workspace-write, danger-full-access" >&2; exit 1 ;;
             esac
             SANDBOX="$2"; shift 2 ;;
         --dry-run)    DRY_RUN=true; shift ;;
@@ -102,24 +103,27 @@ if [[ ! -t 0 && ( -p /dev/stdin || -f /dev/stdin ) ]]; then
 ${STDIN_DATA}"
 fi
 
-# --- Git repo check (before dry-run so --dry-run reflects actual sandbox) ---
-# codex exec --sandbox read-only requires a git repo; if not in one,
-# downgrade to "none" so pure Q&A calls (e.g. pi-askall) still work.
-# Only downgrade "read-only" — if caller explicitly requested "sandbox",
-# respect that intent and let codex fail with its own error.
+# --- Git repo check (before dry-run so --dry-run reflects actual command) ---
+# codex 0.130.0+ enforces a "trusted directory" check independent of sandbox mode:
+# any sandbox value (read-only/workspace-write/danger-full-access) refuses to run
+# outside a git repo unless --skip-git-repo-check is passed. Keep sandbox=read-only
+# (preserves Q&A intent: no writes) and add the flag so pi-askall etc. still work
+# when invoked from non-repo cwds like /tmp.
 STAGE="git_check"
-if [[ "$SANDBOX" == "read-only" ]] && ! git rev-parse --is-inside-work-tree &>/dev/null; then
-    _log WARN "not inside a git repo — downgrading sandbox from 'read-only' to 'none'"
-    echo "Warning: not in a git repo — sandbox downgraded to 'none'" >&2
-    SANDBOX="none"
+if ! git rev-parse --is-inside-work-tree &>/dev/null; then
+    _log WARN "not inside a git repo — passing --skip-git-repo-check"
+    echo "Warning: not in a git repo — using --skip-git-repo-check" >&2
+    SKIP_GIT_CHECK=true
 fi
 
-_log INFO "model=${MODEL:-(default)} sandbox=$SANDBOX prompt_len=${#PROMPT} dry_run=$DRY_RUN"
+_log INFO "model=${MODEL:-(default)} sandbox=$SANDBOX skip_git_check=$SKIP_GIT_CHECK prompt_len=${#PROMPT} dry_run=$DRY_RUN"
 
 # --- Dry run mode (no binary or git repo needed) ---
 STAGE="dry_run"
 if [[ "$DRY_RUN" == true ]]; then
-    echo "[DRY RUN] Would call: codex exec${MODEL:+ --model $MODEL} --sandbox $SANDBOX \"...\""
+    SKIP_FLAG=""
+    [[ "$SKIP_GIT_CHECK" == true ]] && SKIP_FLAG=" --skip-git-repo-check"
+    echo "[DRY RUN] Would call: codex exec${MODEL:+ --model $MODEL} --sandbox $SANDBOX${SKIP_FLAG} \"...\""
     echo "[DRY RUN] Prompt length: ${#PROMPT} chars"
     _log INFO "dry run complete"
     exit 0
@@ -152,6 +156,7 @@ fi
 # script can still capture output in real time.
 STAGE="exec"
 CMD=("$CODEX_BIN" exec --sandbox "$SANDBOX")
+[[ "$SKIP_GIT_CHECK" == true ]] && CMD+=(--skip-git-repo-check)
 [[ -n "$MODEL" ]] && CMD+=(--model "$MODEL")
 
 ERR_TMP=$(mktemp)
@@ -274,7 +279,7 @@ if [[ $rc -ne 0 ]]; then
     elif [[ "$err_lower" =~ 429|rate.limit|quota|capacity ]]; then
         diag="RATE_LIMIT: Codex returned 429/quota error. Try again later."
     elif [[ "$err_lower" =~ sandbox|permission.denied|eperm ]]; then
-        diag="SANDBOX: Codex sandbox restriction. Try --sandbox none for Q&A."
+        diag="SANDBOX: Codex sandbox restriction. Try --sandbox workspace-write for Q&A."
     elif [[ "$err_lower" =~ auth|token|api.key|credential|403 ]]; then
         diag="AUTH_ERROR: Codex authentication failed. Check OPENAI_API_KEY."
     elif [[ "$err_lower" =~ network|connect|econnrefused|etimedout|dns ]]; then
