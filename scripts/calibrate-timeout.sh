@@ -45,6 +45,7 @@ HELP
 done
 
 shopt -s nullglob
+# shellcheck disable=SC2206  # intentional glob expansion; nullglob handles no-match case
 LOG_FILES=( $LOG_GLOB )
 shopt -u nullglob
 
