@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased — supply-chain hardening + GitHub Actions major bumps (2026-05-15)
+
+**CI infrastructure only — no runtime / package changes.** All third-party GitHub Actions in `.github/workflows/` migrated to immutable SHA pins, Dependabot enabled for weekly version updates, and the first two Dependabot-generated major-version bumps merged same day as an end-to-end mechanism validation. No `package.json` bump, no checksums regen, no tag, no npm / Homebrew publish — Prism runtime unchanged.
+
+#### Changed (supply-chain hardening — PR #4 `bf9843e`)
+
+- **All `.github/workflows/*.yml`** — third-party actions migrated from mutable tags (`@v5`, `@2.0.0`) to immutable 40-char SHA pin format `owner/action@<sha> # vX.Y.Z` (SHA is the source of truth; version comment is for humans). Affected: `actions/checkout` (4 workflows), `actions/setup-node` (1 workflow), `ludeeus/action-shellcheck` (1 workflow). Mitigates supply-chain risks like the Mini Shai-Hulud-class mutable-tag retag attacks
+- **`.github/dependabot.yml`** — new file enabling Dependabot version updates for the `github-actions` ecosystem, weekly schedule, root directory. PR-based human review remains the merge gate; Dependabot syncs both the 40-char SHA and the version comment automatically per bump
+
+#### Changed (GitHub Actions major bumps — PR #5 / PR #6, Dependabot-generated)
+
+- **`actions/checkout` `v5.0.1 → v6.0.2`** (PR #5 `fe3539e`) — 4 workflow files. v6 breaking change: persist-credentials store path moved to `$RUNNER_TEMP` (requires runner ≥ v2.329.0); v6 main feature: Node 24 runtime support. Prism workflows do not perform post-checkout credential operations, so no breaking impact
+- **`actions/setup-node` `v5.0.0 → v6.4.0`** (PR #6 `72aedd5`) — `release.yml` only. v6 breaking change: `devEngines.runtime` is now preferred over `engines.node` when reading `node-version-file`. Prism uses explicit `node-version: '24'`, not file-based resolution, so no breaking impact
+
+#### Notes
+
+- **Dependabot mechanism validated end-to-end same day**: `dependabot.yml` merge to `main` → GitHub-side initial scan triggered immediately (not blocked on the weekly slot — counter-intuitive but confirmed) → 2 PRs auto-opened with SHA pin + version-comment format 100% aligned to the Prism convention established in PR #4 → both squash-merged to `main`. Confirms the `owner/action@<sha> # vX.Y.Z` convention is auto-renewable
+- **No release**: CI infrastructure only. RESUME's "Commit-only strategy (docs-only or intermediate): commit+push main, no tag" applies. This entry stays as `Unreleased` and will be folded into the next runtime-changing release's notes
+
+---
+
 ## v0.14.5 (2026-05-11) — codex-cli 0.130.0 sandbox interface drift fix + small-skill timeout calibration
 
 **Resolves a 0-second failure in `pi-*` skills when invoked from non-git-repo working directories.** codex-cli 0.130.0 dropped `none` from `--sandbox <SANDBOX_MODE>`'s `[possible values]` list and added an independent "trusted directory" check that refuses to run outside a git repo for any sandbox mode unless `--skip-git-repo-check` is passed. The wrapper's legacy `read-only → none` downgrade path produced `invalid value 'none' for '--sandbox'` and exited at argument validation — silently breaking `pi-askall` etc. when cwd was `/tmp` or any other non-repo directory. Bundled with three accumulated timeout calibration fixes since v0.14.4.
