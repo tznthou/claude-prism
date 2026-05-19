@@ -508,8 +508,8 @@ fi
 T14_LD3=$(mktemp -d); T13_LOGDIRS+=("$T14_LD3")
 MULTI_AI_LOG_DIR="$T14_LD3" CODEX_BIN="$T13_FAKE_FAST" CLAUDE_PRISM_TIMEOUT=10 \
     "$SCRIPT_DIR/scripts/call-codex.sh" "q" > /dev/null 2>&1
-if grep -qE 'success.*elapsed_s=[0-9]+.*first_byte_ms=NA' "$T14_LD3/multi-ai.log"; then
-    pass "T14.3 success line contains elapsed_s + first_byte_ms"
+if grep -qE 'success.*elapsed_s=[0-9]+.*first_byte_ms=[A-Za-z0-9]+ first_byte_method=(measured|fallback|na)' "$T14_LD3/multi-ai.log"; then
+    pass "T14.3 success line contains elapsed_s + first_byte_ms + first_byte_method (Phase A2 tri-state)"
 else
     fail "T14.3 success line missing observability end fields"
 fi
@@ -520,10 +520,10 @@ set +e
 MULTI_AI_LOG_DIR="$T14_LD4" CODEX_BIN="$T13_FAKE_SLOW" CLAUDE_PRISM_TIMEOUT=2 \
     "$SCRIPT_DIR/scripts/call-codex.sh" "q" > /dev/null 2>&1
 set -e
-if grep -q 'soft_timeout killed.*first_byte_ms=NA' "$T14_LD4/multi-ai.log"; then
-    pass "T14.4 soft_timeout ERROR contains first_byte_ms"
+if grep -qE 'soft_timeout killed.*first_byte_ms=NA first_byte_method=na' "$T14_LD4/multi-ai.log"; then
+    pass "T14.4 soft_timeout ERROR contains first_byte_ms=NA + first_byte_method=na (pure stall path)"
 else
-    fail "T14.4 soft_timeout ERROR missing first_byte_ms"
+    fail "T14.4 soft_timeout ERROR missing first_byte_ms or first_byte_method"
 fi
 
 # T14.5 every pi-*.md skill must set CLAUDE_PRISM_CALLER on its wrapper invocation
@@ -588,6 +588,128 @@ if [[ -f "$T15_LD4/multi-ai-$T15_MONTH.log" ]] && [[ -L "$T15_LD4/multi-ai.log" 
     pass "T15.4 gemini wrapper rotation mirrors codex"
 else
     fail "T15.4 gemini rotation missing"
+fi
+
+# ─── Test 16: Phase A2 first-byte detector tri-state (v0.14.6+) ───
+# Guards: (1) detector subshell emits first_byte_ms + first_byte_method;
+# (2) three-state contract (measured/fallback/na) honored across short-success,
+# long-success, pure-stall, mid-stall paths; (3) no orphan detector procs or
+# marker files survive parent exit; (4) field vocabulary strictly bounded;
+# (5) gemini wrapper mirrors codex (byte-sync sibling guard).
+echo ""
+echo "16. Phase A2 first-byte detector tri-state..."
+
+# Build extra fakes for T16.2 (slow-progress) and T16.4 (mid-stall).
+# Reuse T13_FAKE_SLOW (pure stall) and T13_FAKE_FAST (instant) for T16.1/T16.3/T16.5.
+T16_FAKE_PROGRESS="$T13_DIR/fake-progress-cli"
+T16_FAKE_MID_STALL="$T13_DIR/fake-mid-stall-cli"
+
+cat > "$T16_FAKE_PROGRESS" <<'FAKEPROGRESS'
+#!/bin/bash
+# Write 1 byte, sleep 3s (detector wins race), write remainder, exit cleanly.
+cat > /dev/null 2>&1 || true
+printf 'a'
+sleep 3
+printf 'bcdef\n'
+FAKEPROGRESS
+chmod +x "$T16_FAKE_PROGRESS"
+
+cat > "$T16_FAKE_MID_STALL" <<'FAKEMID'
+#!/bin/bash
+# Write 1 byte then hang. Used to verify detector measures first byte then
+# watcher kills on TIMEOUT (mid-stall: method=measured + output_bytes>=1).
+cat > /dev/null 2>&1 || true
+printf 'x'
+sleep 30
+echo "should-not-reach"
+FAKEMID
+chmod +x "$T16_FAKE_MID_STALL"
+
+# T16.1 Short-success: fast CLI, detector may race (measured or fallback acceptable, never na)
+T16_LD1=$(mktemp -d); T13_LOGDIRS+=("$T16_LD1")
+MULTI_AI_LOG_DIR="$T16_LD1" CODEX_BIN="$T13_FAKE_FAST" CLAUDE_PRISM_TIMEOUT=10 \
+    "$SCRIPT_DIR/scripts/call-codex.sh" "q" > /dev/null 2>&1
+if grep -qE 'success.*first_byte_method=(measured|fallback)' "$T16_LD1/multi-ai.log" && \
+   ! grep -qE 'success.*first_byte_method=na' "$T16_LD1/multi-ai.log"; then
+    pass "T16.1 short-success: method ∈ {measured, fallback}, never na"
+else
+    fail "T16.1 short-success: expected method ∈ {measured, fallback}, log: $(grep success "$T16_LD1/multi-ai.log")"
+fi
+
+# T16.2 Long-success (slow-progress): detector wins race, method=measured strictly
+T16_LD2=$(mktemp -d); T13_LOGDIRS+=("$T16_LD2")
+MULTI_AI_LOG_DIR="$T16_LD2" CODEX_BIN="$T16_FAKE_PROGRESS" CLAUDE_PRISM_TIMEOUT=15 \
+    "$SCRIPT_DIR/scripts/call-codex.sh" "q" > /dev/null 2>&1
+if grep -qE 'success.*first_byte_method=measured' "$T16_LD2/multi-ai.log"; then
+    pass "T16.2 long-success (slow-progress): method=measured strictly"
+else
+    fail "T16.2 long-success: expected method=measured, log: $(grep success "$T16_LD2/multi-ai.log")"
+fi
+
+# T16.3 Pure stall (Mode A): T13_FAKE_SLOW (cat + sleep 30) + TIMEOUT=2.
+# Expected: method=na + ms=NA + output_bytes=0
+T16_LD3=$(mktemp -d); T13_LOGDIRS+=("$T16_LD3")
+set +e
+MULTI_AI_LOG_DIR="$T16_LD3" CODEX_BIN="$T13_FAKE_SLOW" CLAUDE_PRISM_TIMEOUT=2 \
+    "$SCRIPT_DIR/scripts/call-codex.sh" "q" > /dev/null 2>&1
+set -e
+if grep -qE 'soft_timeout killed.*output_bytes=0 first_byte_ms=NA first_byte_method=na' "$T16_LD3/multi-ai.log"; then
+    pass "T16.3 pure stall (Mode A): output_bytes=0 + ms=NA + method=na"
+else
+    fail "T16.3 pure stall: expected ms=NA + method=na + bytes=0, log: $(grep soft_timeout "$T16_LD3/multi-ai.log")"
+fi
+
+# T16.4 Mid-stall: write 1 byte then hang, TIMEOUT=2.
+# Expected: method=measured + ms numeric + output_bytes>=1
+T16_LD4=$(mktemp -d); T13_LOGDIRS+=("$T16_LD4")
+set +e
+MULTI_AI_LOG_DIR="$T16_LD4" CODEX_BIN="$T16_FAKE_MID_STALL" CLAUDE_PRISM_TIMEOUT=2 \
+    "$SCRIPT_DIR/scripts/call-codex.sh" "q" > /dev/null 2>&1
+set -e
+if grep -qE 'soft_timeout killed.*output_bytes=[1-9][0-9]* first_byte_ms=[0-9]+ first_byte_method=measured' "$T16_LD4/multi-ai.log"; then
+    pass "T16.4 mid-stall: output_bytes>=1 + ms numeric + method=measured"
+else
+    fail "T16.4 mid-stall: expected method=measured + ms numeric + bytes>=1, log: $(grep soft_timeout "$T16_LD4/multi-ai.log")"
+fi
+
+# T16.5 Gemini mirror — pure stall on gemini wrapper (byte-sync sibling guard)
+T16_LD5=$(mktemp -d); T13_LOGDIRS+=("$T16_LD5")
+set +e
+MULTI_AI_LOG_DIR="$T16_LD5" GEMINI_BIN="$T13_FAKE_SLOW" CLAUDE_PRISM_TIMEOUT=2 \
+    "$SCRIPT_DIR/scripts/call-gemini.sh" "q" > /dev/null 2>&1
+set -e
+if grep -qE '\[gemini\].*soft_timeout killed.*output_bytes=0 first_byte_ms=NA first_byte_method=na' "$T16_LD5/multi-ai.log"; then
+    pass "T16.5 gemini pure stall mirrors codex (method=na)"
+else
+    fail "T16.5 gemini mirror failed, log: $(grep soft_timeout "$T16_LD5/multi-ai.log")"
+fi
+
+# T16.6 Orphan cleanup contract: detector subshell is anonymous (no argv
+# string match), so BSD pgrep can't reliably observe it. Instead, marker
+# file presence is the EXIT trap cleanup contract — `rm -f FIRST_BYTE_MARKER`
+# in the trap is the only place markers are removed. A surviving marker file
+# proves the trap failed (which also implies detector orphan, since both
+# share the same trap line). Brief settle delay matches T13.4 pattern.
+sleep 1
+T16_ORPHAN_MARKERS=$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'claude-prism-first-byte.*' -mmin -1 2>/dev/null | head -3 || true)
+if [[ -z "$T16_ORPHAN_MARKERS" ]]; then
+    pass "T16.6 no orphan first-byte marker files after wrapper exit (EXIT trap cleanup contract)"
+else
+    fail "T16.6 orphan markers found (EXIT trap cleanup broken): $T16_ORPHAN_MARKERS"
+fi
+
+# T16.7 Tri-state vocabulary strict: union of first_byte_method values across
+# T16.1-T16.5 logs MUST be subset of {measured, fallback, na}. Token-boundary
+# regex `[^ ]+` (rather than `[a-zA-Z_]+`) catches drift values like
+# `measured-unsafe` or `na123` that would otherwise prefix-reduce to a valid
+# token and false-pass the strict-vocabulary assertion below.
+T16_METHODS=$(cat "$T16_LD1/multi-ai.log" "$T16_LD2/multi-ai.log" "$T16_LD3/multi-ai.log" "$T16_LD4/multi-ai.log" "$T16_LD5/multi-ai.log" 2>/dev/null \
+    | grep -oE 'first_byte_method=[^ ]+' | sort -u)
+T16_BAD=$(echo "$T16_METHODS" | grep -vE '^first_byte_method=(measured|fallback|na)$' || true)
+if [[ -z "$T16_BAD" ]]; then
+    pass "T16.7 first_byte_method vocabulary strict (observed: $(echo "$T16_METHODS" | tr '\n' ' '))"
+else
+    fail "T16.7 unexpected first_byte_method value: $T16_BAD"
 fi
 
 # ─── Summary ───

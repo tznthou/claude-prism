@@ -191,8 +191,42 @@ fi
 # parent can distinguish "we timed out" from "some prior pid=$$ invocation timed out".
 TIMEOUT_MARKER=$(mktemp "${TMPDIR:-/tmp}/claude-prism-timeout.XXXXXX")
 
+# --- First-byte detector marker (Phase A2 tri-state, v0.14.6+) ---
+# Per-invocation marker; detector subshell writes unix-ts on first non-empty
+# OUT_TMP observation; main shell reads after wait. Keep in sync with call-gemini.sh.
+FIRST_BYTE_MARKER=$(mktemp "${TMPDIR:-/tmp}/claude-prism-first-byte.XXXXXX")
+
+# --- Stale-content defense (Phase A2 tri-state, v0.14.6+) ---
+# tee opens OUT_TMP with O_TRUNC but lazily (after fork+exec). The detector
+# subshell starts in parallel and may observe stale bytes from a pre-existing
+# CLAUDE_PRISM_OUT_TMP (Phase 2 caller-owned path), falsely classifying a
+# pure stall as method=measured with near-zero ms while output_bytes=0.
+# Synchronously truncate regular files before the pipeline+detector race;
+# skip non-regular (FIFO/socket) — `-f` guards elsewhere already reject
+# those paths. Keep in sync with call-gemini.sh.
+if [ -f "$OUT_TMP" ]; then
+    : > "$OUT_TMP" 2>/dev/null || true
+fi
+
 printf '%s' "$PROMPT" | "${CMD[@]}" - 2>"$ERR_TMP" | tee "$OUT_TMP" &
 LAST=$!
+
+# --- First-byte detector subshell (Phase A2 tri-state, v0.14.6+) ---
+# Polls OUT_TMP at 1s; writes ts and exits when [[ -s ]] OR when pipeline dies.
+# Second-precision (BSD date no %N); ms-precision upgrade deferred (Phase A3 skipped 5/10).
+# `-s` cheaper than wc -c (boolean check). Keep in sync with call-gemini.sh.
+FIRST_BYTE_POLL_S=1
+(
+    while :; do
+        if [[ -f "$OUT_TMP" && -s "$OUT_TMP" ]]; then
+            date +%s > "$FIRST_BYTE_MARKER"
+            exit 0
+        fi
+        kill -0 "$LAST" 2>/dev/null || exit 0
+        sleep "$FIRST_BYTE_POLL_S"
+    done
+) &
+FBPID=$!
 
 # --- Heartbeat subshell (Phase A1, v0.14.4+) ---
 # Writes [DEBUG] alive line every 30s while pipeline runs. Two purposes:
@@ -228,15 +262,58 @@ HBPID=$!
 ) &
 WPID=$!
 
-# EXIT trap: kill watcher + KILL-escalate any surviving pipeline members + clean temp files.
+# EXIT trap: kill watcher + heartbeat + first-byte detector + KILL-escalate any
+# surviving pipeline members + clean temp files (incl. first-byte marker).
 # SIGHUP still handled by _log_signal HUP trap (set earlier — preserves bg detach).
 # DO NOT rm "$OUT_TMP" here — skill fallback reads it after this wrapper exits (v0.14.2 contract).
-trap 'kill "$WPID" "$HBPID" 2>/dev/null || true; pkill -KILL -P $$ 2>/dev/null || true; rm -f "$ERR_TMP" "$TIMEOUT_MARKER"' EXIT
+trap 'kill "$WPID" "$HBPID" "$FBPID" 2>/dev/null || true; pkill -KILL -P $$ 2>/dev/null || true; rm -f "$ERR_TMP" "$TIMEOUT_MARKER" "$FIRST_BYTE_MARKER"' EXIT
+
+# --- First-byte timestamp helper (Phase A2 tri-state, v0.14.6+) ---
+# Sets FIRST_BYTE_MS and FIRST_BYTE_METHOD as globals (three states):
+#   measured: detector observed first byte, marker has valid unix-ts
+#   fallback: marker empty but OUT_TMP non-empty (race / fast-path);
+#             ms value is wait-LAST exit time, NOT first-byte arrival.
+#   na:       marker empty and OUT_TMP empty (pure stall / Mode A)
+# Downstream consumers MUST filter on method=measured before using ms
+# as latency. `tr -d ' \n'` + `^[0-9]+$` validate marker content (OWASP A09).
+# Keep in sync with call-gemini.sh.
+_first_byte_meta() {
+    local ts delta elapsed_now
+    if [[ -s "$FIRST_BYTE_MARKER" ]]; then
+        ts=$(tr -d ' \n' < "$FIRST_BYTE_MARKER" 2>/dev/null || printf '')
+        if [[ "$ts" =~ ^[0-9]+$ ]]; then
+            delta=$((ts - START_TS))
+            (( delta < 0 )) && delta=0
+            FIRST_BYTE_MS="$((delta * 1000))"
+            FIRST_BYTE_METHOD="measured"
+            return 0
+        fi
+    fi
+    if [[ -f "$OUT_TMP" && -s "$OUT_TMP" ]]; then
+        elapsed_now=$(($(date +%s) - START_TS))
+        (( elapsed_now < 0 )) && elapsed_now=0
+        FIRST_BYTE_MS="$((elapsed_now * 1000))"
+        FIRST_BYTE_METHOD="fallback"
+        return 0
+    fi
+    FIRST_BYTE_MS="NA"
+    FIRST_BYTE_METHOD="na"
+}
 
 set +e
 wait "$LAST" 2>/dev/null
 rc=$?
 set -e
+
+# Reap first-byte detector only when already completed (avoid block on no-output paths).
+# Capture FIRST_BYTE_MS + FIRST_BYTE_METHOD globals; used by both success and
+# soft_timeout end-log paths. Keep in sync with call-gemini.sh.
+if [[ -s "$FIRST_BYTE_MARKER" ]]; then
+    wait "$FBPID" 2>/dev/null || true
+fi
+FIRST_BYTE_MS=""
+FIRST_BYTE_METHOD=""
+_first_byte_meta
 
 # Atomic symlink update (v0.14.2+): "pi-codex-last.out" points to this invocation's
 # OUT_TMP. Runs after wait so OUT_TMP is fully written. Not conditioned on rc —
@@ -266,7 +343,7 @@ if { [[ $rc -eq 143 ]] || [[ $rc -eq 137 ]]; } && [[ -s "$TIMEOUT_MARKER" ]]; th
     # err_text_safe defends below).
     out_bytes=$([ -f "$OUT_TMP" ] && wc -c < "$OUT_TMP" 2>/dev/null | tr -d ' \n' || echo 0)
     echo "[CLAUDE-PRISM: soft-timeout at STAGE=exec after ${TIMEOUT_S}s]" >&2
-    _log ERROR "soft_timeout killed codex CLI after ${TIMEOUT_S}s output_bytes=$out_bytes first_byte_ms=NA"
+    _log ERROR "soft_timeout killed codex CLI after ${TIMEOUT_S}s output_bytes=$out_bytes first_byte_ms=$FIRST_BYTE_MS first_byte_method=$FIRST_BYTE_METHOD"
     exit 124
 fi
 
@@ -298,4 +375,4 @@ if [[ $rc -ne 0 ]]; then
 fi
 
 STAGE="done"
-_log INFO "success response_len=$(wc -c < "$OUT_TMP" | tr -d ' ') elapsed_s=$(($(date +%s) - START_TS)) first_byte_ms=NA"
+_log INFO "success response_len=$(wc -c < "$OUT_TMP" | tr -d ' ') elapsed_s=$(($(date +%s) - START_TS)) first_byte_ms=$FIRST_BYTE_MS first_byte_method=$FIRST_BYTE_METHOD"
