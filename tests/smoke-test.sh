@@ -508,8 +508,8 @@ fi
 T14_LD3=$(mktemp -d); T13_LOGDIRS+=("$T14_LD3")
 MULTI_AI_LOG_DIR="$T14_LD3" CODEX_BIN="$T13_FAKE_FAST" CLAUDE_PRISM_TIMEOUT=10 \
     "$SCRIPT_DIR/scripts/call-codex.sh" "q" > /dev/null 2>&1
-if grep -qE 'success.*elapsed_s=[0-9]+.*first_byte_ms=[A-Za-z0-9]+ first_byte_method=(measured|fallback|na)' "$T14_LD3/multi-ai.log"; then
-    pass "T14.3 success line contains elapsed_s + first_byte_ms + first_byte_method (Phase A2 tri-state)"
+if grep -qE 'success.*elapsed_s=[0-9]+.*first_byte_ms=(NA|[0-9]+) first_byte_method=(measured|fallback|na)' "$T14_LD3/multi-ai.log"; then
+    pass "T14.3 success line contains elapsed_s + first_byte_ms + first_byte_method (Phase A2 tri-state, strict ms/method)"
 else
     fail "T14.3 success line missing observability end fields"
 fi

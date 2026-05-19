@@ -189,7 +189,7 @@ LAST=$!
 
 # --- First-byte detector subshell (Phase A2 tri-state, v0.14.6+) ---
 # Polls OUT_TMP at 1s; writes ts and exits when [[ -s ]] OR when pipeline dies.
-# Second-precision (BSD date no %N); ms-precision upgrade deferred (Phase A3 skipped 5/10).
+# Second-precision (BSD date no %N); ms-precision upgrade deferred to Phase A3.
 # `-s` cheaper than wc -c (boolean check). Keep in sync with call-codex.sh.
 FIRST_BYTE_POLL_S=1
 (
@@ -287,8 +287,6 @@ set -e
 if [[ -s "$FIRST_BYTE_MARKER" ]]; then
     wait "$FBPID" 2>/dev/null || true
 fi
-FIRST_BYTE_MS=""
-FIRST_BYTE_METHOD=""
 _first_byte_meta
 
 # Atomic symlink update (v0.14.2+): "pi-gemini-last.out" points to this invocation's
