@@ -686,16 +686,18 @@ fi
 
 # T16.6 Orphan cleanup contract: detector subshell is anonymous (no argv
 # string match), so BSD pgrep can't reliably observe it. Instead, marker
-# file presence is the EXIT trap cleanup contract — `rm -f FIRST_BYTE_MARKER`
-# in the trap is the only place markers are removed. A surviving marker file
+# DIR presence is the EXIT trap cleanup contract — `rm -rf _FIRST_BYTE_DIR`
+# in the trap is the only place markers are removed. A surviving marker dir
 # proves the trap failed (which also implies detector orphan, since both
 # share the same trap line). Brief settle delay matches T13.4 pattern.
+# Pattern `claude-prism-fb.*` matches the private-dir prefix (security
+# upgrade from per-file `claude-prism-first-byte.*` to mktemp -d 0700 dir).
 sleep 1
-T16_ORPHAN_MARKERS=$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'claude-prism-first-byte.*' -mmin -1 2>/dev/null | head -3 || true)
+T16_ORPHAN_MARKERS=$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'claude-prism-fb.*' -mmin -1 2>/dev/null | head -3 || true)
 if [[ -z "$T16_ORPHAN_MARKERS" ]]; then
-    pass "T16.6 no orphan first-byte marker files after wrapper exit (EXIT trap cleanup contract)"
+    pass "T16.6 no orphan first-byte marker dirs after wrapper exit (EXIT trap cleanup contract)"
 else
-    fail "T16.6 orphan markers found (EXIT trap cleanup broken): $T16_ORPHAN_MARKERS"
+    fail "T16.6 orphan marker dirs found (EXIT trap cleanup broken): $T16_ORPHAN_MARKERS"
 fi
 
 # T16.7 Tri-state vocabulary strict: union of first_byte_method values across

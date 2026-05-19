@@ -193,8 +193,18 @@ TIMEOUT_MARKER=$(mktemp "${TMPDIR:-/tmp}/claude-prism-timeout.XXXXXX")
 
 # --- First-byte detector marker (Phase A2 tri-state, v0.14.6+) ---
 # Per-invocation marker; detector subshell writes unix-ts on first non-empty
-# OUT_TMP observation; main shell reads after wait. Keep in sync with call-gemini.sh.
-FIRST_BYTE_MARKER=$(mktemp "${TMPDIR:-/tmp}/claude-prism-first-byte.XXXXXX")
+# OUT_TMP observation; main shell reads after wait.
+#
+# Why private dir (mode 0700) instead of bare mktemp file: closes the
+# mktemp-then-write TOCTOU race where an attacker with write access to
+# TMPDIR could unlink + symlink-replace the marker between mktemp return
+# and the detector's first write (bash `>` calls open(2) without O_NOFOLLOW).
+# With mktemp -d, parent /tmp sticky bit + dir mode 0700 means only the
+# current user can enter $_FIRST_BYTE_DIR, and the marker file itself
+# doesn't exist until the detector writes — nothing to swap.
+# Keep in sync with call-gemini.sh.
+_FIRST_BYTE_DIR=$(mktemp -d "${TMPDIR:-/tmp}/claude-prism-fb.XXXXXX")
+FIRST_BYTE_MARKER="$_FIRST_BYTE_DIR/ts"
 
 # --- Stale-content defense (Phase A2 tri-state, v0.14.6+) ---
 # tee opens OUT_TMP with O_TRUNC but lazily (after fork+exec). The detector
@@ -266,7 +276,7 @@ WPID=$!
 # surviving pipeline members + clean temp files (incl. first-byte marker).
 # SIGHUP still handled by _log_signal HUP trap (set earlier — preserves bg detach).
 # DO NOT rm "$OUT_TMP" here — skill fallback reads it after this wrapper exits (v0.14.2 contract).
-trap 'kill "$WPID" "$HBPID" "$FBPID" 2>/dev/null || true; pkill -KILL -P $$ 2>/dev/null || true; rm -f "$ERR_TMP" "$TIMEOUT_MARKER" "$FIRST_BYTE_MARKER"' EXIT
+trap 'kill "$WPID" "$HBPID" "$FBPID" 2>/dev/null || true; pkill -KILL -P $$ 2>/dev/null || true; rm -f "$ERR_TMP" "$TIMEOUT_MARKER"; rm -rf "${_FIRST_BYTE_DIR:-}" 2>/dev/null || true' EXIT
 
 # --- First-byte timestamp helper (Phase A2 tri-state, v0.14.6+) ---
 # Sets FIRST_BYTE_MS and FIRST_BYTE_METHOD as globals (three states):
