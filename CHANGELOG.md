@@ -2,30 +2,52 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased — supply-chain hardening + GitHub Actions major bumps (2026-05-15)
+## v0.14.6 (2026-05-20) — Phase A2 first-byte detector + supply-chain hardening
 
-**CI infrastructure only — no runtime / package changes.** All third-party GitHub Actions in `.github/workflows/` migrated to immutable SHA pins, Dependabot enabled for weekly version updates, and the first two Dependabot-generated major-version bumps merged same day as an end-to-end mechanism validation. No `package.json` bump, no checksums regen, no tag, no npm / Homebrew publish — Prism runtime unchanged.
+**Tri-state `first_byte_method` field (`measured` / `fallback` / `na`) shipped to forensic log lines, letting downstream consumers mechanically filter race-fallback samples before treating `first_byte_ms` as a latency signal.** Bundled with the supply-chain hardening that landed on `main` between releases (third-party GitHub Actions immutable-SHA-pinned + Dependabot enabled), a per-skill timeout calibrator (`scripts/calibrate-timeout.sh`), and an Antigravity CLI transition notice pre-disclosed in Prerequisites ahead of the June 18, 2026 Gemini CLI cutoff.
 
-#### Changed (supply-chain hardening — PR #4 `bf9843e`)
+#### Added (Phase A2: first-byte detector tri-state)
 
-- **All `.github/workflows/*.yml`** — third-party actions migrated from mutable tags (`@v5`, `@2.0.0`) to immutable 40-char SHA pin format `owner/action@<sha> # vX.Y.Z` (SHA is the source of truth; version comment is for humans). Affected: `actions/checkout` (4 workflows), `actions/setup-node` (1 workflow), `ludeeus/action-shellcheck` (1 workflow). Mitigates supply-chain risks like the Mini Shai-Hulud-class mutable-tag retag attacks
-- **`.github/dependabot.yml`** — new file enabling Dependabot version updates for the `github-actions` ecosystem, weekly schedule, root directory. PR-based human review remains the merge gate; Dependabot syncs both the 40-char SHA and the version comment automatically per bump
+- **`scripts/call-codex.sh` + `scripts/call-gemini.sh`** — per-invocation detector subshell polls `$OUT_TMP` and writes the unix-ts to a marker file on first non-empty observation. Main shell reads the marker after `wait` to compute `first_byte_ms` and emit a three-state `first_byte_method` field in both `success` and `soft_timeout` end-log lines:
+  - **`measured`** — detector observed the first byte mid-stream; `first_byte_ms` is the true upstream first-byte arrival time
+  - **`fallback`** — wrapper finished too fast for the 1s detector poll (race fallback); `first_byte_ms` carries an end-time approximation, not first-byte time. Downstream stats consumers must filter these out before computing latency percentiles
+  - **`na`** — output never arrived (pure stall / Mode A); `first_byte_ms` is `NA`
+- **`_first_byte_meta()` helper** — dual-global assignment (`FIRST_BYTE_MS` + `FIRST_BYTE_METHOD`) on every codepath, no fallthrough. Detector subshell + helper both gate on `[[ -f && -s ]]` (different times, different invariants — load-bearing semantic duplication)
+- **Security hardening (OWASP A08 + AI-vuln #13, Medium)** — TOCTOU symlink race between `mktemp` return and detector's first write closed. Bash `>` calls `open(2)` without `O_NOFOLLOW`, so a swap-by-symlink in a world-writable TMPDIR would redirect writes to an attacker-chosen path. Mitigated by replacing per-file `mktemp ... claude-prism-first-byte.XXXXXX` with per-dir `mktemp -d ... claude-prism-fb.XXXXXX` (mode 0700) + fixed `/ts` inside. Sticky-bit `/tmp` + 0700 dir blocks other-user unlink, and the marker file does not exist until the detector writes it (no pre-existing file to swap)
 
-#### Changed (GitHub Actions major bumps — PR #5 / PR #6, Dependabot-generated)
+#### Added (Tooling — `scripts/calibrate-timeout.sh`)
 
-- **`actions/checkout` `v5.0.1 → v6.0.2`** (PR #5 `fe3539e`) — 4 workflow files. v6 breaking change: persist-credentials store path moved to `$RUNNER_TEMP` (requires runner ≥ v2.329.0); v6 main feature: Node 24 runtime support. Prism workflows do not perform post-checkout credential operations, so no breaking impact
-- **`actions/setup-node` `v5.0.0 → v6.4.0`** (PR #6 `72aedd5`) — `release.yml` only. v6 breaking change: `devEngines.runtime` is now preferred over `engines.node` when reading `node-version-file`. Prism uses explicit `node-version: '24'`, not file-based resolution, so no breaking impact
+- **Per-skill timeout calibrator** — reads `~/.claude/logs/multi-ai-YYYY-MM.log` (cross-month, excludes symlink / archive), computes per-skill p99 / median / suggested timeout with class-aware clamping. Class mapping frozen from v0.14.4 + commit `71f997d`: heavy class (`pi-askall`, `pi-fact-check`, `pi-plan`, `pi-multi-review`, `pi-code-review`) floor 480s / ceiling 540s; small class (`pi-ask-codex`, `pi-ask-gemini`, `pi-research`, `pi-ui-design`, `pi-ui-review`) floor 240s / ceiling 300s
+- **Formula**: `clamp(floor, ceiling, ceil(p99 × 1.15 / 10) × 10)`. `N<5` sticks with current (low-confidence guard); ERROR pids excluded
+- **Default reports only**; `--apply` updates `commands/pi-*.md` `TIMEOUT` in place. Uses only macOS built-ins (`grep` / `awk` / `sort` / `mktemp` / `shopt`) — no `jq` / `python`
+
+#### Changed (Supply-chain hardening — SHA pin + Dependabot)
+
+- **All `.github/workflows/*.yml`** (PR #4 `bf9843e`) — third-party actions migrated from mutable tags (`@v5`, `@2.0.0`) to immutable 40-char SHA pin format `owner/action@<sha> # vX.Y.Z` (SHA is the source of truth; version comment is for humans). Affected: `actions/checkout` (4 workflows), `actions/setup-node` (1 workflow), `ludeeus/action-shellcheck` (1 workflow). Mitigates supply-chain risks like the Mini Shai-Hulud-class mutable-tag retag attacks
+- **`.github/dependabot.yml`** (PR #4) — new file enabling Dependabot version updates for the `github-actions` ecosystem, weekly schedule, root directory. PR-based human review remains the merge gate
+- **`actions/checkout` `v5.0.1 → v6.0.2`** (PR #5 `fe3539e`, Dependabot-generated) — 4 workflow files. v6 breaking change: persist-credentials store path moved to `$RUNNER_TEMP`. Prism workflows do not perform post-checkout credential operations, so no breaking impact
+- **`actions/setup-node` `v5.0.0 → v6.4.0`** (PR #6 `72aedd5`, Dependabot-generated) — `release.yml` only. v6 breaking change: `devEngines.runtime` now preferred over `engines.node` for `node-version-file`. Prism uses explicit `node-version: '24'`, so no breaking impact
+
+#### Added (Documentation — Antigravity CLI transition notice)
+
+- **`README.md` + `README.zh-TW.md`** — Antigravity CLI transition notice block in Quick Start → Prerequisites, immediately following the existing March 25, 2026 Gemini CLI service update warning. Discloses: (a) Gemini CLI cutoff date **2026-06-18** for AI Pro / Ultra / free Code Assist users (Enterprise license unaffected); (b) claude-prism wrappers remain functional through the cutoff; (c) Antigravity CLI (`agy`) ships as a TUI — current `call-gemini.sh` stdin-pipe + stdout-capture pattern is not compatible; (d) migration paths under evaluation (wait for `agy` headless flag / switch to Gemini API HTTP / deprecate gemini provider), evaluation kicks off the week of 2026-05-25. Sources: [Google Developers Blog transition post](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/) + [Antigravity CLI repo](https://github.com/google-antigravity/antigravity-cli)
+- **Pattern rationale**: surfaces the change inline where users actually look for Gemini CLI install instructions, not buried in a separate migration doc
+
+#### Fixed
+
+- **ShellCheck SC2206 in `scripts/calibrate-timeout.sh`** (`8d05960`) — `LOG_FILES=( $LOG_GLOB )` pattern intentionally relies on word splitting + globbing (guarded by `shopt -s nullglob`). Marked with `# shellcheck disable=SC2206  # intentional glob expansion; nullglob handles no-match case` so CI stops flagging
+- **Dead `FIRST_BYTE_MS=""` / `FIRST_BYTE_METHOD=""` pre-assignments** before `_first_byte_meta()` (`013ac19`) — helper assigns both globals unconditionally on every codepath, so the paranoia init was dead writes. Cleaned up across both wrappers
+- **Smoke `T14.3` regex tighten** (`013ac19`) — `first_byte_ms=[A-Za-z0-9]+` → `first_byte_ms=(NA|[0-9]+)`. Old class silently passed drift values like `Inf` / `null` / `aBc123`; new pattern enforces the actual contract (numeric integer OR literal `NA`)
+
+#### Testing
+
+- `tests/smoke-test.sh` — T14.3 + T14.4 upgraded to tri-state regex; T16.1-T16.7 added (short-success / long-success / pure stall / mid-stall / gemini mirror / marker cleanup contract / vocab strictness). **51 → 60 tests**, all pass
+- ShellCheck CI green at `3f748fa` (run `26105637358`, 17s)
 
 #### Notes
 
-- **Dependabot mechanism validated end-to-end same day**: `dependabot.yml` merge to `main` → GitHub-side initial scan triggered immediately (not blocked on the weekly slot — counter-intuitive but confirmed) → 2 PRs auto-opened with SHA pin + version-comment format 100% aligned to the Prism convention established in PR #4 → both squash-merged to `main`. Confirms the `owner/action@<sha> # vX.Y.Z` convention is auto-renewable
-- **No release**: CI infrastructure only. RESUME's "Commit-only strategy (docs-only or intermediate): commit+push main, no tag" applies. This entry stays as `Unreleased` and will be folded into the next runtime-changing release's notes
-
-#### Added (Documentation — Antigravity CLI transition notice, 2026-05-20)
-
-- **`README.md` / `README.zh-TW.md`** — Antigravity CLI transition notice block added in Quick Start → Prerequisites, immediately following the existing March 25, 2026 Gemini CLI service update warning. Discloses: (1) Gemini CLI cutoff date **2026-06-18** for AI Pro / Ultra / free Code Assist users (Enterprise license unaffected); (2) claude-prism wrappers remain functional through the cutoff; (3) known constraint — Antigravity CLI (`agy`) ships as a TUI, so the current `call-gemini.sh` stdin-pipe + stdout-capture invocation pattern is not compatible; (4) migration paths under evaluation (wait for `agy` headless flag / switch to Gemini API HTTP / deprecate gemini provider); (5) evaluation kicks off the week of 2026-05-25. Sources: [Google Developers Blog transition post](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/) + [Antigravity CLI repo](https://github.com/google-antigravity/antigravity-cli)
-- **Rationale**: Pre-emptive disclosure ahead of the evaluation phase. Follows the existing inline service-update warning pattern in Prerequisites — surfaces the change where users actually look for Gemini CLI install instructions, rather than burying it in a separate migration doc
-- **Scope guardrails**: README + CHANGELOG only; no wrapper code, version bump, RESUME.md, or MEMORY.md changes (per `feedback_release_not_default` + `feedback_n1_observe_first`)
+- **Phase A2 detector subshell** is patch-isomorphic with the v0.14.0 six-layer soft-timeout defense (provider-string differences only between `call-codex.sh` and `call-gemini.sh`). The byte-sync wrapper invariant from v0.14.x is preserved
+- **Phase A3 deferred** — race-fallback ms-precision improvements wait until real-CLI tri-state distribution data accumulates (`first_byte_method=measured` proportion vs `fallback` vs `na`)
 
 ---
 
