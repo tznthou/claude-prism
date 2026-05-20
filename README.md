@@ -97,6 +97,17 @@ claude-prism's [Confidence Scoring Framework](spec/confidence-scoring-v1.md) wor
 >
 > See [Environment Variables](#environment-variables) for details.
 
+> **⚠️ Antigravity CLI Transition (announced May 19, 2026)**
+>
+> Google has [announced the transition of Gemini CLI to Antigravity CLI](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/) at I/O 2026. **Gemini CLI will stop serving requests on June 18, 2026** for Google AI Pro, Ultra, and free Code Assist users. Enterprise license users keep current access.
+>
+> **What this means for claude-prism users**:
+>
+> - **Until June 18, 2026** — wrappers continue working as-is; no action required.
+> - **After June 18, 2026** — [Antigravity CLI (`agy`)](https://github.com/google-antigravity/antigravity-cli) ships as a TUI rather than a headless tool, so the current `call-gemini.sh` invocation pattern (stdin pipe + stdout capture) is not compatible. A migration path is under evaluation: wait for an `agy` headless flag, switch to Gemini API HTTP, or deprecate the gemini provider.
+>
+> Wrappers will be updated before the cutoff. Evaluation starts the week of May 25, 2026.
+
 ### Install
 
 **Quick install (recommended)**

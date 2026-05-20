@@ -21,6 +21,12 @@ All notable changes to this project will be documented in this file.
 - **Dependabot mechanism validated end-to-end same day**: `dependabot.yml` merge to `main` → GitHub-side initial scan triggered immediately (not blocked on the weekly slot — counter-intuitive but confirmed) → 2 PRs auto-opened with SHA pin + version-comment format 100% aligned to the Prism convention established in PR #4 → both squash-merged to `main`. Confirms the `owner/action@<sha> # vX.Y.Z` convention is auto-renewable
 - **No release**: CI infrastructure only. RESUME's "Commit-only strategy (docs-only or intermediate): commit+push main, no tag" applies. This entry stays as `Unreleased` and will be folded into the next runtime-changing release's notes
 
+#### Added (Documentation — Antigravity CLI transition notice, 2026-05-20)
+
+- **`README.md` / `README.zh-TW.md`** — Antigravity CLI transition notice block added in Quick Start → Prerequisites, immediately following the existing March 25, 2026 Gemini CLI service update warning. Discloses: (1) Gemini CLI cutoff date **2026-06-18** for AI Pro / Ultra / free Code Assist users (Enterprise license unaffected); (2) claude-prism wrappers remain functional through the cutoff; (3) known constraint — Antigravity CLI (`agy`) ships as a TUI, so the current `call-gemini.sh` stdin-pipe + stdout-capture invocation pattern is not compatible; (4) migration paths under evaluation (wait for `agy` headless flag / switch to Gemini API HTTP / deprecate gemini provider); (5) evaluation kicks off the week of 2026-05-25. Sources: [Google Developers Blog transition post](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/) + [Antigravity CLI repo](https://github.com/google-antigravity/antigravity-cli)
+- **Rationale**: Pre-emptive disclosure ahead of the evaluation phase. Follows the existing inline service-update warning pattern in Prerequisites — surfaces the change where users actually look for Gemini CLI install instructions, rather than burying it in a separate migration doc
+- **Scope guardrails**: README + CHANGELOG only; no wrapper code, version bump, RESUME.md, or MEMORY.md changes (per `feedback_release_not_default` + `feedback_n1_observe_first`)
+
 ---
 
 ## v0.14.5 (2026-05-11) — codex-cli 0.130.0 sandbox interface drift fix + small-skill timeout calibration

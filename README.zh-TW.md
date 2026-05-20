@@ -97,6 +97,17 @@ claude-prism 的 [Confidence Scoring Framework](spec/confidence-scoring-v1.md) �
 >
 > 詳見[環境變數](#環境變數)。
 
+> **⚠️ Antigravity CLI 轉換公告（2026-05-19 宣布）**
+>
+> Google 在 I/O 2026 [宣布 Gemini CLI 將由 Antigravity CLI 取代](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/)。**2026-06-18 起 Gemini CLI 將停止服務** Google AI Pro、Ultra 與免費版 Code Assist 用戶。Enterprise 授權用戶不受影響。
+>
+> **對 claude-prism 使用者的影響**：
+>
+> - **2026-06-18 之前**——wrapper 正常運作，不需要做任何事。
+> - **2026-06-18 之後**——[Antigravity CLI（`agy`）](https://github.com/google-antigravity/antigravity-cli) 是 TUI 形態而非 headless 工具，現行 `call-gemini.sh` 的「stdin pipe + stdout 截取」呼叫模式不再相容。後續方向評估中：等 `agy` 提供 headless 旗標、改走 Gemini API HTTP，或直接退役 gemini provider。
+>
+> wrapper 會在期限前更新完成。評估從 2026-05-25 當週開始。
+
 ### 安裝
 
 **快速安裝（推薦）**
