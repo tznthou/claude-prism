@@ -390,9 +390,13 @@ sequenceDiagram
 
 ```
 claude-prism/
-├── .github/workflows/
-│   ├── ai-review.yml           # GitHub Actions CI review workflow
-│   └── shellcheck.yml          # ShellCheck 靜態分析
+├── .github/
+│   ├── dependabot.yml          # Dependabot 版本更新（github-actions 每週）
+│   └── workflows/
+│       ├── ai-review.yml       # Label 觸發 CI review
+│       ├── release.yml         # npm OIDC 發布 + GitHub Release
+│       ├── shellcheck.yml      # ShellCheck 靜態分析
+│       └── traffic-stats.yml   # GitHub traffic 資料收集（每週）
 ├── docs/                       # 深度文件（見下方延伸閱讀）
 ├── spec/                       # 獨立規格文件
 │   └── confidence-scoring-v1.md  # Evidence-based 雜訊過濾 framework
@@ -403,6 +407,7 @@ claude-prism/
 │   ├── detect-domain.sh        # 智慧路由 domain 偵測
 │   ├── analyze-log.sh          # 呼叫生命週期診斷
 │   ├── ci-review.sh            # CI/CD review 調度器（curl API）
+│   ├── calibrate-timeout.sh     # Per-skill timeout 校準器（p99-based）
 │   ├── usage-summary.sh        # API 使用量統計
 │   └── review-insights.sh      # Review 趨勢分析
 ├── tests/smoke-test.sh
@@ -419,7 +424,8 @@ claude-prism/
 ├── commands/                   # ← command 定義複製到此
 ├── scripts/                    # ← 包裝腳本複製到此
 └── logs/
-    ├── multi-ai.log            # 呼叫紀錄（時間戳、prompt/response 長度）
+    ├── multi-ai-YYYY-MM.log    # 呼叫紀錄，月度輪替（v0.14.4+）
+    ├── multi-ai.log            # Symlink → 當月 log 檔
     └── review-insights.jsonl   # 結構化 review 歷史（自動記錄）
 ```
 
@@ -432,7 +438,6 @@ claude-prism/
 | 變數 | 預設值 | 說明 |
 |------|--------|------|
 | `GEMINI_MODEL` | （CLI 預設） | 覆蓋 Gemini 模型（如 `gemini-3-flash-preview`） |
-| `GEMINI_MODEL_DEEP` | （回退至 `GEMINI_MODEL`，再回退至 CLI 預設） | 重推理指令用的模型（`/pi-fact-check`、`/pi-research`、`/pi-multi-review`、`/pi-plan`） |
 | `CODEX_MODEL` | （CLI 預設） | 覆蓋 Codex 模型（如 `gpt-5.3-codex`） |
 | `GEMINI_API_KEY` | （無） | 使用自己的 AI Studio API key 取代 OAuth（[申請](https://aistudio.google.com/apikey)） |
 | `GEMINI_BIN` | （自動偵測） | Gemini 執行檔路徑 |
@@ -445,7 +450,6 @@ claude-prism/
 ```bash
 # Shell 設定檔（~/.zshrc 或 ~/.bashrc）
 export GEMINI_MODEL="gemini-3-flash-preview"
-export GEMINI_MODEL_DEEP="gemini-3-pro-preview"
 export CODEX_MODEL="gpt-5.3-codex"
 
 # 選用：使用自己的 API key 取得獨立 quota

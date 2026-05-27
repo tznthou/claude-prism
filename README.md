@@ -390,9 +390,13 @@ Summary, per-layer data, and product decision trace: [docs/research/bash-tool-pa
 
 ```
 claude-prism/
-├── .github/workflows/
-│   ├── ai-review.yml           # GitHub Actions workflow for CI review
-│   └── shellcheck.yml          # ShellCheck static analysis for shell scripts
+├── .github/
+│   ├── dependabot.yml          # Dependabot version updates (github-actions weekly)
+│   └── workflows/
+│       ├── ai-review.yml       # Label-triggered CI review
+│       ├── release.yml         # npm OIDC publish + GitHub Release
+│       ├── shellcheck.yml      # ShellCheck static analysis
+│       └── traffic-stats.yml   # GitHub traffic data collection (weekly)
 ├── docs/                       # Deep-dive documentation (see Documentation below)
 ├── spec/                       # Standalone specifications
 │   └── confidence-scoring-v1.md  # Evidence-based noise filtering framework
@@ -403,6 +407,7 @@ claude-prism/
 │   ├── detect-domain.sh        # Domain detection for smart routing
 │   ├── analyze-log.sh          # Invocation lifecycle diagnostics
 │   ├── ci-review.sh            # CI/CD review orchestrator (curl APIs)
+│   ├── calibrate-timeout.sh     # Per-skill timeout calibrator (p99-based)
 │   ├── usage-summary.sh        # API usage statistics
 │   └── review-insights.sh      # Review pattern analysis
 ├── tests/smoke-test.sh
@@ -419,7 +424,8 @@ Installed to:
 ├── commands/                   # ← command definitions copied here
 ├── scripts/                    # ← wrapper scripts copied here
 └── logs/
-    ├── multi-ai.log            # Call logs (timestamps, prompt/response lengths)
+    ├── multi-ai-YYYY-MM.log    # Call logs, monthly rotation (v0.14.4+)
+    ├── multi-ai.log            # Symlink → current month's log file
     └── review-insights.jsonl   # Structured review history (auto-recorded)
 ```
 
@@ -432,7 +438,6 @@ Installed to:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GEMINI_MODEL` | (CLI default) | Override Gemini model (e.g. `gemini-3-flash-preview`) |
-| `GEMINI_MODEL_DEEP` | (falls back to `GEMINI_MODEL`, then CLI default) | Model for heavy-reasoning commands (`/pi-fact-check`, `/pi-research`, `/pi-multi-review`, `/pi-plan`) |
 | `CODEX_MODEL` | (CLI default) | Override Codex model (e.g. `gpt-5.3-codex`) |
 | `GEMINI_API_KEY` | (none) | Use your own AI Studio API key instead of OAuth ([get one](https://aistudio.google.com/apikey)) |
 | `GEMINI_BIN` | (auto-detect) | Path to gemini binary |
@@ -445,7 +450,6 @@ By default, scripts defer to each CLI's built-in default model — no configurat
 ```bash
 # Shell profile (~/.zshrc or ~/.bashrc)
 export GEMINI_MODEL="gemini-3-flash-preview"
-export GEMINI_MODEL_DEEP="gemini-3-pro-preview"
 export CODEX_MODEL="gpt-5.3-codex"
 
 # Optional: use your own API key for direct quota control

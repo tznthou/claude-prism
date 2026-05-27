@@ -41,3 +41,15 @@ OpenAI 出了 [codex-plugin-cc](https://github.com/openai/codex-plugin-cc)。第
 最後的做法是：不加 postinstall，改把 README 的安裝說明寫清楚，讓使用者知道兩步驟是刻意的安全設計，不是偷懶。順便才想起來我們其實有 SHA256 checksum 驗證和 npm OIDC provenance，整條安全鏈比我自己以為的還完整。
 
 身為菜鳥的好處是，踩過的坑會讓你認真去理解「為什麼要這樣設計」，而不是照抄別人的做法卻不知道原因。
+
+---
+
+*更新 — 2026-04 至 05*
+
+四月下旬，Claude Code 開始殺掉跑太久的 Bash 呼叫。沒有訊號、沒有 log、沒有痕跡，process 在執行中途直接蒸發。光寫 wrapper script 不夠了，得認真跑對照實驗才搞得清楚怎麼回事。
+
+五組實驗、36 場以上的測試。結果蠻扯的：Claude Code 主對話的 Bash tool 根本是 FIFO 佇列，你以為兩個呼叫在「平行」，其實在排隊，每次都是。Sub-agent 的 Bash 才是真平行。就這一個發現，整個分派架構從 parallel Bash 改成 sub-agent fan-out。（細節在 [docs/research/bash-tool-parallelism.md](research/bash-tool-parallelism.md)。）
+
+接著做了 soft-timeout，六層防禦，讓 wrapper 在 Claude Code 的 ~130 秒看門狗動手之前先自己退場。上線後跑效能實驗（N=9，ABA 設計），中位數快了 124 秒，有感。但過程中撞到一件更離譜的事：Claude Code 把 sub-agent 回報的執行時間灌水到跟 timeout 上限 1:1。30 秒跑完的呼叫，它報 540 秒。這個 padding regression 花了好幾輪才摸到根因。
+
+現在比較安靜了。Phase A2 上了三態 first-byte detector（`measured` / `fallback` / `na`），在真實環境慢慢看數據累積。沒有之前那幾週瘋狂跑實驗的刺激感，但這才是比較誠實的做法吧。每隔幾天翻一下 log，看數字有沒有在說什麼你沒預期到的事。
