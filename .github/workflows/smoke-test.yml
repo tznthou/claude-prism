@@ -1,0 +1,31 @@
+# Smoke Tests — Full logic test suite on every PR and push to main
+#
+# Runs tests/smoke-test.sh (60+ scenarios): wrapper soft-timeout layers,
+# log rotation, first-byte detector tri-state, rc=0 content classification,
+# observability fields, stdin piping. Provider CLIs are not required —
+# wrapper logic tests inject fake binaries via CODEX_BIN / AGY_BIN, and
+# CLI availability checks degrade to SKIP.
+
+name: Smoke Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run smoke tests
+        env:
+          MULTI_AI_LOG_DIR: ${{ runner.temp }}/prism-logs
+        run: ./tests/smoke-test.sh
