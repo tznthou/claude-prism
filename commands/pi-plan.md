@@ -43,6 +43,18 @@ If the task is greenfield (no existing files to modify), infer domain from the t
 
 If the script is not found, infer manually and continue.
 
+### 3.5 Synthesis checkpoint (before dispatching providers)
+
+External provider calls are expensive (1–9 minutes each) — a misread task wastes a full round. After codebase analysis, draft three buckets internally (not shown to the user):
+
+- **Stated**: what the user explicitly asked for
+- **Inferred**: gaps filled by assumption (scope edges, implicit constraints, which subsystem owns the change)
+- **Out-of-scope**: what is deliberately excluded
+
+**Gate**: if any Inferred assumption would change the architect prompt's content or the plan's direction, pause and confirm via AskUserQuestion — max 3 call-outs. Each call-out must pass the **affirmability test**: the user can judge it without reading code. No file paths, flags, env vars, JSON shapes, or function signatures — those are implementation details, not direction-level questions.
+
+If the Inferred bucket is empty or holds only mechanical details, proceed without pausing — do not add interaction for its own sake. Carry the Out-of-scope bucket into the plan file's Out of Scope section (Step 6).
+
 ### 4. Consult external providers (optional, parallel via sub-agent fan-out)
 
 If both providers are available, consult them in parallel for independent analysis. **Sub-agent fan-out required** — see Dispatch rules above for why main-conversation parallel Bash does NOT work here.
@@ -52,9 +64,10 @@ If both providers are available, consult them in parallel for independent analys
 ```
 You are a software architect. Analyze this task and provide:
 1. Key technical challenges
-2. Recommended approach (with alternatives considered)
-3. Potential risks and edge cases
-4. Estimated complexity (S/M/L/XL)
+2. Recommended approach
+3. At least one rejected alternative, with the reason it loses to your recommendation
+4. Potential risks and edge cases
+5. Estimated complexity (S/M/L/XL)
 
 Task: $ARGUMENTS
 
@@ -127,6 +140,11 @@ If a sub-agent reported empty stdout, it should already have fallen back to read
 
 Combine all perspectives (Claude's own analysis + any external input) into a structured plan.
 
+**Conflict resolution principles** (when perspectives disagree):
+- **Repo-grounded beats generic**: external providers only see the snippets sent to them — when their generic best-practice advice conflicts with what Claude observed in the actual codebase, the repo-grounded view wins. Record the disagreement in Synthesis either way.
+- **Official docs beat speculation**: a claim citing documented behavior outranks an unsourced opinion.
+- **Agreement must be reasoned to count**: two providers recommending the same approach for different (or unstated) reasons is weaker signal than one repo-grounded argument. Use their rejected-alternatives output to tell genuine agreement from coincidence; if a provider omitted rejected alternatives despite the prompt, treat its agreement as unreasoned (weaker signal) rather than assuming consensus.
+
 **Slugify the task name**: lowercase, replace spaces/special chars with hyphens, max 50 chars. If a file with the same slug already exists, append `-2`, `-3`, etc.
 
 **Create the plan file using Bash tool:**
@@ -144,6 +162,9 @@ cat > ".claude/pi-plans/<slug>.md" << 'PLAN_EOF'
 
 ## Context
 <Why this change is needed — synthesized from $ARGUMENTS and codebase analysis>
+
+## Out of Scope
+<Deliberate exclusions surfaced at the synthesis checkpoint — omit this section entirely if none>
 
 ## Analysis
 ### Codex Perspective
