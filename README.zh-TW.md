@@ -175,7 +175,7 @@ npx claud-prism-aireview --uninstall
 | `/pi-multi-review` | Codex + Gemini + Claude | 三方對抗式審查 — 分工攻擊面（智慧路由 + 信心度評分） |
 | `/pi-plan` | Codex + Gemini + Claude | 多方觀點實作規劃，適用於架構決策 |
 
-所有指令皆內建 **graceful degradation** — 若某個 provider 不可用，Claude 會用剩餘的 provider 繼續執行，而非直接失敗。每次失敗都附帶**結構化錯誤診斷**（TIMEOUT、RATE_LIMIT、AUTH_ERROR、PERMISSION、SANDBOX、NETWORK、CLI_ERROR 或 CLI_NOT_FOUND）並建議替代指令。
+所有指令皆內建 **graceful degradation** — 若某個 provider 不可用，Claude 會用剩餘的 provider 繼續執行，而非直接失敗。每次失敗都附帶**結構化錯誤診斷**（TIMEOUT、RATE_LIMIT、AUTH_ERROR、PERMISSION、SANDBOX、NETWORK、EMPTY_OUTPUT、CLI_ERROR 或 CLI_NOT_FOUND）並建議替代指令。
 
 ### `/pi-ask-codex` — 詢問 OpenAI
 
@@ -273,9 +273,9 @@ Gemini 審查前端程式碼的無障礙、響應式設計、元件結構和 UX 
 
 ### `/pi-plan` — 多方觀點實作規劃
 
-適用於**有多條可行路徑**的任務——架構決策、技術選型、遷移策略。諮詢 Codex 和 Gemini 取得獨立架構分析，Claude 綜合成結構化計畫檔。
+適用於**有多條可行路徑**的任務——架構決策、技術選型、遷移策略。Claude 會先跟你確認可能改變方向的推斷（外部呼叫動輒數分鐘——理解偏差在前端攔截），再諮詢 Codex 和 Gemini 取得獨立架構分析，綜合成結構化計畫檔。Provider 意見分歧時，以 repo 實證優先於通用建議。
 
-計畫存到 `.claude/pi-plans/`，包含：背景、多方分析、逐步實作步驟、關鍵檔案、風險和驗證標準。計畫檔跨 session 持久化。
+計畫存到 `.claude/pi-plans/`，包含：背景、範圍邊界、多方分析、逐步實作步驟、關鍵檔案、風險和驗證標準。計畫檔跨 session 持久化。
 
 適合複雜決策；簡單的任務拆解請直接用 Claude Code 內建的 plan mode。
 
@@ -509,7 +509,7 @@ Logging 預設開啟，檢查 `~/.claude/logs/multi-ai.log` 即可驗證。每�
 
 **Q: 如果我只裝了 Gemini CLI？**
 
-沒問題。所有指令都內建 graceful degradation 和**結構化錯誤診斷**——若 provider 不可用，失敗訊息會包含具體原因（TIMEOUT、RATE_LIMIT、AUTH_ERROR、PERMISSION、SANDBOX、NETWORK、CLI_ERROR 或 CLI_NOT_FOUND）並建議替代指令。`/pi-multi-review` 和 `/pi-askall` 會使用 Claude + 可用的 provider（兩方觀點取代三方）。`/pi-code-review` 會退回 Claude 獨立審查並加註同源盲點警告，同時建議改用 `/pi-multi-review`。`/pi-fact-check` 和 `/pi-research` 都採用雙軌搜尋（Gemini + WebSearch 同步）；若兩者皆失敗才退至 Claude 訓練資料。
+沒問題。所有指令都內建 graceful degradation 和**結構化錯誤診斷**——若 provider 不可用，失敗訊息會包含具體原因（TIMEOUT、RATE_LIMIT、AUTH_ERROR、PERMISSION、SANDBOX、NETWORK、EMPTY_OUTPUT、CLI_ERROR 或 CLI_NOT_FOUND）並建議替代指令。`/pi-multi-review` 和 `/pi-askall` 會使用 Claude + 可用的 provider（兩方觀點取代三方）。`/pi-code-review` 會退回 Claude 獨立審查並加註同源盲點警告，同時建議改用 `/pi-multi-review`。`/pi-fact-check` 和 `/pi-research` 都採用雙軌搜尋（Gemini + WebSearch 同步）；若兩者皆失敗才退至 Claude 訓練資料。
 
 **Q: 如果 provider 回傳格式不符預期？**
 
