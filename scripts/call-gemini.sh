@@ -110,11 +110,19 @@ fi
 # --- Resolve agy binary ---
 STAGE="binary_resolve"
 AGY_BIN="${AGY_BIN:-}"
-# GEMINI_BIN: deprecated alias from the pre-agy era; honored with a WARN so
-# existing setups keep working one release while they rename to AGY_BIN.
+# GEMINI_BIN: deprecated alias from the pre-agy era, for setups that already
+# re-pointed it at an agy binary (rename-not-revalue transition). Values that
+# are not an executable named agy — e.g. a leftover path to the old gemini
+# CLI, which would choke on agy-only flags like --print-timeout — are ignored
+# with a WARN so resolution falls through to the candidate list below.
 if [[ -z "$AGY_BIN" && -n "${GEMINI_BIN:-}" ]]; then
-    AGY_BIN="$GEMINI_BIN"
-    _log WARN "GEMINI_BIN env-var is deprecated; rename to AGY_BIN"
+    if [[ -x "$GEMINI_BIN" && "$(basename "$GEMINI_BIN")" == "agy" ]]; then
+        AGY_BIN="$GEMINI_BIN"
+        _log WARN "GEMINI_BIN env-var is deprecated; rename to AGY_BIN"
+    else
+        gemini_bin_safe=$(printf '%s' "$GEMINI_BIN" | tr -d '\n"')
+        _log WARN "ignoring deprecated GEMINI_BIN=\"$gemini_bin_safe\" (not an executable agy binary) — using standard agy resolution"
+    fi
 fi
 if [[ -z "$AGY_BIN" ]]; then
     for candidate in \
@@ -383,11 +391,15 @@ if [[ ! -f "$OUT_TMP" || ! -s "$OUT_TMP" ]]; then
     echo "Error: EMPTY_OUTPUT: agy exited 0 but produced no output. Likely network or upstream failure." >&2
     exit 1
 fi
-if head -1 "$OUT_TMP" | grep -q '^Authentication required\.'; then
+# Dual-condition fingerprint: first-line prefix AND an OAuth URL in the body.
+# Either alone is forgeable/mis-matchable (a model answer could start with the
+# same sentence); together they only match agy's actual login transcript.
+if head -1 "$OUT_TMP" | grep -q '^Authentication required\.' \
+   && grep -q 'accounts\.google\.com/o/oauth2' "$OUT_TMP"; then
     _log ERROR "agy call failed (AUTH_ERROR: rc=0 with OAuth prompt — not logged in)"
     echo "Error: AUTH_ERROR: agy is not authenticated. Run agy interactively to log in." >&2
     exit 1
 fi
 
 STAGE="done"
-_log INFO "success response_len=$(wc -c < "$OUT_TMP" | tr -d ' ') elapsed_s=$(($(date +%s) - START_TS)) first_byte_ms=$FIRST_BYTE_MS first_byte_method=$FIRST_BYTE_METHOD"
+_log INFO "success response_len=$(wc -c < "$OUT_TMP" | tr -d ' \n') elapsed_s=$(($(date +%s) - START_TS)) first_byte_ms=$FIRST_BYTE_MS first_byte_method=$FIRST_BYTE_METHOD"

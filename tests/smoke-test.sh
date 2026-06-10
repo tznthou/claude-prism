@@ -52,11 +52,11 @@ done
 echo ""
 echo "3. External CLI availability..."
 
-# Gemini
-if command -v gemini &>/dev/null || [[ -x "$HOME/.npm-global/bin/gemini" ]]; then
-    pass "Gemini CLI available"
+# agy (Antigravity CLI) — Gemini provider
+if command -v agy &>/dev/null || [[ -x "$HOME/.local/bin/agy" ]]; then
+    pass "agy CLI available"
 else
-    skip "Gemini CLI not installed (optional)"
+    skip "agy CLI not installed (optional)"
 fi
 
 # Codex
@@ -358,7 +358,7 @@ _check_prompt_len "call-codex.sh stdin from /dev/null skipped" "$STDIN_OUT" "$ST
 # ─── Test 13: Soft-timeout regression scenarios (v0.14.0+) ───
 # Guards against regressions in the CLAUDE_PRISM_TIMEOUT wall-clock guard block
 # in call-{codex,gemini}.sh. Uses fake CLI binaries (shell scripts) injected via
-# CODEX_BIN / GEMINI_BIN env vars so no real API calls are made.
+# CODEX_BIN / AGY_BIN env vars so no real API calls are made.
 # 5 assertions: normal path (rc=0), timeout fires (rc=124 + sentinel + log event),
 # custom TIMEOUT=5 honoured, no orphan processes, gemini mirror fires identically.
 echo ""
@@ -460,7 +460,7 @@ fi
 # T13.5 Gemini mirror fires identically (sanity check on byte-sync)
 T13_LD5=$(mktemp -d); T13_LOGDIRS+=("$T13_LD5")
 set +e
-MULTI_AI_LOG_DIR="$T13_LD5" GEMINI_BIN="$T13_FAKE_SLOW" CLAUDE_PRISM_TIMEOUT=2 \
+MULTI_AI_LOG_DIR="$T13_LD5" AGY_BIN="$T13_FAKE_SLOW" CLAUDE_PRISM_TIMEOUT=2 \
     "$SCRIPT_DIR/scripts/call-gemini.sh" "q" > "$T13_LD5/out" 2> "$T13_LD5/err"
 T13_RC5=$?
 set -e
@@ -675,7 +675,7 @@ fi
 # T16.5 Gemini mirror — pure stall on gemini wrapper (byte-sync sibling guard)
 T16_LD5=$(mktemp -d); T13_LOGDIRS+=("$T16_LD5")
 set +e
-MULTI_AI_LOG_DIR="$T16_LD5" GEMINI_BIN="$T13_FAKE_SLOW" CLAUDE_PRISM_TIMEOUT=2 \
+MULTI_AI_LOG_DIR="$T16_LD5" AGY_BIN="$T13_FAKE_SLOW" CLAUDE_PRISM_TIMEOUT=2 \
     "$SCRIPT_DIR/scripts/call-gemini.sh" "q" > /dev/null 2>&1
 set -e
 if grep -qE '\[gemini\].*soft_timeout killed.*output_bytes=0 first_byte_ms=NA first_byte_method=na' "$T16_LD5/multi-ai.log"; then
@@ -712,6 +712,67 @@ if [[ -z "$T16_BAD" ]]; then
     pass "T16.7 first_byte_method vocabulary strict (observed: $(echo "$T16_METHODS" | tr '\n' ' '))"
 else
     fail "T16.7 unexpected first_byte_method value: $T16_BAD"
+fi
+
+# ─── Test 17: rc=0 content classification (agy migration, 2026-06-10) ───
+# agy exits rc=0 on network failure (empty stdout) and on missing auth (OAuth
+# prompt on stdout) — empirically verified on agy 1.0.6. The wrapper must
+# classify these from output content instead of trusting rc. Fake CLIs
+# injected via AGY_BIN; no real API calls.
+echo ""
+echo "17. rc=0 content classification..."
+
+T17_DIR=$(mktemp -d); T13_LOGDIRS+=("$T17_DIR")
+T17_FAKE_EMPTY="$T17_DIR/fake-empty-cli"
+T17_FAKE_AUTH="$T17_DIR/fake-auth-cli"
+
+cat > "$T17_FAKE_EMPTY" <<'FAKEEMPTY'
+#!/bin/bash
+cat > /dev/null 2>&1 || true
+exit 0
+FAKEEMPTY
+chmod +x "$T17_FAKE_EMPTY"
+
+cat > "$T17_FAKE_AUTH" <<'FAKEAUTH'
+#!/bin/bash
+cat > /dev/null 2>&1 || true
+echo "Authentication required. Please visit the URL to log in:"
+echo "  https://accounts.google.com/o/oauth2/auth?client_id=fake"
+echo ""
+echo "Error: authentication timed out."
+exit 0
+FAKEAUTH
+chmod +x "$T17_FAKE_AUTH"
+
+# T17.1 empty output + rc=0 → EMPTY_OUTPUT, exit 1
+T17_LD1=$(mktemp -d); T13_LOGDIRS+=("$T17_LD1")
+set +e
+MULTI_AI_LOG_DIR="$T17_LD1" AGY_BIN="$T17_FAKE_EMPTY" \
+    "$SCRIPT_DIR/scripts/call-gemini.sh" "q" > "$T17_LD1/out" 2> "$T17_LD1/err"
+T17_RC1=$?
+set -e
+if [[ $T17_RC1 -eq 1 ]] && \
+   grep -q "EMPTY_OUTPUT" "$T17_LD1/err" && \
+   grep -q "EMPTY_OUTPUT" "$T17_LD1/multi-ai.log"; then
+    pass "T17.1 rc=0 + empty output classified EMPTY_OUTPUT (rc=1 + stderr + log)"
+else
+    fail "T17.1 EMPTY_OUTPUT: expected rc=1 + diagnostics, got rc=$T17_RC1; err=$(cat "$T17_LD1/err")"
+fi
+
+# T17.2 OAuth prompt + rc=0 → AUTH_ERROR, exit 1 (dual-condition fingerprint:
+# first-line prefix AND OAuth URL marker must both match)
+T17_LD2=$(mktemp -d); T13_LOGDIRS+=("$T17_LD2")
+set +e
+MULTI_AI_LOG_DIR="$T17_LD2" AGY_BIN="$T17_FAKE_AUTH" \
+    "$SCRIPT_DIR/scripts/call-gemini.sh" "q" > "$T17_LD2/out" 2> "$T17_LD2/err"
+T17_RC2=$?
+set -e
+if [[ $T17_RC2 -eq 1 ]] && \
+   grep -q "AUTH_ERROR" "$T17_LD2/err" && \
+   grep -q "AUTH_ERROR" "$T17_LD2/multi-ai.log"; then
+    pass "T17.2 rc=0 + OAuth prompt classified AUTH_ERROR (rc=1 + stderr + log)"
+else
+    fail "T17.2 AUTH_ERROR: expected rc=1 + diagnostics, got rc=$T17_RC2; err=$(cat "$T17_LD2/err")"
 fi
 
 # ─── Summary ───
