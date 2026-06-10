@@ -40,7 +40,7 @@ AI code review 很吵。市場上最好的工具 F1 score 大概也才 64%——
 |---|---|---|
 | **Provider 多樣性** | Codex + Gemini + Claude（3 個獨立模型） | 多個 agent，同一底層模型 |
 | **盲點覆蓋** | 跨訓練資料：每個模型抓到其他模型漏掉的 | 同一訓練資料偏差在 agent 間放大 |
-| **成本** | 近乎零（Codex CLI + Gemini CLI 免費額度） | 每 PR $15–25（官方工具，Team/Enterprise 方案） |
+| **成本** | 近乎零（用現有 Codex CLI / Antigravity CLI 訂閱） | 每 PR $15–25（官方工具，Team/Enterprise 方案） |
 | **速度** | 1–2 分鐘 | ~20 分鐘 |
 | **可用性** | 任何有 CLI 的人 | 僅限付費團隊方案 |
 | **評分方式** | 證據導向公式（[公開 spec](spec/confidence-scoring-v1.md)），deterministic 核心，同樣證據 = 同樣分數 | LLM 自評，AI 給自己打信心分數 |
@@ -80,33 +80,16 @@ claude-prism 的 [Confidence Scoring Framework](spec/confidence-scoring-v1.md) �
 | 工具 | 必要性 | 安裝方式 |
 |------|--------|----------|
 | [Claude Code](https://claude.com/claude-code) | 必要 | `npm install -g @anthropic-ai/claude-code` |
-| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | Gemini 相關指令需要 | `npm install -g @google/gemini-cli` |
+| [Antigravity CLI（`agy`）](https://github.com/google-antigravity/antigravity-cli) | Gemini 相關指令需要 | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` |
 | [Codex CLI](https://github.com/openai/codex) | Codex 相關指令需要 | `npm install -g @openai/codex` |
 
-> **⚠️ Gemini CLI 服務更新（2026-03-25 生效）**
+> **✅ Antigravity CLI 遷移（2026 年 6 月完成）**
 >
-> Google 正在[調整 Gemini CLI 的流量路由方式](https://github.com/google-gemini/gemini-cli/discussions/22970)。免費帳號將僅限 Flash 模型（不再支援 Pro），所有用戶在尖峰時段可能遇到限流。如果遇到 timeout：
+> Google 在 I/O 2026 [宣布 Gemini CLI 由 Antigravity CLI 取代](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/)——`@google/gemini-cli` 已於 **2026-06-18** 停止服務 Google AI Pro、Ultra 與免費版 Code Assist 用戶。claude-prism 已在期限前完成遷移：`call-gemini.sh` 現在以非互動模式驅動 [`agy`](https://github.com/google-antigravity/antigravity-cli)，認證走 Google AI Pro OAuth。
 >
-> ```bash
-> # 方案一：使用 Flash（更快，coding benchmark 分數比 Pro 更高）
-> export GEMINI_MODEL="gemini-3-flash-preview"
+> **不變的部分**：腳本檔名、`[gemini]` log tag、`GEMINI_MODEL` 模型覆蓋全部照舊——既有的 log 與指令不受影響。
 >
-> # 方案二：使用自己的 API key 取得獨立 quota
-> export GEMINI_API_KEY="your-key-from-ai-studio"
-> ```
->
-> 詳見[環境變數](#環境變數)。
-
-> **⚠️ Antigravity CLI 轉換公告（2026-05-19 宣布）**
->
-> Google 在 I/O 2026 [宣布 Gemini CLI 將由 Antigravity CLI 取代](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/)。**2026-06-18 起 Gemini CLI 將停止服務** Google AI Pro、Ultra 與免費版 Code Assist 用戶。Enterprise 授權用戶不受影響。
->
-> **對 claude-prism 使用者的影響**：
->
-> - **2026-06-18 之前**——wrapper 正常運作，不需要做任何事。
-> - **2026-06-18 之後**——[Antigravity CLI（`agy`）](https://github.com/google-antigravity/antigravity-cli) 是 TUI 形態而非 headless 工具，現行 `call-gemini.sh` 的「stdin pipe + stdout 截取」呼叫模式不再相容。後續方向評估中：等 `agy` 提供 headless 旗標、改走 Gemini API HTTP，或直接退役 gemini provider。
->
-> wrapper 會在期限前更新完成。評估從 2026-05-25 當週開始。
+> **改變的部分**：認證只走 OAuth（先執行一次 `agy` 完成登入；wrapper 不再讀取 `GEMINI_API_KEY`），執行檔路徑覆蓋改用 `AGY_BIN`（`GEMINI_BIN` 僅在指向 `agy` 執行檔時作為過渡別名接受）。如果機器上還裝著 `@google/gemini-cli`，它已不再被使用，可以解除安裝。
 
 ### 安裝
 
@@ -292,7 +275,7 @@ Gemini 審查前端程式碼的無障礙、響應式設計、元件結構和 UX 
 flowchart LR
     User["👤 使用者"] <--> Claude["🟣 Claude Code\n(調度者)"]
     Claude -->|"/pi-ask-codex\n/pi-askall\n/pi-code-review\n/pi-multi-review\n/pi-plan"| Codex["🟢 Codex CLI"]
-    Claude -->|"/pi-ask-gemini\n/pi-askall\n/pi-fact-check\n/pi-ui-design\n/pi-ui-review\n/pi-research\n/pi-multi-review\n/pi-plan"| Gemini["🔵 Gemini CLI"]
+    Claude -->|"/pi-ask-gemini\n/pi-askall\n/pi-fact-check\n/pi-ui-design\n/pi-ui-review\n/pi-research\n/pi-multi-review\n/pi-plan"| Gemini["🔵 agy (Antigravity CLI)"]
     CI["⚙️ GitHub Actions"] -->|"ci-review.sh"| GeminiAPI["🔵 Gemini API"]
     CI -->|"ci-review.sh"| OpenAIAPI["🟢 OpenAI API"]
     CI -->|"synthesis"| ClaudeAPI["🟣 Claude API"]
@@ -383,7 +366,7 @@ sequenceDiagram
 | Markdown | Slash command 定義 | Claude Code 讀取這些檔案作為指令 |
 | Claude Code | 調度者 | 讀取 command，透過 sub-agent fan-out 分派 |
 | Codex CLI | OpenAI 存取 | Code review 與 Q&A（模型可設定） |
-| Gemini CLI | Google 存取 | 研究、UI 審查、Q&A（模型可設定） |
+| agy（Antigravity CLI） | Google 存取 | 研究、UI 審查、Q&A（模型可設定） |
 | GitHub Actions | CI/CD 整合 | 自動化 PR review，透過 REST API |
 
 ## 專案結構
@@ -403,7 +386,7 @@ claude-prism/
 ├── commands/                   # Slash command 定義（Markdown）
 ├── scripts/                    # CLI 包裝腳本與工具（Bash）
 │   ├── call-codex.sh           # Codex CLI 包裝（含 soft-timeout）
-│   ├── call-gemini.sh          # Gemini CLI 包裝（含 soft-timeout）
+│   ├── call-gemini.sh          # agy（Antigravity CLI）包裝（含 soft-timeout）
 │   ├── detect-domain.sh        # 智慧路由 domain 偵測
 │   ├── analyze-log.sh          # 呼叫生命週期診斷
 │   ├── ci-review.sh            # CI/CD review 調度器（curl API）
@@ -437,10 +420,10 @@ claude-prism/
 
 | 變數 | 預設值 | 說明 |
 |------|--------|------|
-| `GEMINI_MODEL` | （CLI 預設） | 覆蓋 Gemini 模型（如 `gemini-3-flash-preview`） |
+| `GEMINI_MODEL` | （CLI 預設） | 覆蓋 Gemini 模型（如 `gemini-3-flash-preview`），透過 `agy --model` 傳遞 |
 | `CODEX_MODEL` | （CLI 預設） | 覆蓋 Codex 模型（如 `gpt-5.3-codex`） |
-| `GEMINI_API_KEY` | （無） | 使用自己的 AI Studio API key 取代 OAuth（[申請](https://aistudio.google.com/apikey)） |
-| `GEMINI_BIN` | （自動偵測） | Gemini 執行檔路徑 |
+| `AGY_BIN` | （自動偵測） | `agy` 執行檔路徑 |
+| `GEMINI_BIN` | — | `AGY_BIN` 的過渡別名（已棄用）；僅在指向 `agy` 執行檔時接受，並寫入 WARN log |
 | `CODEX_BIN` | （自動偵測） | Codex 執行檔路徑 |
 | `MULTI_AI_LOG_DIR` | `~/.claude/logs` | 紀錄檔目錄 |
 | `CLAUDE_PRISM_TIMEOUT`（v0.14.0+） | `110` | Soft-timeout 掛鐘時限（整數秒，範圍 1..3600）。無效值自動 fallback 到 110 並寫入 WARN log。超時時 wrapper 會發出 rc=124 + stderr sentinel + `soft_timeout` log event，取代原本被 Claude Code harness 在 130 秒附近悄悄 SIGKILL 的黑洞。已知會跑比較久的任務可以 per-invocation 調寬：`CLAUDE_PRISM_TIMEOUT=180 ./call-codex.sh "40KB review prompt"` |
@@ -451,9 +434,6 @@ claude-prism/
 # Shell 設定檔（~/.zshrc 或 ~/.bashrc）
 export GEMINI_MODEL="gemini-3-flash-preview"
 export CODEX_MODEL="gpt-5.3-codex"
-
-# 選用：使用自己的 API key 取得獨立 quota
-export GEMINI_API_KEY="your-key-from-ai-studio"
 
 # 或單次呼叫時用 -m flag
 ~/.claude/scripts/call-gemini.sh -m gemini-3-flash-preview "your prompt"
@@ -507,7 +487,7 @@ export GEMINI_API_KEY="your-key-from-ai-studio"
 
 Logging 預設開啟，檢查 `~/.claude/logs/multi-ai.log` 即可驗證。每次呼叫都有時間戳、模型名稱和 prompt/response 長度。
 
-**Q: 如果我只裝了 Gemini CLI？**
+**Q: 如果我只裝了其中一個 provider 的 CLI？**
 
 沒問題。所有指令都內建 graceful degradation 和**結構化錯誤診斷**——若 provider 不可用，失敗訊息會包含具體原因（TIMEOUT、RATE_LIMIT、AUTH_ERROR、PERMISSION、SANDBOX、NETWORK、EMPTY_OUTPUT、CLI_ERROR 或 CLI_NOT_FOUND）並建議替代指令。`/pi-multi-review` 和 `/pi-askall` 會使用 Claude + 可用的 provider（兩方觀點取代三方）。`/pi-code-review` 會退回 Claude 獨立審查並加註同源盲點警告，同時建議改用 `/pi-multi-review`。`/pi-fact-check` 和 `/pi-research` 都採用雙軌搜尋（Gemini + WebSearch 同步）；若兩者皆失敗才退至 Claude 訓練資料。
 
@@ -519,9 +499,9 @@ Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 emoji/score 格式
 
 參閱 [docs/cost.zh-TW.md](docs/cost.zh-TW.md) 了解各指令的 token 消耗範圍和成本控制工具。
 
-**Q: Gemini CLI 一直 timeout 或回應很慢？**
+**Q: Gemini provider 一直 timeout 或回應很慢？**
 
-很可能是 Pro 模型限流。兩種解法：(1) 設定 `GEMINI_MODEL="gemini-3-flash-preview"`，Flash 更快，coding benchmark 分數也更高（SWE-bench：Flash 78% vs Pro 76.2%）。(2) 設定 `GEMINI_API_KEY`，用自己的 [AI Studio](https://aistudio.google.com/apikey) key 取得獨立 quota。詳見 [Gemini CLI 服務更新](#前置需求)。
+很可能是 Pro 模型限流。設定 `GEMINI_MODEL="gemini-3-flash-preview"`——Flash 更快，coding benchmark 分數也更高（SWE-bench：Flash 78% vs Pro 76.2%）。如果症狀是空輸出而不是慢，先互動式執行一次 `agy` 確認登入狀態——`agy` 遇到部分認證與網路錯誤時會以正常結束碼回傳空輸出，wrapper 會將其分類為 `EMPTY_OUTPUT` / `AUTH_ERROR`。
 
 **Q: 可以搭配其他 Claude Code 設定使用嗎？**
 

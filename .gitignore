@@ -34,6 +34,9 @@ final-comparison.md
 # Security audit reports (local only)
 security-reports/
 
+# Local API response cache (not shipped)
+cache/
+
 # Node.js (npx distribution wrapper only, no actual deps)
 node_modules/
 .claude/RESUME.md
