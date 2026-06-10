@@ -75,7 +75,7 @@ Derive search queries from the research topic — cover breadth, not just the ob
 
 Combine findings from both tracks:
 
-- **Both succeed**: Merge and cross-reference. Flag where Gemini and WebSearch agree (high confidence) vs diverge (needs Claude judgment).
+- **Both succeed**: Merge and cross-reference. Flag where Gemini and WebSearch agree (high confidence) vs diverge (needs Claude judgment). **Divergence ruling**: official sources beat secondary commentary. For version numbers, breaking changes, or API-stability claims, Gemini grounding alone is not sufficient — cross-verify against an official source, else mark the claim (unverified). Gemini grounding has produced confident false alarms on such claims before.
 - **Gemini fails, WebSearch succeeds**: Use WebSearch results as primary source. Note: "⚠️ Gemini unavailable — research based on WebSearch + Claude."
 - **WebSearch fails, Gemini succeeds**: Use Gemini results. Note: "⚠️ WebSearch unavailable — research based on Gemini + Claude."
 - **Both fail**: Claude researches from training data. Note: "⚠️ External search unavailable — research from Claude's training data only. Information may not reflect the latest developments."
@@ -88,7 +88,7 @@ If the Bash tool was backgrounded or returned empty output, read the result from
 
 When a track fails, include the specific reason in the status note:
 
-**Gemini**: The script classifies errors in stderr (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, NETWORK, CLI_ERROR, or CLI_NOT_FOUND). Include the classification and diagnostic message directly.
+**Gemini**: The script classifies errors in stderr (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, NETWORK, EMPTY_OUTPUT, CLI_ERROR, or CLI_NOT_FOUND). Include the classification and diagnostic message directly.
 
 **WebSearch** (Claude tool — no stderr): If the tool returns an error or empty results, note "WebSearch returned no results for [query]." WebSearch failures are typically transient — note and continue.
 

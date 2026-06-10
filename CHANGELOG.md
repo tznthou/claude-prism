@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+#### Changed (Gemini provider — agy migration)
+
+- **`scripts/call-gemini.sh` migrated from Gemini CLI to agy (Antigravity CLI)** (`1617e14`) — ahead of the 2026-06-18 `@google/gemini-cli` sunset. Binary resolve `agy` + `AGY_BIN` env (`GEMINI_BIN` honored as deprecated fallback with WARN); model flag `-m` → `--model` passthrough; `--print-timeout TIMEOUT_S+30s` keeps the wrapper soft-timeout firing first. New **rc=0 content classification**: agy 1.0.6/1.0.7 swallow network failures (rc=0, empty output) and auth failures (rc=0, OAuth prompt on stdout) — classified as `EMPTY_OUTPUT` / `AUTH_ERROR` from output content (empirically verified 2026-06-10). Smoke E1-E7 all pass on agy 1.0.7. Filename and `[gemini]` log tag kept for log-contract continuity
+
+#### Added (pi-plan synthesis mechanisms)
+
+- **`commands/pi-plan.md` — synthesis checkpoint + conflict resolution** (`a650072`) — three mechanisms adapted from compound-engineering's ce-plan, scoped to pi-plan's cost structure (external provider calls run 1–9 minutes, so misread tasks are expensive):
+  - **Step 3.5 synthesis checkpoint** — Stated / Inferred / Out-of-scope bucketing before provider dispatch; pauses for user confirmation only when an Inferred assumption would change the prompt's direction (max 3 call-outs, each judgeable without reading code)
+  - **Architect prompt requires a rejected alternative with reasoning** — synthesis can tell genuine agreement from coincidence; providers that omit it count as unreasoned agreement (weaker signal)
+  - **Step 6 conflict resolution principles** — repo-grounded beats generic, official docs beat speculation, agreement must be reasoned. Plan template gains an as-needed Out of Scope section
+- **`commands/pi-research.md` — divergence ruling in merge rules** (`a650072`) — official sources beat secondary commentary; version / breaking-change / API-stability claims require cross-verification against an official source before being reported as fact, else marked (unverified)
+
+#### Fixed
+
+- **EMPTY_OUTPUT classifier alignment across docs** (`a528d5a`) — the agy migration added `EMPTY_OUTPUT` to `call-gemini.sh` but only `pi-ask-gemini.md` mentioned it. Aligned the remaining six command docs (pi-plan / pi-askall / pi-multi-review / pi-research / pi-ui-review / pi-ui-design) and the README graceful-degradation lists; `checksums.sha256` regenerated. Codex-only lists untouched (`call-codex.sh` has no `EMPTY_OUTPUT`)
+
 ## v0.14.6 (2026-05-20) — Phase A2 first-byte detector + supply-chain hardening
 
 **Tri-state `first_byte_method` field (`measured` / `fallback` / `na`) shipped to forensic log lines, letting downstream consumers mechanically filter race-fallback samples before treating `first_byte_ms` as a latency signal.** Bundled with the supply-chain hardening that landed on `main` between releases (third-party GitHub Actions immutable-SHA-pinned + Dependabot enabled), a per-skill timeout calibrator (`scripts/calibrate-timeout.sh`), and an Antigravity CLI transition notice pre-disclosed in Prerequisites ahead of the June 18, 2026 Gemini CLI cutoff.

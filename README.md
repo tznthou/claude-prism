@@ -175,7 +175,7 @@ npx claud-prism-aireview --uninstall
 | `/pi-multi-review` | Codex + Gemini + Claude | Triple-provider adversarial review with divided attack surfaces (smart routing + confidence scoring) |
 | `/pi-plan` | Codex + Gemini + Claude | Multi-provider implementation planning for architectural decisions |
 
-All commands include **graceful degradation** — if a provider is unavailable, Claude continues with the remaining providers instead of failing. Every failure includes a **structured error diagnostic** (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, SANDBOX, NETWORK, CLI_ERROR, or CLI_NOT_FOUND) and suggests an alternative command.
+All commands include **graceful degradation** — if a provider is unavailable, Claude continues with the remaining providers instead of failing. Every failure includes a **structured error diagnostic** (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, SANDBOX, NETWORK, EMPTY_OUTPUT, CLI_ERROR, or CLI_NOT_FOUND) and suggests an alternative command.
 
 ### `/pi-ask-codex` — Ask OpenAI
 
@@ -273,9 +273,9 @@ The flagship command. Sends the same code to **both** Codex and Gemini for **adv
 
 ### `/pi-plan` — Multi-Provider Implementation Planning
 
-For tasks with **multiple viable approaches** — architectural decisions, tech stack selection, migration strategies. Consults Codex and Gemini for independent architectural analysis, then Claude synthesizes into a structured plan file.
+For tasks with **multiple viable approaches** — architectural decisions, tech stack selection, migration strategies. Claude first confirms any direction-changing assumptions with you (external calls run minutes — misreads get caught up front), then consults Codex and Gemini for independent architectural analysis and synthesizes into a structured plan file. Provider disagreements resolve by repo-grounded evidence over generic best practice.
 
-Plans are saved to `.claude/pi-plans/` and include: context, multi-provider analysis, step-by-step implementation, key files, risks, and verification criteria. Plans persist across sessions.
+Plans are saved to `.claude/pi-plans/` and include: context, scope boundaries, multi-provider analysis, step-by-step implementation, key files, risks, and verification criteria. Plans persist across sessions.
 
 Best for complex decisions; for simple task breakdown, use Claude Code's built-in plan mode instead.
 
@@ -509,7 +509,7 @@ With logging enabled (default), check `~/.claude/logs/multi-ai.log` to verify. E
 
 **Q: What if I only have Gemini CLI installed?**
 
-That's fine. All commands include graceful degradation with **structured error diagnostics** — if a provider is unavailable, the failure message includes the specific reason (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, SANDBOX, NETWORK, CLI_ERROR, or CLI_NOT_FOUND) and suggests an alternative command. `/pi-multi-review` and `/pi-askall` will use Claude + the available provider (two perspectives instead of three). `/pi-code-review` will fall back to a Claude-only review with a caveat note and suggest `/pi-multi-review`. `/pi-fact-check` and `/pi-research` both use dual-track (Gemini + WebSearch simultaneously); if both fail, falls back to Claude's training data.
+That's fine. All commands include graceful degradation with **structured error diagnostics** — if a provider is unavailable, the failure message includes the specific reason (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, SANDBOX, NETWORK, EMPTY_OUTPUT, CLI_ERROR, or CLI_NOT_FOUND) and suggests an alternative command. `/pi-multi-review` and `/pi-askall` will use Claude + the available provider (two perspectives instead of three). `/pi-code-review` will fall back to a Claude-only review with a caveat note and suggest `/pi-multi-review`. `/pi-fact-check` and `/pi-research` both use dual-track (Gemini + WebSearch simultaneously); if both fail, falls back to Claude's training data.
 
 **Q: What if a provider returns an unexpected format?**
 

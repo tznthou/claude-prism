@@ -89,13 +89,13 @@ Same template as the Codex agent, with these substitutions:
 - Replace `~/.claude/scripts/call-codex.sh` → `~/.claude/scripts/call-gemini.sh`
 - Replace `prism-codex-out` → `prism-gemini-out` (in the `mktemp` template)
 - Do NOT set or override `GEMINI_MODEL` — the user's environment passes through to the sub-agent's Bash, then to `call-gemini.sh`, then to the CLI. Skills do not pin model tiers on the user's behalf. If a call fails with RATE_LIMIT or capacity, surface the error and let the user decide whether to switch models.
-- Classifier list adds PERMISSION (Gemini-specific) and has no SANDBOX.
+- Classifier list adds PERMISSION and EMPTY_OUTPUT (both Gemini-specific; EMPTY_OUTPUT = agy exits 0 with no output) and has no SANDBOX.
 
 Both agents dispatch in parallel because they share a single main-conversation response. When both sub-agents return, proceed to Step 3. The CLI argument (`"perspective request"`) is a short label for the call — the actual question is passed via stdin from the temp file.
 
 ### 3. Handle partial failures
 
-- One provider fails → continue with the other + Claude. Note which provider is absent and the specific failure reason from stderr (TIMEOUT, RATE_LIMIT, AUTH_ERROR, SANDBOX, PERMISSION, NETWORK, CLI_ERROR, or CLI_NOT_FOUND).
+- One provider fails → continue with the other + Claude. Note which provider is absent and the specific failure reason from stderr (TIMEOUT, RATE_LIMIT, AUTH_ERROR, SANDBOX, PERMISSION, NETWORK, EMPTY_OUTPUT, CLI_ERROR, or CLI_NOT_FOUND).
 - Both fail → Claude answers solo. Note: "⚠️ Both external providers unavailable ([Codex reason] / [Gemini reason]) — single-perspective answer."
 - **Never abort.** Always produce output.
 
