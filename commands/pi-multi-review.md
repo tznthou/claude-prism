@@ -209,7 +209,7 @@ Same template as the Codex agent, with these substitutions:
 - Replace `~/.claude/scripts/call-codex.sh` → `~/.claude/scripts/call-gemini.sh`
 - Replace `prism-codex-out` → `prism-gemini-out` (in the `mktemp` template)
 - Do NOT set or override `GEMINI_MODEL` in the Bash command — the user's environment passes through to the sub-agent, then to `call-gemini.sh`, then to the CLI. Skills do not pin model tiers on the user's behalf.
-- Classifier list adds PERMISSION (Gemini-specific) and has no SANDBOX.
+- Classifier list adds PERMISSION and EMPTY_OUTPUT (both Gemini-specific; EMPTY_OUTPUT = agy exits 0 with no output) and has no SANDBOX.
 
 Both agents dispatch in parallel because they share a single main-conversation response. When both return, proceed to Step 4.
 
@@ -218,7 +218,7 @@ Both agents dispatch in parallel because they share a single main-conversation r
 If one provider fails (script exits non-zero or returns an error message):
 - **Do NOT abort the review.** Continue with the remaining providers.
 - Claude always participates, so at minimum you have Claude + one external provider.
-- Include the specific failure reason from stderr (TIMEOUT, RATE_LIMIT, AUTH_ERROR, SANDBOX, PERMISSION, NETWORK, CLI_ERROR, or CLI_NOT_FOUND).
+- Include the specific failure reason from stderr (TIMEOUT, RATE_LIMIT, AUTH_ERROR, SANDBOX, PERMISSION, NETWORK, EMPTY_OUTPUT, CLI_ERROR, or CLI_NOT_FOUND).
 - In the output, clearly note: "⚠️ [Provider] unavailable ([reason]) — continuing with [other provider] + Claude."
 - If **both** external providers fail, Claude performs a solo review and notes: "⚠️ Both external providers unavailable ([Codex reason] / [Gemini reason]) — single-perspective review. For single-provider review, try `/pi-code-review` (Codex) or `/pi-ui-review` (Gemini) when they recover."
 

@@ -88,7 +88,7 @@ If the Bash tool was backgrounded or returned empty output, read the result from
 
 When a track fails, include the specific reason in the status note:
 
-**Gemini**: The script classifies errors in stderr (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, NETWORK, CLI_ERROR, or CLI_NOT_FOUND). Include the classification and diagnostic message directly.
+**Gemini**: The script classifies errors in stderr (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, NETWORK, EMPTY_OUTPUT, CLI_ERROR, or CLI_NOT_FOUND). Include the classification and diagnostic message directly.
 
 **WebSearch** (Claude tool — no stderr): If the tool returns an error or empty results, note "WebSearch returned no results for [query]." WebSearch failures are typically transient — note and continue.
 
