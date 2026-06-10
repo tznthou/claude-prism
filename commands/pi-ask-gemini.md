@@ -1,11 +1,11 @@
 ---
 command: pi-ask-gemini
-description: Ask Gemini CLI a question — get Google's perspective alongside Claude's
+description: Ask Gemini a question — get Google's perspective alongside Claude's
 ---
 
 # Ask Gemini
 
-Forward the user's question to Gemini CLI, get Google's perspective.
+Forward the user's question to Gemini (via agy, the Antigravity CLI), get Google's perspective.
 
 ## Execution
 
@@ -31,7 +31,7 @@ $(code content)" | CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-ask-gemini ~/
 
 If Gemini fails (script exits non-zero or CLI not found):
 - Claude answers the question directly.
-- Include the specific failure reason from stderr (the script classifies errors as TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, NETWORK, CLI_ERROR, or CLI_NOT_FOUND).
+- Include the specific failure reason from stderr (the script classifies errors as TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, NETWORK, EMPTY_OUTPUT, CLI_ERROR, or CLI_NOT_FOUND).
 - Note in output: "⚠️ Gemini unavailable ([reason]) — answering with Claude only. For multi-provider perspectives, try `/pi-askall`."
 
 If the Bash tool was backgrounded or returned empty output, read the result from `~/.claude/logs/pi-gemini-last.out` (persisted by the script's `tee` safety net).
@@ -46,5 +46,5 @@ If Claude disagrees with any part of Gemini's answer, append Claude's own take s
 
 - Works in any directory (no git repo required)
 - Gemini excels at: broad ecosystem knowledge, alternative comparisons, Google-related tech
-- Image/screenshot analysis: Gemini CLI headless mode does not support images — use Claude's own multimodal capability instead
+- Image/screenshot analysis: agy headless mode does not support images — use Claude's own multimodal capability instead
 - Keep injected code context under 4000 chars — summarize or extract relevant sections for larger files

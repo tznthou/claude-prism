@@ -42,17 +42,16 @@ else
     warn "Claude Code CLI not found (not strictly required, but this toolkit is built for it)"
 fi
 
-# Gemini CLI
-if command -v gemini &>/dev/null; then
-    GEMINI_VER=$(gemini --version 2>/dev/null || echo "unknown")
-    ok "Gemini CLI found (v$GEMINI_VER)"
+# agy (Antigravity CLI) — Gemini provider (replaces @google/gemini-cli, sunset 2026-06-18)
+if command -v agy &>/dev/null; then
+    AGY_VER=$(agy --version 2>/dev/null || echo "unknown")
+    ok "agy CLI found (v$AGY_VER)"
 else
-    # Check npm global
-    if [[ -x "$HOME/.npm-global/bin/gemini" ]]; then
-        ok "Gemini CLI found at ~/.npm-global/bin/gemini"
+    if [[ -x "$HOME/.local/bin/agy" ]]; then
+        ok "agy CLI found at ~/.local/bin/agy"
     else
-        warn "Gemini CLI not found — /pi-ask-gemini, /pi-ui-design, /pi-ui-review, /pi-research will not work"
-        info "Install: npm install -g @google/gemini-cli"
+        warn "agy CLI not found — /pi-ask-gemini, /pi-ui-design, /pi-ui-review, /pi-research will not work"
+        info "Install: curl -fsSL https://antigravity.google/cli/install.sh | bash"
         PREREQ_OK=false
     fi
 fi

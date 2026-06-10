@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# call-gemini.sh — Gemini CLI wrapper for claude-prism
+# call-gemini.sh — agy (Antigravity CLI) wrapper for claude-prism
+# Gemini provider via Google AI Pro OAuth. Replaces @google/gemini-cli
+# (sunset 2026-06-18). Filename + [gemini] log tag kept for continuity.
 # Usage:
 #   call-gemini.sh "your prompt"
 #   echo "code" | call-gemini.sh "review this"
@@ -59,7 +61,7 @@ _log_signal() {
 trap '_log_signal HUP' HUP
 trap '_log_signal INT; exit 130' INT
 trap '_log_signal TERM; exit 143' TERM
-_log INFO "invoke ppid=$PPID stage=entry caller=\"$CALLER\" cwd=\"$CWD\" cc_ver=\"$CC_VER\""
+_log INFO "invoke ppid=$PPID stage=entry caller=\"$CALLER\" cwd=\"$CWD\" cc_ver=\"$CC_VER\" backend=agy"
 
 # --- Parse flags ---
 STAGE="parse_flags"
@@ -99,30 +101,36 @@ _log INFO "model=${MODEL:-(default)} prompt_len=${#PROMPT} dry_run=$DRY_RUN"
 # --- Dry run mode (no binary needed) ---
 STAGE="dry_run"
 if [[ "$DRY_RUN" == true ]]; then
-    echo "[DRY RUN] Would call: gemini -p \"...\"${MODEL:+ -m $MODEL}"
+    echo "[DRY RUN] Would call: agy -p \"...\"${MODEL:+ --model $MODEL}"
     echo "[DRY RUN] Prompt length: ${#PROMPT} chars"
     _log INFO "dry run complete"
     exit 0
 fi
 
-# --- Resolve gemini binary ---
+# --- Resolve agy binary ---
 STAGE="binary_resolve"
-GEMINI_BIN="${GEMINI_BIN:-}"
-if [[ -z "$GEMINI_BIN" ]]; then
+AGY_BIN="${AGY_BIN:-}"
+# GEMINI_BIN: deprecated alias from the pre-agy era; honored with a WARN so
+# existing setups keep working one release while they rename to AGY_BIN.
+if [[ -z "$AGY_BIN" && -n "${GEMINI_BIN:-}" ]]; then
+    AGY_BIN="$GEMINI_BIN"
+    _log WARN "GEMINI_BIN env-var is deprecated; rename to AGY_BIN"
+fi
+if [[ -z "$AGY_BIN" ]]; then
     for candidate in \
-        "$HOME/.npm-global/bin/gemini" \
-        "$(command -v gemini 2>/dev/null || true)" \
-        "/usr/local/bin/gemini"; do
+        "$HOME/.local/bin/agy" \
+        "$(command -v agy 2>/dev/null || true)" \
+        "/usr/local/bin/agy"; do
         if [[ -n "$candidate" && -x "$candidate" ]]; then
-            GEMINI_BIN="$candidate"
+            AGY_BIN="$candidate"
             break
         fi
     done
 fi
 
-if [[ -z "$GEMINI_BIN" ]]; then
-    _log ERROR "gemini CLI not found"
-    echo "Error: CLI_NOT_FOUND: Gemini CLI not installed. Install: npm install -g @google/gemini-cli" >&2
+if [[ -z "$AGY_BIN" ]]; then
+    _log ERROR "agy CLI not found"
+    echo "Error: CLI_NOT_FOUND: agy (Antigravity CLI) not installed. Install: curl -fsSL https://antigravity.google/cli/install.sh | bash" >&2
     exit 1
 fi
 
@@ -130,10 +138,10 @@ fi
 # Always pipe prompt via stdin to avoid exposing content in `ps` output.
 # Stream directly to stdout (no buffering) so callers that background this
 # script can still capture output in real time.
-# -p " " activates headless mode; Gemini appends it to stdin (harmless).
+# -p " " activates headless mode; agy appends it to stdin (harmless).
 STAGE="exec"
-CMD=("$GEMINI_BIN")
-[[ -n "$MODEL" ]] && CMD+=(-m "$MODEL")
+CMD=("$AGY_BIN")
+[[ -n "$MODEL" ]] && CMD+=(--model "$MODEL")
 
 ERR_TMP=$(mktemp)
 # Per-invocation OUT_TMP (v0.14.2+): prevents concurrent-tee interleaving when two
@@ -161,6 +169,11 @@ if ! [[ "$TIMEOUT_S" =~ ^[1-9][0-9]*$ ]] || (( TIMEOUT_S > 3600 )); then
     _log WARN "invalid CLAUDE_PRISM_TIMEOUT=$TIMEOUT_S (must be integer 1..3600) — falling back to 110"
     TIMEOUT_S=110
 fi
+
+# agy's own print-mode timeout (default 5m) must stay strictly behind the
+# wrapper's soft-timeout so the structured marker + rc=124 classification
+# fires first; +30s buffer, Go duration format.
+CMD+=(--print-timeout "$((TIMEOUT_S + 30))s")
 
 # Per-invocation marker: solves PID reuse false positives. mktemp guarantees
 # uniqueness; watcher writes non-empty content only when it actually fires, so
@@ -327,7 +340,7 @@ if { [[ $rc -eq 143 ]] || [[ $rc -eq 137 ]]; } && [[ -s "$TIMEOUT_MARKER" ]]; th
     # err_text_safe defends below).
     out_bytes=$([ -f "$OUT_TMP" ] && wc -c < "$OUT_TMP" 2>/dev/null | tr -d ' \n' || echo 0)
     echo "[CLAUDE-PRISM: soft-timeout at STAGE=exec after ${TIMEOUT_S}s]" >&2
-    _log ERROR "soft_timeout killed gemini CLI after ${TIMEOUT_S}s output_bytes=$out_bytes first_byte_ms=$FIRST_BYTE_MS first_byte_method=$FIRST_BYTE_METHOD"
+    _log ERROR "soft_timeout killed agy after ${TIMEOUT_S}s output_bytes=$out_bytes first_byte_ms=$FIRST_BYTE_MS first_byte_method=$FIRST_BYTE_METHOD"
     exit 124
 fi
 
@@ -336,26 +349,44 @@ if [[ $rc -ne 0 ]]; then
     # Classify the error for better diagnostics
     err_lower=$(printf '%s' "$err_text" | tr '[:upper:]' '[:lower:]')
     if [[ $rc -eq 137 || $rc -eq 143 ]]; then
-        diag="TIMEOUT: Gemini CLI was killed (signal $((rc - 128))). Likely capacity issue or search grounding delay."
+        diag="TIMEOUT: agy was killed (signal $((rc - 128))). Likely capacity issue or search grounding delay."
     elif [[ "$err_lower" =~ 429|rate.limit|quota|capacity ]]; then
-        diag="RATE_LIMIT: Gemini returned 429/quota error. Try again later or use an API key (GEMINI_API_KEY)."
+        diag="RATE_LIMIT: Gemini backend returned 429/quota error. Check Google AI Pro quota or try again later."
     elif [[ "$err_lower" =~ permission.denied|eperm ]]; then
         diag="PERMISSION: Filesystem permission denied. Check temp directory and file permissions."
     elif [[ "$err_lower" =~ auth|oauth|token|credential|403 ]]; then
-        diag="AUTH_ERROR: Gemini authentication failed. Check OAuth session or API key."
+        diag="AUTH_ERROR: agy authentication failed. Run agy interactively to re-login."
     elif [[ "$err_lower" =~ network|connect|econnrefused|etimedout|dns ]]; then
-        diag="NETWORK: Cannot reach Gemini API. Check internet connection."
+        diag="NETWORK: Cannot reach the Gemini backend. Check internet connection."
     else
-        diag="CLI_ERROR: Gemini CLI exited with code $rc."
+        diag="CLI_ERROR: agy exited with code $rc."
     fi
     # Strip newlines from $err_text before logging — CLI stderr can echo
     # prompt fragments that, if injected with "\n[INFO] [pid=N] ..." tokens,
     # would forge log entries (OWASP A09 Log Injection).
     err_text_safe=$(printf '%s' "$err_text" | tr '\n' ' ')
-    _log ERROR "gemini call failed ($diag): $err_text_safe"
+    _log ERROR "agy call failed ($diag): $err_text_safe"
     echo "Error: $diag" >&2
     [[ -n "$err_text" ]] && echo "Details: $err_text" >&2
     exit $rc
+fi
+
+# --- rc=0 content classification (agy migration, 2026-06-10) ---
+# Empirically verified on agy 1.0.6: two failure modes bypass stderr/rc
+# entirely and would otherwise be logged as success —
+#   network failure  → rc=0, empty stdout, empty stderr
+#   missing auth     → rc=0, OAuth prompt text on STDOUT
+# Classify on output content so the skill layer sees a real error instead of
+# an empty file or an OAuth URL masquerading as a model response.
+if [[ ! -f "$OUT_TMP" || ! -s "$OUT_TMP" ]]; then
+    _log ERROR "agy call failed (EMPTY_OUTPUT: rc=0 with no output — likely network/upstream failure)"
+    echo "Error: EMPTY_OUTPUT: agy exited 0 but produced no output. Likely network or upstream failure." >&2
+    exit 1
+fi
+if head -1 "$OUT_TMP" | grep -q '^Authentication required\.'; then
+    _log ERROR "agy call failed (AUTH_ERROR: rc=0 with OAuth prompt — not logged in)"
+    echo "Error: AUTH_ERROR: agy is not authenticated. Run agy interactively to log in." >&2
+    exit 1
 fi
 
 STAGE="done"
