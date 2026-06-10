@@ -40,7 +40,7 @@ There's a deeper structural issue: when Claude Code writes your code **and** rev
 |---|---|---|
 | **Provider diversity** | Codex + Gemini + Claude (3 independent models) | Multiple agents, same underlying model |
 | **Blind spot coverage** | Cross-training-data: each model catches what others miss | Same training data bias amplified across agents |
-| **Cost** | Near-zero (Codex CLI + Gemini CLI free tiers) | $15–25 per PR (official tools, Team/Enterprise plans) |
+| **Cost** | Near-zero (runs on existing Codex CLI / Antigravity CLI subscriptions) | $15–25 per PR (official tools, Team/Enterprise plans) |
 | **Speed** | 1–2 minutes | ~20 minutes |
 | **Availability** | Anyone with CLI access | Paid team plans only |
 | **Scoring method** | Evidence-based formula ([open spec](spec/confidence-scoring-v1.md)) — deterministic core, same evidence = same score | LLM self-assessment — AI grades its own confidence |
@@ -80,33 +80,16 @@ claude-prism's [Confidence Scoring Framework](spec/confidence-scoring-v1.md) wor
 | Tool | Required | Install |
 |------|----------|---------|
 | [Claude Code](https://claude.com/claude-code) | Yes | `npm install -g @anthropic-ai/claude-code` |
-| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | For Gemini commands | `npm install -g @google/gemini-cli` |
+| [Antigravity CLI (`agy`)](https://github.com/google-antigravity/antigravity-cli) | For Gemini commands | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` |
 | [Codex CLI](https://github.com/openai/codex) | For Codex commands | `npm install -g @openai/codex` |
 
-> **⚠️ Gemini CLI Service Update (effective March 25, 2026)**
+> **✅ Antigravity CLI Migration (completed June 2026)**
 >
-> Google is [changing how Gemini CLI routes traffic](https://github.com/google-gemini/gemini-cli/discussions/22970). Free tier users will be limited to Flash models only (no Pro), and all users may experience rate limiting during peak hours. If you encounter timeouts:
+> Google [transitioned Gemini CLI to Antigravity CLI](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/) at I/O 2026 — `@google/gemini-cli` stopped serving Google AI Pro, Ultra, and free Code Assist users on **June 18, 2026**. claude-prism migrated ahead of the cutoff: `call-gemini.sh` now drives [`agy`](https://github.com/google-antigravity/antigravity-cli) non-interactively via Google AI Pro OAuth.
 >
-> ```bash
-> # Option 1: Use Flash (faster, higher coding benchmark scores than Pro)
-> export GEMINI_MODEL="gemini-3-flash-preview"
+> **What stays the same**: the script name, the `[gemini]` log tag, and the `GEMINI_MODEL` override all keep working — existing logs and commands are unaffected.
 >
-> # Option 2: Use your own API key for self-managed quota
-> export GEMINI_API_KEY="your-key-from-ai-studio"
-> ```
->
-> See [Environment Variables](#environment-variables) for details.
-
-> **⚠️ Antigravity CLI Transition (announced May 19, 2026)**
->
-> Google has [announced the transition of Gemini CLI to Antigravity CLI](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/) at I/O 2026. **Gemini CLI will stop serving requests on June 18, 2026** for Google AI Pro, Ultra, and free Code Assist users. Enterprise license users keep current access.
->
-> **What this means for claude-prism users**:
->
-> - **Until June 18, 2026** — wrappers continue working as-is; no action required.
-> - **After June 18, 2026** — [Antigravity CLI (`agy`)](https://github.com/google-antigravity/antigravity-cli) ships as a TUI rather than a headless tool, so the current `call-gemini.sh` invocation pattern (stdin pipe + stdout capture) is not compatible. A migration path is under evaluation: wait for an `agy` headless flag, switch to Gemini API HTTP, or deprecate the gemini provider.
->
-> Wrappers will be updated before the cutoff. Evaluation starts the week of May 25, 2026.
+> **What changed**: authentication is OAuth-only (run `agy` once to log in; `GEMINI_API_KEY` is no longer read by the wrapper), and the binary path override is now `AGY_BIN` (`GEMINI_BIN` is honored as a deprecated alias only if it points to an `agy` binary). If you still have `@google/gemini-cli` installed, it is no longer used — you can uninstall it.
 
 ### Install
 
@@ -292,7 +275,7 @@ Best for complex decisions; for simple task breakdown, use Claude Code's built-i
 flowchart LR
     User["👤 You"] <--> Claude["🟣 Claude Code\n(Orchestrator)"]
     Claude -->|"/pi-ask-codex\n/pi-askall\n/pi-code-review\n/pi-multi-review\n/pi-plan"| Codex["🟢 Codex CLI"]
-    Claude -->|"/pi-ask-gemini\n/pi-askall\n/pi-fact-check\n/pi-ui-design\n/pi-ui-review\n/pi-research\n/pi-multi-review\n/pi-plan"| Gemini["🔵 Gemini CLI"]
+    Claude -->|"/pi-ask-gemini\n/pi-askall\n/pi-fact-check\n/pi-ui-design\n/pi-ui-review\n/pi-research\n/pi-multi-review\n/pi-plan"| Gemini["🔵 agy (Antigravity CLI)"]
     CI["⚙️ GitHub Actions"] -->|"ci-review.sh"| GeminiAPI["🔵 Gemini API"]
     CI -->|"ci-review.sh"| OpenAIAPI["🟢 OpenAI API"]
     CI -->|"synthesis"| ClaudeAPI["🟣 Claude API"]
@@ -383,7 +366,7 @@ Summary, per-layer data, and product decision trace: [docs/research/bash-tool-pa
 | Markdown | Slash command definitions | Claude Code reads these as instructions |
 | Claude Code | Orchestrator | Reads commands, dispatches via sub-agent fan-out |
 | Codex CLI | OpenAI access | Code review and Q&A (model configurable) |
-| Gemini CLI | Google access | Research, UI review, Q&A (model configurable) |
+| agy (Antigravity CLI) | Google access | Research, UI review, Q&A (model configurable) |
 | GitHub Actions | CI/CD integration | Automated PR review via REST APIs |
 
 ## Project Structure
@@ -403,7 +386,7 @@ claude-prism/
 ├── commands/                   # Slash command definitions (Markdown)
 ├── scripts/                    # CLI wrappers & utilities (Bash)
 │   ├── call-codex.sh           # Codex CLI wrapper (with soft-timeout)
-│   ├── call-gemini.sh          # Gemini CLI wrapper (with soft-timeout)
+│   ├── call-gemini.sh          # agy (Antigravity CLI) wrapper (with soft-timeout)
 │   ├── detect-domain.sh        # Domain detection for smart routing
 │   ├── analyze-log.sh          # Invocation lifecycle diagnostics
 │   ├── ci-review.sh            # CI/CD review orchestrator (curl APIs)
@@ -437,10 +420,10 @@ Installed to:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GEMINI_MODEL` | (CLI default) | Override Gemini model (e.g. `gemini-3-flash-preview`) |
+| `GEMINI_MODEL` | (CLI default) | Override Gemini model (e.g. `gemini-3-flash-preview`), passed to `agy --model` |
 | `CODEX_MODEL` | (CLI default) | Override Codex model (e.g. `gpt-5.3-codex`) |
-| `GEMINI_API_KEY` | (none) | Use your own AI Studio API key instead of OAuth ([get one](https://aistudio.google.com/apikey)) |
-| `GEMINI_BIN` | (auto-detect) | Path to gemini binary |
+| `AGY_BIN` | (auto-detect) | Path to the `agy` binary |
+| `GEMINI_BIN` | — | Deprecated alias for `AGY_BIN`; honored with a WARN only if it points to an `agy` binary |
 | `CODEX_BIN` | (auto-detect) | Path to codex binary |
 | `MULTI_AI_LOG_DIR` | `~/.claude/logs` | Log directory |
 | `CLAUDE_PRISM_TIMEOUT` (v0.14.0+) | `110` | Soft-timeout wall-clock limit in seconds, range 1..3600. Invalid values fall back to 110 with a WARN log entry. When exceeded, the wrapper emits rc=124 + stderr sentinel + `soft_timeout` log event instead of being silently SIGKILL'd by Claude Code's harness watchdog around the 130s mark. Widen per-invocation for known-long runs: `CLAUDE_PRISM_TIMEOUT=180 ./call-codex.sh "40KB review prompt"` |
@@ -451,9 +434,6 @@ By default, scripts defer to each CLI's built-in default model — no configurat
 # Shell profile (~/.zshrc or ~/.bashrc)
 export GEMINI_MODEL="gemini-3-flash-preview"
 export CODEX_MODEL="gpt-5.3-codex"
-
-# Optional: use your own API key for direct quota control
-export GEMINI_API_KEY="your-key-from-ai-studio"
 
 # Or per-invocation via the -m flag
 ~/.claude/scripts/call-gemini.sh -m gemini-3-flash-preview "your prompt"
@@ -507,7 +487,7 @@ Everything beyond "how to install and use" lives in [`docs/`](docs/):
 
 With logging enabled (default), check `~/.claude/logs/multi-ai.log` to verify. Each call is timestamped with model name and prompt/response length.
 
-**Q: What if I only have Gemini CLI installed?**
+**Q: What if I only have one provider CLI installed?**
 
 That's fine. All commands include graceful degradation with **structured error diagnostics** — if a provider is unavailable, the failure message includes the specific reason (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, SANDBOX, NETWORK, EMPTY_OUTPUT, CLI_ERROR, or CLI_NOT_FOUND) and suggests an alternative command. `/pi-multi-review` and `/pi-askall` will use Claude + the available provider (two perspectives instead of three). `/pi-code-review` will fall back to a Claude-only review with a caveat note and suggest `/pi-multi-review`. `/pi-fact-check` and `/pi-research` both use dual-track (Gemini + WebSearch simultaneously); if both fail, falls back to Claude's training data.
 
@@ -519,9 +499,9 @@ Claude handles it. If Codex or Gemini doesn't follow the requested emoji/score f
 
 See [docs/cost.md](docs/cost.md) for per-command token consumption ranges and cost control tools.
 
-**Q: Gemini CLI keeps timing out or responding very slowly?**
+**Q: The Gemini provider keeps timing out or responding very slowly?**
 
-Likely caused by Pro model rate limiting. Two fixes: (1) Set `GEMINI_MODEL="gemini-3-flash-preview"` — Flash is faster and scores higher on coding benchmarks (SWE-bench: Flash 78% vs Pro 76.2%). (2) Set `GEMINI_API_KEY` with your own [AI Studio](https://aistudio.google.com/apikey) key for self-managed quota. See [Gemini CLI Service Update](#prerequisites).
+Likely caused by Pro model rate limiting. Set `GEMINI_MODEL="gemini-3-flash-preview"` — Flash is faster and scores higher on coding benchmarks (SWE-bench: Flash 78% vs Pro 76.2%). If the symptom is empty output rather than slowness, run `agy` once interactively to confirm you are logged in — `agy` reports some auth and network failures as a normal exit with empty output, which the wrapper classifies as `EMPTY_OUTPUT` / `AUTH_ERROR`.
 
 **Q: Can I use this with other Claude Code setups?**
 
