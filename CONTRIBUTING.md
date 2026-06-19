@@ -27,7 +27,7 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 | Bash 3.2+ | Yes | macOS ships with 3.2 — all scripts must be compatible |
 | [ShellCheck](https://www.shellcheck.net/) | For linting | `brew install shellcheck` or `apt install shellcheck` |
 | [Claude Code](https://claude.com/claude-code) | For testing | The orchestrator that runs our commands |
-| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | Optional | For testing Gemini-related commands |
+| [Antigravity CLI (agy)](https://github.com/google-antigravity/antigravity-cli) | Optional | For testing Gemini-provider commands |
 | [Codex CLI](https://github.com/openai/codex) | Optional | For testing Codex-related commands |
 
 ### Setup

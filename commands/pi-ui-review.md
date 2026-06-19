@@ -5,9 +5,9 @@ description: UI/UX review via Gemini — accessibility, responsive design, compo
 
 # UI/UX Review via Gemini
 
-Use Gemini CLI to perform UI/UX review on frontend code. Gemini brings Google Design ecosystem knowledge and frontend best practices.
+Use Gemini (via agy, the Antigravity CLI) to perform UI/UX review on frontend code. Gemini brings Google Design ecosystem knowledge and frontend best practices.
 
-**Limitation**: Gemini CLI headless mode does not support image input. If the user provides screenshots, use Claude's own multimodal capability.
+**Limitation**: the agy-based headless wrapper does not pass image input. If the user provides screenshots, use Claude's own multimodal capability.
 
 ## Execution
 
@@ -108,7 +108,7 @@ If the Bash tool was backgrounded or returned empty output, read the result from
 
 ### 5. Screenshot analysis (if provided)
 
-Skip Gemini CLI. Use Claude's Read tool to view the screenshot, then analyze with multimodal:
+Skip Gemini. Use Claude's Read tool to view the screenshot, then analyze with multimodal:
 - Visual hierarchy and information architecture
 - Color contrast and readability
 - Typography and spacing

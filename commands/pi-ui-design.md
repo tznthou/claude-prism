@@ -5,7 +5,7 @@ description: HTML mockup generation via Gemini — from design spec to previewab
 
 # UI/UX Mockup via Gemini
 
-Use Gemini CLI to generate a previewable HTML mockup from a design specification document. The mockup is a single self-contained HTML file (Tailwind CDN) that can be opened in a browser for visual confirmation before implementation.
+Use Gemini (via agy, the Antigravity CLI) to generate a previewable HTML mockup from a design specification document. The mockup is a single self-contained HTML file (Tailwind CDN) that can be opened in a browser for visual confirmation before implementation.
 
 **Workflow**: `Design spec → /pi-ui-design → Browser preview → Confirm → Claude Code implements`
 

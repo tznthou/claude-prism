@@ -2,7 +2,9 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## v0.15.0 (2026-06-18) — Gemini provider migrated to agy (Antigravity CLI)
+
+**The Gemini provider's `call-gemini.sh` now drives `agy` (Antigravity CLI) over Google AI Pro OAuth, shipped on the June 18, 2026 `@google/gemini-cli` sunset date.** The wrapper keeps its filename and `[gemini]` log tag for log-contract continuity, and adds rc=0 content classification to catch agy's silent network/auth failures (empirically verified against agy 1.0.6–1.0.9). This release also wires the full 62-scenario smoke suite into CI behind a tag/`package.json` version-sync gate, and bundles the pi-plan synthesis checkpoint + conflict-resolution mechanisms adapted from compound-engineering's ce-plan.
 
 #### Changed (Gemini provider — agy migration)
 
