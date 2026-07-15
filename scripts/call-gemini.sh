@@ -96,6 +96,18 @@ if [[ ! -t 0 && ( -p /dev/stdin || -f /dev/stdin ) ]]; then
 ${STDIN_DATA}"
 fi
 
+# --- ARG_MAX guard (agy 1.1.2+ prompt-via-arg limitation) ---
+# Gemini-only: agy does not support stdin or --prompt-file; prompt is passed
+# as -p arg, subject to OS execve limits (macOS ~1MB, Linux ~128KB per-arg).
+# call-codex.sh pipes via stdin and is not subject to this limit.
+# Guard at 120000 bytes (~117KB) to stay under Linux's per-arg ceiling.
+PROMPT_BYTES=${#PROMPT}
+if (( PROMPT_BYTES > 120000 )); then
+    _log ERROR "prompt_too_large prompt_bytes=$PROMPT_BYTES limit=120000"
+    echo "Error: PROMPT_TOO_LARGE: prompt is ${PROMPT_BYTES} bytes, exceeds 120KB limit for agy command-line delivery. Reduce input size or split into smaller calls." >&2
+    exit 1
+fi
+
 _log INFO "model=${MODEL:-(default)} prompt_len=${#PROMPT} dry_run=$DRY_RUN"
 
 # --- Dry run mode (no binary needed) ---
@@ -143,10 +155,14 @@ if [[ -z "$AGY_BIN" ]]; then
 fi
 
 # --- Execute ---
-# Always pipe prompt via stdin to avoid exposing content in `ps` output.
+# NOTE: prompt delivery DIVERGES from call-codex.sh here.
+#   gemini: -p "$PROMPT" < /dev/null  (agy 1.1.2+ treats -p value as prompt, ignores stdin)
+#   codex:  printf | codex exec ... -  (stdin pipe, no ARG_MAX limit)
+# Remaining blocks (timeout/heartbeat/first-byte/OUT_TMP) still mirror.
+# Trade-off: prompt content is visible in `ps` output; acceptable until agy
+# adds --prompt-file or stdin mode.
 # Stream directly to stdout (no buffering) so callers that background this
 # script can still capture output in real time.
-# -p " " activates headless mode; agy appends it to stdin (harmless).
 STAGE="exec"
 CMD=("$AGY_BIN")
 [[ -n "$MODEL" ]] && CMD+=(--model "$MODEL")
@@ -215,7 +231,7 @@ if [ -f "$OUT_TMP" ]; then
     : > "$OUT_TMP" 2>/dev/null || true
 fi
 
-printf '%s' "$PROMPT" | "${CMD[@]}" -p " " 2>"$ERR_TMP" | tee "$OUT_TMP" &
+"${CMD[@]}" -p "$PROMPT" < /dev/null 2>"$ERR_TMP" | tee "$OUT_TMP" &
 LAST=$!
 
 # --- First-byte detector subshell (Phase A2 tri-state, v0.14.6+) ---

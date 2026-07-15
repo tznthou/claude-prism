@@ -420,8 +420,8 @@ claude-prism/
 
 | 變數 | 預設值 | 說明 |
 |------|--------|------|
-| `GEMINI_MODEL` | （CLI 預設） | 覆蓋 Gemini 模型（如 `gemini-3-flash-preview`），透過 `agy --model` 傳遞 |
-| `CODEX_MODEL` | （CLI 預設） | 覆蓋 Codex 模型（如 `gpt-5.3-codex`） |
+| `GEMINI_MODEL` | （CLI 預設） | 覆蓋 Gemini 模型——使用 agy display-name 格式（如 `Gemini 3.5 Flash (Medium)`）；執行 `agy models` 查看可用名稱 |
+| `CODEX_MODEL` | （CLI 預設） | 覆蓋 Codex 模型（如 `o3`）；執行 `codex doctor` 查看目前預設 |
 | `AGY_BIN` | （自動偵測） | `agy` 執行檔路徑 |
 | `GEMINI_BIN` | — | `AGY_BIN` 的過渡別名（已棄用）；僅在指向 `agy` 執行檔時接受，並寫入 WARN log |
 | `CODEX_BIN` | （自動偵測） | Codex 執行檔路徑 |
@@ -432,11 +432,11 @@ claude-prism/
 
 ```bash
 # Shell 設定檔（~/.zshrc 或 ~/.bashrc）
-export GEMINI_MODEL="gemini-3-flash-preview"
-export CODEX_MODEL="gpt-5.3-codex"
+export GEMINI_MODEL="Gemini 3.5 Flash (Medium)"  # 執行 `agy models` 查完整清單
+export CODEX_MODEL="o3"
 
 # 或單次呼叫時用 -m flag
-~/.claude/scripts/call-gemini.sh -m gemini-3-flash-preview "your prompt"
+~/.claude/scripts/call-gemini.sh -m "Gemini 3.5 Flash (Medium)" "your prompt"
 ```
 
 ### Script 功能
@@ -451,7 +451,7 @@ export CODEX_MODEL="gpt-5.3-codex"
 | **Binary 偵測** | 自動搜尋多個路徑找 CLI 執行檔 |
 | **Logging** | 每次呼叫記錄到 `~/.claude/logs/multi-ai.log`（含時間戳） |
 | **`--dry-run`** | 測試模式，不呼叫 API（不消耗 token） |
-| **Stdin 管線** | `echo "code" \| call-gemini.sh "prompt"` 處理長輸入 |
+| **Stdin 管線** | `echo "code" \| call-gemini.sh "prompt"` 處理長輸入。注意：Gemini prompt（含附加的 stdin）受 agy 命令列傳遞限制，上限約 120 KB；Codex 無此限制（stdin pipe） |
 | **Model 切換** | `-m model-name` 指定不同模型 |
 | **Soft-timeout**（v0.14.0+） | Provider CLI 呼叫被 `CLAUDE_PRISM_TIMEOUT` 掛鐘限制（預設 110 秒，範圍 1..3600）。超時時結構化退出：rc=124、stderr sentinel、`soft_timeout` log event 讓 `analyze-log.sh` 歸類為 SOFT_TIMEOUT——比 Claude Code ~130 秒的 harness watchdog 更早觸發 |
 
@@ -501,7 +501,7 @@ Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 emoji/score 格式
 
 **Q: Gemini provider 一直 timeout 或回應很慢？**
 
-很可能是 Pro 模型限流。設定 `GEMINI_MODEL="gemini-3-flash-preview"`——Flash 更快，coding benchmark 分數也更高（SWE-bench：Flash 78% vs Pro 76.2%）。如果症狀是空輸出而不是慢，先互動式執行一次 `agy` 確認登入狀態——`agy` 遇到部分認證與網路錯誤時會以正常結束碼回傳空輸出，wrapper 會將其分類為 `EMPTY_OUTPUT` / `AUTH_ERROR`。
+很可能是 Pro 模型限流。設定 `GEMINI_MODEL="Gemini 3.5 Flash (Medium)"`（執行 `agy models` 確認名稱）——Flash 更快，coding benchmark 分數也更高。如果症狀是空輸出而不是慢，先互動式執行一次 `agy` 確認登入狀態——`agy` 遇到部分認證與網路錯誤時會以正常結束碼回傳空輸出，wrapper 會將其分類為 `EMPTY_OUTPUT` / `AUTH_ERROR`。
 
 **Q: 可以搭配其他 Claude Code 設定使用嗎？**
 

@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.15.1 (2026-07-15) — agy 1.1.2 compatibility fix + ARG_MAX guard
+
+#### Changed (agy 1.1.2 compatibility)
+
+- **`scripts/call-gemini.sh` — prompt delivery migrated from stdin pipe to `-p` arg** — agy 1.1.2 changed `-p` semantics: the flag value is now treated as the prompt directly and stdin is ignored. Prompt delivery changed from `printf '%s' "$PROMPT" | agy -p " "` to `agy -p "$PROMPT" < /dev/null`. The `< /dev/null` isolates stdin so agy does not hang on inherited non-EOF file descriptors from Claude Code subshells. `call-codex.sh` is unaffected (codex uses `printf | codex exec ... -` stdin pipe)
+- **`README.md` + `README.zh-TW.md` — model examples updated to agy display-name format** — agy 1.1.2 model catalog uses display names with spaces and parentheses (e.g. `Gemini 3.5 Flash (Medium)`) instead of slugs (`gemini-3-flash-preview`). Environment variable table, shell profile examples, FAQ, and per-invocation `-m` examples all updated; `agy models` / `codex doctor` hints added
+- **`scripts/call-gemini.sh` + `scripts/call-codex.sh` — "Keep in sync" annotations updated** — exec block comments now document the prompt delivery divergence (gemini: `-p` arg; codex: stdin pipe) while noting that remaining blocks (timeout/heartbeat/first-byte/OUT_TMP) still mirror
+
+#### Added
+
+- **`scripts/call-gemini.sh` — ARG_MAX 120KB size guard** — `-p "$PROMPT"` is subject to OS `execve` limits (macOS ~1MB, Linux ~128KB per-arg). Guard at 120,000 bytes fires before exec with structured `PROMPT_TOO_LARGE` error + log. No workaround until agy adds `--prompt-file` or stdin mode. `call-codex.sh` unaffected (stdin pipe has no ARG_MAX limit)
+
+---
+
 ## v0.15.0 (2026-06-18) — Gemini provider migrated to agy (Antigravity CLI)
 
 **The Gemini provider's `call-gemini.sh` now drives `agy` (Antigravity CLI) over Google AI Pro OAuth, shipped on the June 18, 2026 `@google/gemini-cli` sunset date.** The wrapper keeps its filename and `[gemini]` log tag for log-contract continuity, and adds rc=0 content classification to catch agy's silent network/auth failures (empirically verified against agy 1.0.6–1.0.9). This release also wires the full 62-scenario smoke suite into CI behind a tag/`package.json` version-sync gate, and bundles the pi-plan synthesis checkpoint + conflict-resolution mechanisms adapted from compound-engineering's ce-plan.

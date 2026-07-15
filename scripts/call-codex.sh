@@ -151,7 +151,11 @@ if [[ -z "$CODEX_BIN" ]]; then
 fi
 
 # --- Execute ---
-# Always pipe prompt via stdin to avoid exposing content in `ps` output.
+# NOTE: prompt delivery DIVERGES from call-gemini.sh here.
+#   codex:  printf | codex exec ... -  (stdin pipe, no ARG_MAX limit)
+#   gemini: -p "$PROMPT" < /dev/null  (agy 1.1.2+ forced; has ARG_MAX guard)
+# Remaining blocks (timeout/heartbeat/first-byte/OUT_TMP) still mirror.
+# Stdin pipe avoids exposing content in `ps` output.
 # Stream directly to stdout (no buffering) so callers that background this
 # script can still capture output in real time.
 STAGE="exec"

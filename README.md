@@ -420,8 +420,8 @@ Installed to:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GEMINI_MODEL` | (CLI default) | Override Gemini model (e.g. `gemini-3-flash-preview`), passed to `agy --model` |
-| `CODEX_MODEL` | (CLI default) | Override Codex model (e.g. `gpt-5.3-codex`) |
+| `GEMINI_MODEL` | (CLI default) | Override Gemini model — uses agy display-name format (e.g. `Gemini 3.5 Flash (Medium)`); run `agy models` to list available names |
+| `CODEX_MODEL` | (CLI default) | Override Codex model (e.g. `o3`); run `codex doctor` to see the current default |
 | `AGY_BIN` | (auto-detect) | Path to the `agy` binary |
 | `GEMINI_BIN` | — | Deprecated alias for `AGY_BIN`; honored with a WARN only if it points to an `agy` binary |
 | `CODEX_BIN` | (auto-detect) | Path to codex binary |
@@ -432,11 +432,11 @@ By default, scripts defer to each CLI's built-in default model — no configurat
 
 ```bash
 # Shell profile (~/.zshrc or ~/.bashrc)
-export GEMINI_MODEL="gemini-3-flash-preview"
-export CODEX_MODEL="gpt-5.3-codex"
+export GEMINI_MODEL="Gemini 3.5 Flash (Medium)"  # run `agy models` for full list
+export CODEX_MODEL="o3"
 
 # Or per-invocation via the -m flag
-~/.claude/scripts/call-gemini.sh -m gemini-3-flash-preview "your prompt"
+~/.claude/scripts/call-gemini.sh -m "Gemini 3.5 Flash (Medium)" "your prompt"
 ```
 
 ### Script Features
@@ -451,7 +451,7 @@ Both wrapper scripts support:
 | **Binary detection** | Searches multiple paths for the CLI binary |
 | **Logging** | Every call logged to `~/.claude/logs/multi-ai.log` with timestamps |
 | **`--dry-run`** | Test without calling the API (no tokens consumed) |
-| **Stdin piping** | `echo "code" \| call-gemini.sh "prompt"` for long inputs |
+| **Stdin piping** | `echo "code" \| call-gemini.sh "prompt"` for long inputs. Note: Gemini prompts (including appended stdin) are capped at ~120 KB due to agy's command-line delivery; Codex has no such limit (stdin pipe) |
 | **Model override** | `-m model-name` to use a different model |
 | **Soft-timeout** (v0.14.0+) | Provider CLI calls capped at `CLAUDE_PRISM_TIMEOUT` seconds (default 110, range 1..3600). On exceed: rc=124, stderr sentinel, `soft_timeout` log event classified as SOFT_TIMEOUT by `analyze-log.sh` — fires *before* Claude Code's ~130s harness watchdog |
 
@@ -501,7 +501,7 @@ See [docs/cost.md](docs/cost.md) for per-command token consumption ranges and co
 
 **Q: The Gemini provider keeps timing out or responding very slowly?**
 
-Likely caused by Pro model rate limiting. Set `GEMINI_MODEL="gemini-3-flash-preview"` — Flash is faster and scores higher on coding benchmarks (SWE-bench: Flash 78% vs Pro 76.2%). If the symptom is empty output rather than slowness, run `agy` once interactively to confirm you are logged in — `agy` reports some auth and network failures as a normal exit with empty output, which the wrapper classifies as `EMPTY_OUTPUT` / `AUTH_ERROR`.
+Likely caused by Pro model rate limiting. Set `GEMINI_MODEL="Gemini 3.5 Flash (Medium)"` (run `agy models` for the exact name) — Flash is faster and scores higher on coding benchmarks. If the symptom is empty output rather than slowness, run `agy` once interactively to confirm you are logged in — `agy` reports some auth and network failures as a normal exit with empty output, which the wrapper classifies as `EMPTY_OUTPUT` / `AUTH_ERROR`.
 
 **Q: Can I use this with other Claude Code setups?**
 
