@@ -70,11 +70,16 @@ git diff main...HEAD
 
 ### 3. Build prompt and call Codex
 
-```bash
-# CLAUDE_PRISM_TIMEOUT=540: 60s buffer below 600s Bash tool ceiling so
-# wrapper soft-timeout fires first (structured error log). Keep in sync:
-# pi-plan.md, pi-multi-review.md, pi-code-review.md.
-CLAUDE_PRISM_TIMEOUT=540 CLAUDE_PRISM_CALLER=pi-code-review ~/.claude/scripts/call-codex.sh "You are performing an adversarial code review.
+**Step 3a — Persist the full prompt (framing + code) to a temp file.** Always use the stdin path regardless of code size — it avoids ARG_MAX limits and keeps one invocation shape:
+
+1. Bash: `PROMPT_FILE=$(mktemp -t prism-review-XXXXXX.md) && echo "$PROMPT_FILE"` — capture the path.
+2. Use the Write tool to write the following prompt (with `$(...)` placeholders filled in) to that path:
+
+```
+You get exactly one turn: do not ask clarifying questions.
+If context is missing, state your assumptions and answer anyway.
+
+You are performing an adversarial code review.
 Your job is to break confidence in this change, not to validate it. Default to skepticism — assume the change can fail in subtle, high-cost, or user-visible ways until the evidence says otherwise. Do not give credit for good intent, partial fixes, or likely follow-up work.
 
 Attack surface — prioritize these failure modes:
@@ -98,12 +103,6 @@ $(guideline content from Step 1.5)
 Flag any violations of these guidelines as separate issues.
 $(end if)
 
-Finding bar — every finding MUST answer:
-1. What can go wrong?
-2. Why is this code path vulnerable?
-3. What is the likely impact (data loss, downtime, security breach, silent corruption)?
-4. What concrete change would reduce the risk?
-
 DO NOT flag:
 - Pre-existing issues not introduced in this diff
 - Issues that linters or formatters would catch (eslint, prettier, etc.)
@@ -111,23 +110,35 @@ DO NOT flag:
 - Lines with explicit lint-ignore / noqa / @ts-ignore comments
 - General 'could be better' suggestions without concrete failure scenario
 
-Calibration: Prefer one strong finding over several weak ones. Do not dilute serious issues with filler. If the change looks safe, say so directly.
+Output format — one block per finding, exactly this structure:
 
-Final self-check: Before outputting, verify each finding is adversarial (not stylistic), tied to a concrete code location, plausible under a real failure scenario, and actionable.
+[CRITICAL|MEDIUM|SUGGESTION] file:line — one-line title
+- Failure scenario: what goes wrong, and why this code path allows it
+- Impact: data loss / downtime / security breach / silent corruption / ...
+- Fix: the concrete change that reduces the risk
 
-Output format:
-- Label each issue with severity: 🔴 Critical / 🟡 Medium / 🟢 Suggestion
-- Include specific line numbers and fix suggestions
-- End with an overall score (1-10)
+At most 8 findings — if you found more, keep the highest-impact 8. Prefer one strong finding over several weak ones; do not dilute serious issues with filler.
+
+End with exactly one line:
+VERDICT: safe | needs-fixes | do-not-merge
+If the change looks safe, say VERDICT: safe directly — do not invent findings to seem thorough.
+
+Final self-check: before outputting, verify each finding is adversarial (not stylistic), tied to a concrete code location, plausible under a real failure scenario, and actionable.
 
 Code:
-$(code content)"
+$(code content)
 ```
 
-For long code (>3000 chars), use stdin mode:
+**Step 3b — Call Codex with the prompt file on stdin:**
+
 ```bash
-echo "prompt + code" | CLAUDE_PRISM_TIMEOUT=540 CLAUDE_PRISM_CALLER=pi-code-review ~/.claude/scripts/call-codex.sh "review"
+# CLAUDE_PRISM_TIMEOUT=540: 60s buffer below 600s Bash tool ceiling so
+# wrapper soft-timeout fires first (structured error log). Keep in sync:
+# pi-plan.md, pi-multi-review.md, pi-code-review.md.
+CLAUDE_PRISM_TIMEOUT=540 CLAUDE_PRISM_CALLER=pi-code-review ~/.claude/scripts/call-codex.sh "adversarial code review" < "$PROMPT_FILE"
 ```
+
+The CLI argument is a short label — the actual prompt travels via stdin.
 
 ### 4. Handle failures and non-conforming output
 
@@ -136,9 +147,9 @@ echo "prompt + code" | CLAUDE_PRISM_TIMEOUT=540 CLAUDE_PRISM_CALLER=pi-code-revi
 - Include the specific failure reason from stderr (TIMEOUT, RATE_LIMIT, AUTH_ERROR, SANDBOX, NETWORK, CLI_ERROR, or CLI_NOT_FOUND).
 - Note in output: "⚠️ Codex unavailable ([reason]) — review conducted by Claude only (same-source blind spot caveat applies). For cross-provider review with Gemini, try `/pi-multi-review`."
 
-**If Codex output doesn't match requested format** (no emoji severity, no score, pure prose):
+**If Codex output doesn't match requested format** (no severity tags, no VERDICT line, pure prose):
 - Extract actionable issues from the raw text. Do NOT discard the response.
-- If no numeric score was given, omit the score or note "score not provided."
+- If no VERDICT line was given, omit it or note "verdict not provided."
 
 If the Bash tool was backgrounded or returned empty output, read the result from `~/.claude/logs/pi-codex-last.out` (persisted by the script's `tee` safety net).
 
@@ -195,6 +206,8 @@ If project guidelines were found in Step 1.5, score guideline violations separat
 - Only include violations that reference a **specific rule** from the guideline files.
 
 ### 5.5 Present results
+
+Render the provider's text severity tags as emoji in the final output: CRITICAL→🔴, MEDIUM→🟡, SUGGESTION→🟢. Include the provider's VERDICT line near the top.
 
 Show the filtered review labeled **Codex**, grouped by confidence tier:
 - **High confidence (≥ 90)**: Definitely fix
@@ -282,7 +295,7 @@ Each issue object in the `issues` array:
 
 Rules:
 - Only record issues that **passed the confidence filter** (≥ 80)
-- Map emoji severity to strings: 🔴→critical, 🟡→medium, 🟢→suggestion
+- Severity maps directly from the provider's text tags: CRITICAL→critical, MEDIUM→medium, SUGGESTION→suggestion
 - If Codex didn't give structured severity, infer from context
 - Use `"guideline"` category for project guideline violations
 - Keep `title` under 80 chars

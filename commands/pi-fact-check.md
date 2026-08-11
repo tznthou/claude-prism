@@ -29,7 +29,7 @@ Skip opinions, predictions, and vague assertions ("many believe...").
 
 For each claim, assess: **how important is it if this is wrong?** Focus effort on high-impact claims. Flag anything suspicious — too-precise numbers, vague sourcing, absolute language.
 
-Output a numbered list of claims to verify, each with the exact text and suggested search terms.
+Output a numbered list of claims to verify, each with the exact text and suggested search terms. Prefix high-impact claims (the ones whose being wrong matters most) with `[HIGH-IMPACT]` — this marker travels into the Gemini batch prompt and directs deeper search effort.
 
 If no verifiable claims found, report and stop.
 
@@ -55,16 +55,20 @@ echo "$BATCH_PROMPT" | CLAUDE_PRISM_TIMEOUT=540 CLAUDE_PRISM_CALLER=pi-fact-chec
 Prompt sent via stdin. **Preserve original claim numbers** — if a batch contains claims #4, #5, Gemini must return results numbered 4, 5 (not 1, 2):
 
 ```
-Fact-check these claims. For each, find supporting and contradicting sources.
+You get exactly one turn: do not ask clarifying questions.
+If a claim is ambiguous, state your reading of it and fact-check that reading.
+
+Today is $(date -u +%Y-%m-%d). Fact-check these claims. For each, find supporting and contradicting sources.
 
 CLAIMS:
 $NUMBERED_CLAIMS_IN_THIS_BATCH
+(claims marked [HIGH-IMPACT] warrant deeper search — try multiple query angles before settling on UNVERIFIABLE)
 
 For each claim, return:
 1. Verdict: SUPPORTED / CONTRADICTED / UNVERIFIABLE
 2. Sources found (list ALL relevant sources, not just the best one; prefer: official records > peer-reviewed > major media > other)
 3. Source URLs (one per line)
-4. Key finding per source (one sentence each)
+4. Key finding per source — quote the source's own sentence where possible, else summarize in one sentence
 5. Source dates
 6. Any contradicting evidence with its own source URL
 
@@ -212,5 +216,5 @@ Ask: **"Save the report?"** If yes, save to `.claude/pi-fact-check/<slug>.md`.
 ### Notes
 
 - **No Codex** — fact-checking needs search, not more LLM opinions. For opinion-based review, use `/pi-multi-review`
-- Gemini batches auto-split at 2 claims each (search grounding serializes internally — small batches finish faster). If a single batch exceeds ~10,000 chars, split further
+- Gemini batches auto-split at 2 claims each (search grounding serializes internally — small batches finish faster; tuned on the pre-agy CLI, revisit with agy-era timing data). If a single batch exceeds ~10,000 chars, split further
 - Works with any language

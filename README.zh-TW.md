@@ -210,7 +210,7 @@ Codex 以**對抗式立場** review Claude 寫的程式碼——reviewer 的任�
 
 ### `/pi-ui-design` — 從設計規格產生 HTML Mockup
 
-Gemini 讀取設計規格文件，產出可在瀏覽器預覽的自包含 HTML mockup（Tailwind CDN）。確認設計後再讓 Claude Code 實作到專案。
+Gemini 讀取設計規格文件，產出可在瀏覽器預覽的自包含 HTML mockup（Tailwind v4 CDN）。確認設計後再讓 Claude Code 實作到專案。
 
 ```
 /pi-ui-design design-spec.md              # 從設計規格產生 HTML mockup
@@ -493,7 +493,7 @@ Logging 預設開啟，檢查 `~/.claude/logs/multi-ai.log` 即可驗證。每�
 
 **Q: 如果 provider 回傳格式不符預期？**
 
-Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 emoji/score 格式回覆，Claude 會用語意比對從原始文字中提取可行動的問題。分數欄位在未提供時顯示「—」。
+Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 severity 標記／verdict 格式回覆，Claude 會用語意比對從原始文字中提取可行動的問題。verdict 欄位在未提供時顯示「—」。
 
 **Q: 費用多少？**
 

@@ -210,7 +210,7 @@ Each issue is scored 0–100 using the [Confidence Scoring Framework](spec/confi
 
 ### `/pi-ui-design` — HTML Mockup from Design Spec
 
-Gemini reads a design specification and generates a self-contained HTML mockup (Tailwind CDN) you can preview in a browser. Confirm the design visually, then let Claude Code implement it into your project.
+Gemini reads a design specification and generates a self-contained HTML mockup (Tailwind v4 CDN) you can preview in a browser. Confirm the design visually, then let Claude Code implement it into your project.
 
 ```
 /pi-ui-design design-spec.md              # generate HTML mockup from design spec
@@ -493,7 +493,7 @@ That's fine. All commands include graceful degradation with **structured error d
 
 **Q: What if a provider returns an unexpected format?**
 
-Claude handles it. If Codex or Gemini doesn't follow the requested emoji/score format, Claude extracts actionable insights from the raw text using semantic matching rather than format parsing. Scores show "—" in the comparison table when not provided.
+Claude handles it. If Codex or Gemini doesn't follow the requested severity-tag/verdict format, Claude extracts actionable insights from the raw text using semantic matching rather than format parsing. Verdicts show "—" in the comparison table when not provided.
 
 **Q: How much does this cost?**
 

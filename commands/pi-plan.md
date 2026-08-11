@@ -62,12 +62,30 @@ If both providers are available, consult them in parallel for independent analys
 **Step 4a — Build the shared architect prompt** (used by both providers):
 
 ```
-You are a software architect. Analyze this task and provide:
-1. Key technical challenges
-2. Recommended approach
-3. At least one rejected alternative, with the reason it loses to your recommendation
-4. Potential risks and edge cases
-5. Estimated complexity (S/M/L/XL)
+You get exactly one turn: do not ask clarifying questions.
+If context is missing, state your assumptions explicitly and answer anyway.
+
+You are a software architect. Analyze the task below and structure your answer under exactly these headings:
+
+## Assumptions
+Only if context was missing — state what you assumed. Omit the section if none.
+
+## Challenges
+The genuinely hard parts of this task — max 5 bullets.
+
+## Recommendation
+Your recommended approach, with reasoning grounded in the provided codebase context where possible.
+
+## Rejected alternative
+The strongest alternative you rejected, and why it loses to your recommendation. It must be a serious contender a competent engineer would actually propose — if no serious alternative exists, say so instead of inventing a weak one.
+
+## Risks
+Risks and edge cases — each must name the concrete scenario in which it bites, not a generic category. Max 5 bullets.
+
+## Complexity
+One of: S / M / L / XL, with a one-line justification.
+
+Aim for under 800 words total — spend the depth on Recommendation and Rejected alternative, keep the rest tight.
 
 Task: $ARGUMENTS
 
@@ -144,6 +162,7 @@ Combine all perspectives (Claude's own analysis + any external input) into a str
 - **Repo-grounded beats generic**: external providers only see the snippets sent to them — when their generic best-practice advice conflicts with what Claude observed in the actual codebase, the repo-grounded view wins. Record the disagreement in Synthesis either way.
 - **Official docs beat speculation**: a claim citing documented behavior outranks an unsourced opinion.
 - **Agreement must be reasoned to count**: two providers recommending the same approach for different (or unstated) reasons is weaker signal than one repo-grounded argument. Use their rejected-alternatives output to tell genuine agreement from coincidence; if a provider omitted rejected alternatives despite the prompt, treat its agreement as unreasoned (weaker signal) rather than assuming consensus.
+- **Complexity split is a signal**: if providers' Complexity estimates diverge by more than one step (e.g., S vs L), they likely understood the task differently — identify the divergent assumption in the Synthesis section before choosing an approach.
 
 **Slugify the task name**: lowercase, replace spaces/special chars with hyphens, max 50 chars. If a file with the same slug already exists, append `-2`, `-3`, etc.
 
@@ -159,6 +178,7 @@ cat > ".claude/pi-plans/<slug>.md" << 'PLAN_EOF'
 - **Domain**: <frontend | backend | fullstack>
 - **Status**: draft
 - **Providers consulted**: <codex, gemini | codex | gemini | claude-only>
+- **Complexity**: <consensus value, or the split, e.g. "Codex: S / Gemini: L — split; see Synthesis">
 
 ## Context
 <Why this change is needed — synthesized from $ARGUMENTS and codebase analysis>

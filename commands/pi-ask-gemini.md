@@ -17,14 +17,22 @@ Use `$ARGUMENTS` as the prompt. If the question involves project code, read rele
 
 ### 2. Call Gemini
 
+Wrap the question in the one-shot framing below (the framing prefix is fixed; `$ARGUMENTS` is the user's question verbatim):
+
 ```bash
-CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-ask-gemini ~/.claude/scripts/call-gemini.sh "$ARGUMENTS"
+CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-ask-gemini ~/.claude/scripts/call-gemini.sh "You get exactly one turn: do not ask clarifying questions. If context is missing, state your assumptions and answer anyway. Lead with your answer, then reasoning. Be concise by default — expand only where the question demands depth.
+
+Question:
+$ARGUMENTS"
 ```
 
 If code context is needed, pipe it via stdin (avoids ARG_MAX limits):
 ```bash
 echo "Relevant code:
-$(code content)" | CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-ask-gemini ~/.claude/scripts/call-gemini.sh "$ARGUMENTS"
+$(code content)" | CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-ask-gemini ~/.claude/scripts/call-gemini.sh "You get exactly one turn: do not ask clarifying questions. If context is missing, state your assumptions and answer anyway. Lead with your answer, then reasoning. Be concise by default — expand only where the question demands depth.
+
+Question:
+$ARGUMENTS"
 ```
 
 ### 3. Handle failures

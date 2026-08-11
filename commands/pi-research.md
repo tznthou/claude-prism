@@ -34,31 +34,52 @@ Launch **both tracks simultaneously** in a single response:
 
 #### Track A — Gemini
 
-Use the Bash tool with timeout parameter (600 seconds — Bash tool's 10-minute ceiling, matches line 12 rule):
+Persist the full prompt (framing + project context) to a temp file, then call with the file on stdin (one invocation shape, no ARG_MAX exposure):
 
-```bash
-# Use Bash tool with timeout: 600000
-echo "$PROJECT_CONTEXT" | CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-research ~/.claude/scripts/call-gemini.sh "You are a technical researcher. Conduct in-depth research.
+1. Bash: `PROMPT_FILE=$(mktemp -t prism-research-XXXXXX.md) && echo "$PROMPT_FILE"` — capture the path.
+2. Use the Write tool to write the following prompt to that path (fill `$(date -u +%Y-%m-%d)` with today's date; append project context from Step 2 at the end if any):
+
+```
+You get exactly one turn: do not ask clarifying questions.
+If the topic is underspecified, state your interpretation and proceed.
+
+Today is $(date -u +%Y-%m-%d). You are a technical researcher. Conduct in-depth research on the topic below. Search from multiple angles: the core topic, practical/production experience, and community sentiment — not just the obvious query.
 
 Research topic: $ARGUMENTS
 
-Please provide:
+Provide:
 1. Topic overview (one-paragraph summary)
-2. Mainstream solution comparison (table format with pros/cons)
+2. The main approaches or schools of thought — as a pros/cons table if a comparison is natural for this topic
 3. Recommended approach and reasoning
 4. Common pitfalls and caveats
 5. Recommended resources (official docs, tutorials, GitHub repos)
-6. Source URLs for key claims (one per line)
+6. Source URLs for every key claim (one per line)
 
-If this involves tech selection, compare at least 3 options across these dimensions:
+Anti-hallucination rules (strict):
+- Only cite URLs that actually appeared in your search results — never construct, complete, or guess a URL.
+- If a claim comes from your training data rather than your search results, mark it [KNOWLEDGE] — never present memory as a search finding.
+- For version numbers, release dates, and breaking-change claims: quote the exact sentence from the source you derived it from, with its URL. If you cannot quote a source sentence, mark the claim [LOW-CONFIDENCE].
+
+If this involves tech selection, compare the leading options — typically 3, fewer if the field genuinely has fewer — across:
 - Learning curve
 - Community activity
 - Performance
 - Ecosystem
-- Use cases"
+- Use cases
+
+Dense over exhaustive — every claim should carry a source or a reason.
+
+$(if project context exists)
+Project context:
+$PROJECT_CONTEXT
+$(end if)
 ```
 
-If no project context, omit the stdin pipe.
+3. Call Gemini (Bash tool with timeout: 600000 — Bash tool's 10-minute ceiling, matches line 12 rule):
+
+```bash
+CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-research ~/.claude/scripts/call-gemini.sh "technical research" < "$PROMPT_FILE"
+```
 
 #### Track B — WebSearch
 
@@ -92,6 +113,21 @@ When a track fails, include the specific reason in the status note:
 
 **WebSearch** (Claude tool — no stderr): If the tool returns an error or empty results, note "WebSearch returned no results for [query]." WebSearch failures are typically transient — note and continue.
 
+### 4.5 Source validation (Gemini-sourced URLs)
+
+Sample Gemini-provided URLs for existence and content verification before synthesis. WebSearch URLs from recognized outlets can be trusted without verification.
+
+**Sampling rules (cap: 5 URLs per run):**
+- Priority 1: URLs backing the claims that feed the **Recommended approach** — these drive the report's conclusion
+- Priority 2: URLs backing version numbers, release dates, or breaking-change claims
+- Skip: URLs already marked [KNOWLEDGE] or [LOW-CONFIDENCE] by Gemini (already flagged), WebSearch-corroborated URLs
+
+**For each sampled URL:** WebFetch it. If Gemini quoted a source sentence, check the quote appears in the page. Any failure (unreachable/4xx/5xx, content mismatch, quote not found, obviously fabricated) → mark the source `(unverified)`, do NOT use it as evidence, and note the reason.
+
+If >50% of sampled URLs fail, mark **all** unsampled Gemini-sourced URLs `(unverified)` as well and note in the report: `⚠️ Gemini source validation: X/Y URLs failed — treat Gemini-only claims with caution.`
+
+URLs not sampled (cap or low priority) appear with `(unverified)` in the Sources table.
+
 ### 5. Claude synthesis
 
 Claude integrates all available research (Gemini + WebSearch + own knowledge):
@@ -99,6 +135,7 @@ Claude integrates all available research (Gemini + WebSearch + own knowledge):
 - **Cross-check**: Do Gemini and WebSearch agree? Flag contradictions.
 - **Supplement**: Add perspectives both tracks may have missed — especially version-sensitive or ecosystem-specific nuances.
 - **Source attribution**: Attach URLs from WebSearch results and any URLs Gemini provided. Claims without a source URL are marked as (unverified).
+- **Marker consumption**: Claims Gemini marked [KNOWLEDGE] or [LOW-CONFIDENCE] are treated as (unverified) unless WebSearch independently corroborates them.
 - **Independent judgment**: Claude's own take on the topic, clearly labeled.
 
 ### 6. Integrated output

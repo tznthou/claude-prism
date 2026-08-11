@@ -31,42 +31,62 @@ Read the design specification file using the Read tool. Identify the key section
 
 ### 3. Call Gemini — Generate HTML mockup
 
-Pipe the design spec content (read in Step 2) via stdin to avoid ARG_MAX limits:
+**Step 3a — Persist the full prompt (framing + spec) to a temp file:**
 
-```bash
-echo "$SPEC_CONTENT" | CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-ui-design ~/.claude/scripts/call-gemini.sh "You are a senior frontend engineer. Generate a single self-contained HTML file that serves as a high-fidelity visual mockup based on the design specification provided via stdin.
+1. Bash: `PROMPT_FILE=$(mktemp -t prism-ui-design-XXXXXX.md) && echo "$PROMPT_FILE"` — capture the path.
+2. Use the Write tool to write the following prompt to that path, with the spec content from Step 2 appended at the end:
+
+```
+You get exactly one turn. If the spec is incomplete, do not ask — make reasonable design decisions and mark each with an HTML comment: <!-- ASSUMPTION: ... -->
+
+You are a senior frontend engineer. Generate a single self-contained HTML file that serves as a high-fidelity visual mockup based on the design specification below.
 
 Requirements:
-- Use Tailwind CSS via CDN (<script src='https://cdn.tailwindcss.com'></script>)
-- Include a <script> block to extend the Tailwind config with custom colors, fonts, and spacing from the spec
+- Use Tailwind CSS v4 via CDN: <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+- Configure custom colors, fonts, and spacing from the spec via a <style type="text/tailwindcss"> block using @theme variables, e.g. @theme { --color-primary: #0ea5e9; --font-display: "Inter", sans-serif; } — Tailwind v4 has no JS config object
 - Import any Google Fonts specified in the design via <link> tags
 - Responsive: implement all breakpoints from the spec (mobile-first)
+- Meet WCAG 2.2 AA basics: alt text on images, labels on form controls, visible focus states, sufficient color contrast
 - Include realistic placeholder content (not lorem ipsum — use contextually appropriate text)
 - Implement hover states and CSS transitions as specified
 - All styles via Tailwind classes or inline <style> for effects Tailwind can't handle (gradients, overlays, etc.)
-- No external dependencies beyond Tailwind CDN and Google Fonts
+- No external dependencies beyond the Tailwind CDN and Google Fonts
 - Add HTML comments marking each major section for easy reference
 - If the spec defines multiple pages, implement the HOME PAGE only. Add navigation links as anchors that scroll to section placeholders.
 
 Structure the HTML as:
-1. <head> — Tailwind CDN, Google Fonts, custom config, any CSS overrides
+1. <head> — meta viewport tag, Tailwind CDN, Google Fonts, @theme config, any CSS overrides
 2. <body> — Semantic HTML5 with proper landmarks (header, main, nav, footer)
-3. Sections matching the spec's page structure"
+3. Sections matching the spec's page structure
+
+Output ONLY the HTML file content, starting with <!DOCTYPE html> — no explanation before or after, no markdown code fences.
+
+Design specification:
+$SPEC_CONTENT
 ```
 
-Where `$SPEC_CONTENT` is the file content read in Step 2. If the spec exceeds 4000 chars, extract the sections most relevant to visual implementation (Layout, Visual Direction, Component Breakdown) and summarize the rest.
+If the spec exceeds 4000 chars, extract the sections most relevant to visual implementation (Layout, Visual Direction, Component Breakdown) and summarize the rest.
 
-### 3b. Alternative: text description (no spec file)
+**Step 3b — Call Gemini with the prompt file on stdin:**
+
+```bash
+CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-ui-design ~/.claude/scripts/call-gemini.sh "HTML mockup" < "$PROMPT_FILE"
+```
+
+### 3-alt. Alternative: text description (no spec file)
 
 If the user provided a text description instead of a file, first call Gemini to generate a design spec:
 
 ```bash
-CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-ui-design ~/.claude/scripts/call-gemini.sh "You are a senior UX/UI designer. Generate a concise design specification for:
+CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-ui-design ~/.claude/scripts/call-gemini.sh "You get exactly one turn: do not ask clarifying questions. If requirements are ambiguous, make reasonable design decisions and note them.
+
+You are a senior UX/UI designer. Generate a concise design specification for:
 
 $ARGUMENTS
 
 Include: Information Architecture, Layout (ASCII wireframe), Component Breakdown, Visual Direction (hex colors, font suggestions, spacing), and Interaction Design.
-Use tables where appropriate. Be specific — provide actual values."
+Use tables where appropriate. Be specific — provide actual values.
+Keep it under one page — this spec feeds a mockup generator, not a design system."
 ```
 
 Present the spec to the user and ask: **"Generate an HTML mockup from this spec?"** If yes, proceed to Step 3.
@@ -87,7 +107,8 @@ After Gemini responds with HTML, Claude reviews:
 - **Spec fidelity**: verify colors, fonts, spacing match the design spec
 - **Accessibility**: check semantic HTML, contrast, alt texts
 - **Responsiveness**: confirm mobile/tablet/desktop breakpoints are implemented
-- **Practical fixes**: fix broken Tailwind classes, missing CDN links, incorrect color values
+- **Practical fixes**: fix broken Tailwind classes (including v3-era class names renamed in v4), missing CDN links, incorrect color values
+- **Assumption audit**: collect all `<!-- ASSUMPTION: ... -->` comments and list them in the Claude Review section so the user can confirm or correct each one
 
 If Claude finds issues, **fix them inline** before saving.
 

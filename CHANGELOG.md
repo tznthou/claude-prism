@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.16.0 (2026-08-11) — provider prompt overhaul: one-shot contract + text-based output format
+
+**All 10 pi-* provider prompts rewritten around three system-wide contracts: a one-shot turn contract (state assumptions instead of asking — headless CLI calls have no second round), per-skill output budgets, and a text-based severity/verdict format replacing emoji + 1-10 scores.** The execution layers (dispatch rules, timeouts, fallbacks) are untouched; this release changes only what travels to Codex/Gemini and the few presentation-layer lines that consume it.
+
+#### Changed (shared contracts — all 10 commands)
+
+- **One-shot turn contract** — every provider prompt now opens with "You get exactly one turn: do not ask clarifying questions; state your assumptions and answer anyway", with per-skill adaptations (pi-fact-check: state your reading of an ambiguous claim and check that reading; pi-ui-design: mark design assumptions as `<!-- ASSUMPTION: ... -->` HTML comments that Claude's post-processing audits back to the user)
+- **Text severity tags + verdict replace emoji + 1-10 score** — review prompts (pi-code-review / pi-multi-review / pi-ui-review) request `[CRITICAL|MEDIUM|SUGGESTION]` line prefixes and a closing `VERDICT:` line (`safe | needs-fixes | do-not-merge`; pi-ui-review uses `ready | needs-fixes | not-ready` since it reviews files, not merges). Emoji rendering moves to Claude's presentation layer (CRITICAL→🔴 etc.), so user-facing output is unchanged; the insights-log severity mapping becomes a direct text-tag pass-through. The 1-10 overall score is removed — it had no downstream consumer in single-provider reviews, and cross-model score comparison was false precision. pi-multi-review's Score Comparison table becomes Verdict Comparison, with a verdict split called out as a real signal
+- **Structured finding blocks** — the finding-bar questions become output fields (Failure scenario / Impact / Fix — pi-ui-review: User impact / Standard / Fix), capped at 8 findings per provider with an anti-padding rule ("say VERDICT: safe directly — do not invent findings to seem thorough")
+- **Per-skill length budgets** — pi-askall and pi-plan capped at ~800 words with strongest-points-first guidance; search-class prompts get density rules instead of hard caps
+- **Uniform stdin transport** — pi-code-review / pi-ui-review / pi-research / pi-ui-design switch from arg-embedded prompts (with a >3000-char stdin escape hatch) to the temp-file + stdin shape already used by pi-askall / pi-plan / pi-multi-review; the CLI argument is now always a short label. Closes the remaining ARG_MAX exposure — guideline blocks (`CLAUDE.md`) expanded into argv unboundedly
+
+#### Changed (per-skill)
+
+- **pi-ask-codex / pi-ask-gemini** — raw `$ARGUMENTS` forwarding replaced with a thin framing: one-shot contract + "lead with your answer, then reasoning; be concise by default". No role-play, no format demands — user-authored prompts pass through unpolluted
+- **pi-askall** — framing gains a clear-position requirement ("if your answer is 'it depends', name the deciding factors and commit to a recommendation") so synthesis has real divergence to compare instead of two hedges
+- **pi-plan** — architect prompt restructured under fixed headings (Assumptions / Challenges / Recommendation / Rejected alternative / Risks / Complexity) so the two providers' answers align for synthesis; "at least one rejected alternative" upgraded to "the **strongest** alternative you rejected" with an honest exit ("if no serious alternative exists, say so") — anti-strawman; risks must name the concrete scenario in which they bite; a >1-step complexity split between providers is now a documented synthesis signal, recorded in the plan file's new Metadata Complexity line
+- **pi-multi-review** — Gemini's attack surface is domain-aware: `backend` diffs (per Step 2.5 detection) drop the accessibility/responsive item instead of inviting forced findings; both prompts gain "skip attack surfaces that do not apply to this diff"
+- **pi-ui-review** — WCAG 2.1 → 2.2 AA; the prompt now explicitly requests specific success-criterion citations (e.g., WCAG 2.4.7), aligning the upstream ask with the downstream +20 confidence factor that already scored them; decorative emoji dropped from the focus list
+- **pi-fact-check** — Step 2's existing impact assessment now travels: `[HIGH-IMPACT]` claim markers direct deeper multi-angle search before settling on UNVERIFIABLE; key findings quote the source's own sentence where possible (strengthens Step 4.5 content-match validation); `Today is <date>` injected (agy date awareness not guaranteed); batch=2 annotated as pre-agy tuning pending re-measurement
+- **pi-research** — new strict anti-hallucination block: never construct/complete/guess URLs; claims from training data must be marked `[KNOWLEDGE]`; version/release-date/breaking-change claims must quote the exact source sentence or be marked `[LOW-CONFIDENCE]` (a fabricated quote+URL pair is far harder to produce than a plausible paraphrase). New **Step 4.5 source validation** ported from pi-fact-check: up to 5 Gemini-sourced URLs WebFetch-verified before synthesis, quote-existence checked, >50% failure poisons all unsampled Gemini URLs to `(unverified)`. Multi-angle search directive replaces bare "in-depth research"; solution-comparison framing relaxed for non-selection topics; date injection
+- **pi-ui-design** — Tailwind CSS v3 Play CDN (`cdn.tailwindcss.com`) → **v4 browser CDN** (`cdn.jsdelivr.net/npm/@tailwindcss/browser@4`) with `@theme` CSS-first config written into the prompt (v4 has no JS config object — the old `<script>` extend block was v3-only); WCAG 2.2 AA baseline requirements (alt text, form labels, focus states, contrast); viewport meta made explicit; output-purity rule (HTML only, starting at `<!DOCTYPE html>`, no fences); Claude post-processing extended to v3-era class renames and the ASSUMPTION-comment audit; spec-generation prompt capped at one page
+
+#### Changed (docs)
+
+- **README.md + README.zh-TW.md** — FAQ format-fallback answer updated from emoji/score to severity-tag/verdict wording; pi-ui-design description notes Tailwind v4
+- **checksums.sha256** — regenerated for all 10 command files
+
 ## v0.15.1 (2026-07-15) — agy 1.1.2 compatibility fix + ARG_MAX guard
 
 #### Changed (agy 1.1.2 compatibility)

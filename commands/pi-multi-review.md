@@ -89,12 +89,17 @@ If the script is not found or fails, default to `fullstack` (balanced weighting)
 Shared template:
 
 ```
+You get exactly one turn: do not ask clarifying questions.
+If context is missing, state your assumptions and answer anyway.
+
 You are performing an adversarial code review focused on <FOCUS>.
 Your job is to break confidence in this change, not to validate it. Default to skepticism.
 
 Attack surface — prioritize these failure modes:
 <ATTACK_SURFACE_LIST>
 $(if guidelines found)8. Project guideline violations (see guidelines below)$(end if)
+
+Skip attack surfaces that do not apply to this diff — do not force findings from inapplicable surfaces.
 
 Scope constraint: Focus on the diff provided. Do not speculate about code outside the diff unless directly referenced by the changed lines.
 
@@ -110,24 +115,26 @@ Historical Review Context (previous review comments on the same files — recurr
 $(historical comments)
 $(end if)
 
-Finding bar — every finding MUST answer:
-1. What can go wrong?
-2. Why is this code path vulnerable?
-3. What is the likely impact?
-4. What concrete change would reduce the risk?
-
 DO NOT flag:
 - Pre-existing issues not introduced in this diff
 - Issues linters/formatters would catch (eslint, prettier, etc.)
 - Style preferences without guideline backing or concrete failure scenario
 - Lines with explicit lint-ignore / noqa / @ts-ignore comments
 
-Calibration: Prefer one strong finding over several weak ones. If the change looks safe, say so directly.
+Output format — one block per finding, exactly this structure:
 
-Final self-check: Verify each finding is adversarial (not stylistic), tied to concrete code, and plausible under a real failure scenario.
+[CRITICAL|MEDIUM|SUGGESTION] file:line — one-line title
+- Failure scenario: what goes wrong, and why this code path allows it
+- Impact: the likely consequence
+- Fix: the concrete change that reduces the risk
 
-Label each issue with severity (🔴/🟡/🟢) and line numbers.
-End with an overall score (1-10).
+At most 8 findings — if you found more, keep the highest-impact 8. Prefer one strong finding over several weak ones; do not dilute serious issues with filler.
+
+End with exactly one line:
+VERDICT: safe | needs-fixes | do-not-merge
+If the change looks safe, say VERDICT: safe directly — do not invent findings to seem thorough.
+
+Final self-check: verify each finding is adversarial (not stylistic), tied to concrete code, and plausible under a real failure scenario.
 
 Code:
 $(code)
@@ -158,6 +165,7 @@ $(code)
   6. Breaking changes to public interfaces without migration path
   7. Inline annotation violations (IMPORTANT/WARNING/FIXME/TODO/NOTE comments)
   ```
+- **Domain-aware surface trim**: if the domain detected in Step 2.5 is `backend`, omit item 2 (accessibility/responsive/UI states — inapplicable to backend-only diffs) and renumber the remaining items. For `frontend` and `fullstack`, keep the full list.
 
 **Step 3b — Persist each prompt to its own temp file**:
 
@@ -226,9 +234,9 @@ If a sub-agent reported empty stdout, it should already have fallen back to read
 
 ### 5. Handle non-conforming output
 
-External providers may not follow the requested format (no emoji severity, no 1-10 score, pure prose, etc.). When this happens:
+External providers may not follow the requested format (no severity tags, no VERDICT line, pure prose, etc.). When this happens:
 - **Do NOT discard the response or force it into the template.** Extract actionable insights from the raw text.
-- If a provider gave no numeric score, omit that cell from the Score Comparison table (use "—" instead) and note "score not provided by provider."
+- If a provider gave no VERDICT line, put "—" in that cell of the Verdict Comparison table and note "verdict not provided by provider."
 - For the Consensus/Divergence analysis, match issues by **semantic similarity** rather than format — the same bug described in different words still counts as consensus.
 
 ### 6. Claude synthesis
@@ -383,6 +391,8 @@ Include both shown (≥80) and filtered (<80) findings. For each finding, list o
 
 ### 7. Output format
 
+Render provider text severity tags as emoji in the final output: CRITICAL→🔴, MEDIUM→🟡, SUGGESTION→🟢.
+
 ```
 ## Multi-Provider Review Results
 
@@ -398,12 +408,14 @@ Include both shown (≥80) and filtered (<80) findings. For each finding, list o
 |--------|-------------------|
 | [frontend/backend/fullstack] | [Gemini-weighted / Codex-weighted / Balanced] |
 
-### Score Comparison
-| Provider | Score | Focus Area |
-|----------|-------|------------|
-| Codex | X/10 or — | ... |
-| Gemini | Y/10 or — | ... |
-| Claude | Z/10 | ... |
+### Verdict Comparison
+| Provider | Verdict | Focus Area |
+|----------|---------|------------|
+| Codex | safe / needs-fixes / do-not-merge / — | ... |
+| Gemini | safe / needs-fixes / do-not-merge / — | ... |
+| Claude | safe / needs-fixes / do-not-merge | ... |
+
+A verdict split between providers is a real signal — call it out explicitly and explain which reading the synthesis favors and why.
 
 ### Consensus Issues (high confidence, fix first)
 (When an issue has a concrete fix, use a GitHub suggestion block — see format below)
@@ -457,7 +469,7 @@ Each issue object in the `issues` array:
 
 Rules:
 - Only record issues that **passed the confidence filter** (≥ 80)
-- Map emoji severity to strings: 🔴→critical, 🟡→medium, 🟢→suggestion
+- Severity maps directly from the provider's text tags: CRITICAL→critical, MEDIUM→medium, SUGGESTION→suggestion
 - If a provider didn't give structured severity, infer from context (e.g., "security vulnerability" → critical)
 - Use `"guideline"` category for project guideline violations (`CLAUDE.md` / `Agents.md`)
 - `source` reflects which providers flagged it: consensus (2+), or single-provider

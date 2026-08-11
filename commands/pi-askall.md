@@ -32,7 +32,11 @@ Use `$ARGUMENTS` as the base question.
 **Step 2a — Build the framed wrapper** (compose once, used by both providers):
 
 ```
-Give your perspective on the following question. Be specific and direct — explain your reasoning, flag risks or tradeoffs you see, and suggest alternatives if relevant.
+You get exactly one turn: do not ask clarifying questions.
+If context is missing, state your assumptions and answer anyway.
+
+Give your perspective on the following question. Be specific and direct — explain your reasoning, flag risks or tradeoffs you see, and suggest alternatives if relevant. Take a clear position: if your answer is "it depends", name the deciding factors and commit to a recommendation for the most likely case.
+Aim for under 800 words — pick your strongest 3-5 points rather than covering everything.
 
 Question:
 $ARGUMENTS (or the self-contained summary from Step 1)

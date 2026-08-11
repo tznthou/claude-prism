@@ -56,24 +56,25 @@ Read frontend files with the Read tool. For directories, first Glob for `*.tsx`,
 
 ### 3. Call Gemini
 
-```bash
-echo "Code to review:
+**Step 3a — Persist the full prompt (framing + code) to a temp file.** Always use the stdin path — the guidelines block can be large, and one invocation shape avoids ARG_MAX limits:
 
-$(frontend code content)
+1. Bash: `PROMPT_FILE=$(mktemp -t prism-ui-review-XXXXXX.md) && echo "$PROMPT_FILE"` — capture the path.
+2. Use the Write tool to write the following prompt (with `$(...)` placeholders filled in) to that path:
 
-$(if historical review comments were found in Step 1.7)
-Historical Review Context (previous review comments on the same files — recurring issues are high-confidence signals):
-$(historical comments)
-$(end if)" | CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-ui-review ~/.claude/scripts/call-gemini.sh "You are a UI/UX expert. Review the following frontend code provided via stdin.
+```
+You get exactly one turn: do not ask clarifying questions.
+If context is missing, state your assumptions and answer anyway.
+
+You are a UI/UX expert. Review the frontend code provided below.
 
 Review focus:
-1. ♿ Accessibility (WCAG 2.1 AA) — aria labels, keyboard navigation, color contrast
-2. 📱 Responsive Design — breakpoints, mobile-first, flexible layouts
-3. 🧩 Component Structure — reusability, props design, separation of concerns
-4. 🎨 UX Improvements — interaction feedback, loading states, error states
-5. ⚡ Frontend Performance — unnecessary re-renders, bundle size, lazy loading
-6. 📝 Inline annotation compliance — check if changes violate nearby code comments (IMPORTANT, WARNING, FIXME, TODO, NOTE annotations, or any comment that constrains how surrounding code should behave)
-7. 📏 Project guideline compliance (if guidelines provided below)
+1. Accessibility (WCAG 2.2 AA) — aria labels, keyboard navigation, color contrast
+2. Responsive Design — breakpoints, mobile-first, flexible layouts
+3. Component Structure — reusability, props design, separation of concerns
+4. UX Improvements — interaction feedback, loading states, error states
+5. Frontend Performance — unnecessary re-renders, bundle size, lazy loading
+6. Inline annotation compliance — check if changes violate nearby code comments (IMPORTANT, WARNING, FIXME, TODO, NOTE annotations, or any comment that constrains how surrounding code should behave)
+7. Project guideline compliance (if guidelines provided below)
 
 Scope constraint: Focus on the code/diff provided. Do not speculate about code outside the review scope unless directly referenced by the changed lines.
 
@@ -85,17 +86,40 @@ $(guideline content from Step 1.5)
 Flag any violations of these guidelines as separate issues.
 $(end if)
 
+$(if historical review comments were found in Step 1.7)
+Historical Review Context (previous review comments on the same files — recurring issues are high-confidence signals):
+$(historical comments)
+$(end if)
+
 DO NOT flag:
 - Pre-existing issues not introduced in this diff/file change
 - Issues that linters or formatters would catch (eslint, stylelint, prettier)
 - Subjective aesthetic preferences without standard or guideline backing
 - Browser-specific quirks for browsers outside the project's support matrix
 
-Output format:
-- Label each issue with category and severity (🔴/🟡/🟢)
-- Include specific fix suggestions with code examples
-- End with an overall UX score (1-10)"
+Output format — one block per finding, exactly this structure:
+
+[CRITICAL|MEDIUM|SUGGESTION] file:line — one-line title
+- User impact: who hits this, in what situation, and what happens to them
+- Standard: the specific WCAG success criterion (e.g., WCAG 2.4.7) or guideline rule when applicable — otherwise the concrete rationale
+- Fix: concrete change with a code example
+
+At most 8 findings — keep the highest-impact ones. Prefer one strong finding over several weak ones.
+
+End with exactly one line:
+VERDICT: ready | needs-fixes | not-ready
+
+Code to review:
+$(frontend code content)
 ```
+
+**Step 3b — Call Gemini with the prompt file on stdin:**
+
+```bash
+CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-ui-review ~/.claude/scripts/call-gemini.sh "UI/UX review" < "$PROMPT_FILE"
+```
+
+The CLI argument is a short label — the actual prompt travels via stdin.
 
 ### 4. Handle failures
 
@@ -170,6 +194,8 @@ If project guidelines were found in Step 1.5 (no double-dip with "cites a standa
 
 ### 7. Present results
 
+Render the provider's text severity tags as emoji in the final output: CRITICAL→🔴, MEDIUM→🟡, SUGGESTION→🟢. Include the provider's VERDICT line near the top.
+
 Show the filtered review grouped by confidence tier:
 - **High confidence (≥ 90)**: Definitely fix
 - **Solid (80–89)**: Worth fixing
@@ -218,7 +244,7 @@ When the user responds with `show scores` (or similar intent like "show breakdow
 ├─ Base: 40
 ├─ Specific line reference: +25
 ├─ New code in this diff: +25
-├─ WCAG 2.1 AA citation: +20
+├─ WCAG 2.2 AA citation: +20
 ├─ Concrete user impact described: +15
 └─ Final: 100 (clamped)
 
