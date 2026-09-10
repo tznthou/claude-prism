@@ -14,7 +14,7 @@
 
 [English](README.md)
 
-Claude Code 的跨 Provider AI 調度工具 — 消除同源盲點。
+Claude Code 的跨 Provider AI 調度工具 — 看見單一模型永遠不會給你看的那一面。
 
 ---
 
@@ -28,7 +28,7 @@ AI code review 很吵。市場上最好的工具 F1 score 大概也才 64%——
 
 ### 解法
 
-**1. 跨 Provider 三角驗證**：Claude 負責調度，review 任務分派給 **Gemini** 和 **Codex**。三個 provider、三組訓練資料、三組互相抵消的盲點。
+**1. 跨 Provider 對照**：Claude 負責調度，review 任務分派給 **Gemini** 和 **Codex**。三個 provider、三組訓練資料、三組盲點。這些發現是**並排攤開**給你看，不是合成一個結論——**Codex 提了而 Claude 沒提的那條，才是你最該看的**。差異本身就是訊號：不是因為誰對誰錯，而是因為那個 gap 很可能也正是你自己讀漏的地方。
 
 **2. 證據導向信心度評分**：不問 AI「你有多確定」，而是用可驗證的證據算分：具體行號（+25）、規則引用（+20）、可重現場景（+15）、幻覺引用（-50）。核心公式是 deterministic——同樣的證據永遠得到同樣的分數。[公開 spec](spec/confidence-scoring-v1.md)，沒有黑盒。
 
@@ -53,7 +53,7 @@ Anthropic 在 2026-04-16 隨 Claude Opus 4.7 一起推出 [`/ultrareview`](https
 | | claude-prism `/pi-multi-review` | `/ultrareview` |
 |---|---|---|
 | **模型多樣性** | Codex + Gemini + Claude（3 個獨立模型） | 多個 Claude agent，同一底層模型 |
-| **盲點策略** | 異質訓練資料抵消共同盲區 | 同源——多跑幾次，盲區一樣 |
+| **盲點策略** | 異質訓練資料——provider 之間的分歧把盲區浮出來 | 同源——多跑幾次，盲區一樣 |
 | **審查立場** | 對抗式，攻擊面分工 | 驗證導向（降低誤報率） |
 | **免費額度** | 無上限（用現有 CLI 訂閱） | 每帳號終身 3 次，**用完不補** |
 | **Team / Enterprise 免費次數** | 無上限 | 0 |
@@ -64,6 +64,29 @@ Anthropic 在 2026-04-16 隨 Claude Opus 4.7 一起推出 [`/ultrareview`](https
 | **CI/CD** | `ci-review.sh` 跑在 GitHub Actions | 僅限互動 session |
 
 兩個工具優化的場景不同。`/ultrareview` 適合 Pro/Max 用戶在 Claude 生態內做 pre-merge 信心確認。`/pi-multi-review` 則是為那個圈子外的一切而生——CI pipeline、受法規/ZDR 管制的環境、沒有 Pro/Max 授權的團隊，以及任何想要「不共享 Claude 訓練資料的第三方觀點」的人。
+
+### 與 `codex-plugin-cc`（OpenAI 官方）的比較
+
+這一段我們直說。OpenAI 自己出了 [`codex-plugin-cc`](https://github.com/openai/codex-plugin-cc)——官方的 Claude Code plugin（截至 2026-09-10 有 32,960★，Apache-2.0），免費把 Codex review 送進 Claude Code。它的 `adversarial-review` 和我們的 `/pi-code-review` 核心指令逐字相同：*"break confidence in the change, not to validate it."* 除此之外，較新的 `codex-cli` 還內建了 `codex review` 與 `codex mcp-server` 兩個 subcommand。
+
+**如果你要的第二意見只有 Codex，那就用官方的。** 它是官方出品、資源更多，架構上也更前面——它透過常駐 broker 連 Codex app-server，不是每次呼叫都開一支 CLI，直接繞開了我們花六個版本在處理的那一整類 timeout 問題。
+
+它不會做的事情是：叫 Gemini。
+
+| | claude-prism | `codex-plugin-cc` |
+|---|---|---|
+| **Provider** | Codex + Gemini + Claude | 僅 Codex |
+| **跨 Provider 對照** | 有——這就是這個工具的存在理由 | 不適用（單一 provider） |
+| **信心度評分** | 第二方評分：Claude 重算 Codex 的發現，並用 Glob/Grep 實查每一條引用是否存在，抓幻覺 | Codex 自報 0–1，無交叉驗證 |
+| **架構** | Bash wrapper，每次呼叫開一支 CLI | 常駐 broker over unix socket + JSON-RPC，job file 落盤 |
+| **對你的程式碼有寫入權嗎** | 沒有——設計上全 read-only | 有，`/codex:rescue` 委派 Codex 直接改 |
+| **背景工作管理** | 無 | 有（`status` / `result` / `cancel`） |
+| **安裝** | `npm` / Homebrew / `./install.sh` | `/plugin marketplace add openai/codex-plugin-cc` |
+| **CI/CD** | `ci-review.sh` 跑在 GitHub Actions | 綁在 Claude Code session 內 |
+| **實作規模** | ~810 行 Bash | 5,349 行 JS + 完整 test suite |
+| **成熟度** | 10★，一個維護者 | 32,960★，OpenAI |
+
+誠實的總結：在 Codex 這一半，官方 plugin 是更好的工具，我們不會假裝不是。它結構上做不到的是第二個 provider——OpenAI 沒有任何理由幫你把 review 送去 Gemini。那個缺口是這個專案唯一的存在理由，而「跨 provider 審查是否真的找得到單一 provider 漏掉的東西」，是我們目前正在驗證的主張，不是我們宣稱的結論。
 
 ### 為什麼信任這些發現？
 
@@ -178,7 +201,7 @@ npx claud-prism-aireview --uninstall
 
 ### `/pi-askall` — 詢問所有 Provider
 
-同時向 Codex 和 Gemini 發送相同問題，Claude 綜合三方觀點。適用於**任何議題**——不限於程式碼。每個 provider 獨立回應（無交叉污染），Claude 比較共識、標記分歧、給出整合結論。
+同時向 Codex 和 Gemini 發送相同問題，答案並排讀。適用於**任何議題**——不限於程式碼。每個 provider 獨立回應（無交叉污染），Claude 標出他們一致的地方，以及更有用的——**不一致的地方**：分歧會告訴你答案中哪些部分是真的定論、哪些只是某個模型的猜測。整合結論在後面，但兩家的完整原文會原封不動印在它上面。
 
 ```
 /pi-askall 新的微服務該用 monorepo 還是 polyrepo？

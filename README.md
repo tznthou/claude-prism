@@ -14,7 +14,7 @@
 
 [繁體中文](README.zh-TW.md)
 
-Cross-provider AI orchestration for Claude Code — eliminate same-source blind spots.
+Cross-provider AI orchestration for Claude Code — see what one model alone never shows you.
 
 ---
 
@@ -28,7 +28,7 @@ There's a deeper structural issue: when Claude Code writes your code **and** rev
 
 ### The Solution
 
-**1. Cross-provider triangulation** — Claude orchestrates, but dispatches review tasks to **Gemini** and **Codex** via their CLIs. Three providers, three training datasets, three sets of blind spots that cancel each other out.
+**1. Cross-provider juxtaposition** — Claude orchestrates, but dispatches review tasks to **Gemini** and **Codex** via their CLIs. Three providers, three training datasets, three sets of blind spots. The findings are laid side by side rather than merged into one verdict: **what Codex flagged and Claude didn't is the line worth your attention**. The disagreement is the signal — not because one model is right, but because the gap is where your own reading probably went too.
 
 **2. Evidence-based confidence scoring** — Instead of asking AI "how confident are you?", each finding is scored by verifiable evidence: specific line numbers (+25), rule citations (+20), reproducible scenarios (+15), hallucinated references (-50). The core formula is deterministic — same evidence, same score. [Open spec](spec/confidence-scoring-v1.md), no black box.
 
@@ -53,7 +53,7 @@ Anthropic shipped [`/ultrareview`](https://code.claude.com/docs/en/ultrareview.m
 | | claude-prism `/pi-multi-review` | `/ultrareview` |
 |---|---|---|
 | **Model diversity** | Codex + Gemini + Claude (3 independent models) | Many Claude agents, one underlying model |
-| **Blind-spot strategy** | Heterogeneous training data cancels shared gaps | Homogeneous — more passes, same gaps |
+| **Blind-spot strategy** | Heterogeneous training data — disagreement between providers surfaces gaps | Homogeneous — more passes, same gaps |
 | **Review stance** | Adversarial, divided attack surfaces | Verification-focused (lower false-positive rate) |
 | **Free tier** | Unlimited (uses existing CLI subscriptions) | 3 runs per account, one-time — does not refresh |
 | **Team / Enterprise free runs** | Unlimited | 0 |
@@ -64,6 +64,29 @@ Anthropic shipped [`/ultrareview`](https://code.claude.com/docs/en/ultrareview.m
 | **CI/CD** | `ci-review.sh` in GitHub Actions | Interactive session only |
 
 The two tools optimize for different scenarios. `/ultrareview` is a solid pre-merge confidence boost for Pro/Max users working inside the Claude ecosystem. `/pi-multi-review` exists for everything outside that box — CI pipelines, regulated / ZDR environments, teams without Pro/Max seats, and anyone who wants perspectives that don't share Claude's training data.
+
+### Compared to `codex-plugin-cc` (OpenAI official)
+
+Let's be direct about this one. OpenAI ships [`codex-plugin-cc`](https://github.com/openai/codex-plugin-cc) — an official Claude Code plugin (32,960★ as of 2026-09-10, Apache-2.0) that puts Codex review inside Claude Code for free. Its `adversarial-review` prompt and our `/pi-code-review` share the same core instruction, word for word: *"break confidence in the change, not to validate it."* On top of that, recent `codex-cli` builds ship `codex review` and `codex mcp-server` as built-in subcommands.
+
+**If Codex is the only second opinion you want, use theirs.** It's official, better resourced, and architecturally ahead — it talks to the Codex app-server through a persistent broker instead of spawning a CLI per call, which sidesteps an entire class of timeout problems we spent six releases on.
+
+What it won't do is call Gemini.
+
+| | claude-prism | `codex-plugin-cc` |
+|---|---|---|
+| **Providers** | Codex + Gemini + Claude | Codex only |
+| **Cross-provider juxtaposition** | Yes — the point of the tool | N/A (single provider) |
+| **Confidence scoring** | Second-party: Claude re-scores Codex's findings and Glob/Greps every cited reference to catch hallucinations | Self-reported 0–1 by Codex, no cross-check |
+| **Architecture** | Bash wrappers, one CLI invocation per call | Persistent broker over unix socket + JSON-RPC, job files on disk |
+| **Write access to your code** | None — read-only by design | `/codex:rescue` delegates fixes to Codex |
+| **Background jobs** | No | Yes (`status` / `result` / `cancel`) |
+| **Install** | `npm` / Homebrew / `./install.sh` | `/plugin marketplace add openai/codex-plugin-cc` |
+| **CI/CD** | `ci-review.sh` in GitHub Actions | Bound to the Claude Code session |
+| **Implementation** | ~810 lines of Bash | 5,349 lines of JS + full test suite |
+| **Maturity** | 10★, one maintainer | 32,960★, OpenAI |
+
+The honest summary: on the Codex half, the official plugin is the better tool and we're not going to pretend otherwise. What it structurally cannot offer is a second provider — OpenAI has no incentive to route your review through Gemini. That gap is the only reason this project exists, and whether cross-provider review actually finds things a single provider misses is a claim we're currently testing rather than asserting.
 
 ### Why Trust the Findings?
 
@@ -178,7 +201,7 @@ Direct Q&A with Gemini. Leverages Google's broad ecosystem knowledge.
 
 ### `/pi-askall` — Ask All Providers
 
-Ask Codex and Gemini the same question in parallel, then Claude synthesizes all three perspectives. Works with **any topic** — not limited to code. Each provider responds independently (no cross-contamination), then Claude compares consensus, flags divergence, and delivers an integrated take.
+Ask Codex and Gemini the same question in parallel and read the answers side by side. Works with **any topic** — not limited to code. Each provider responds independently (no cross-contamination). Claude marks where they agree, and — more usefully — **where they don't**: the divergence tells you which parts of the answer are actually settled and which are one model's guess. A synthesized take follows, but both providers' full answers are printed above it, unedited.
 
 ```
 /pi-askall Should we use a monorepo or polyrepo for the new microservices?
