@@ -167,6 +167,30 @@ STAGE="exec"
 CMD=("$AGY_BIN")
 [[ -n "$MODEL" ]] && CMD+=(--model "$MODEL")
 
+# --- Workspace access (2026-09-22) ---
+# In headless mode agy auto-denies tool calls that fall outside its workspace,
+# so the model can only re-read the prompt text it was handed. The failure
+# surfaces as `EMPTY_OUTPUT: ... Likely network or upstream failure`, which
+# points at the wrong layer entirely and hid the real cause for months.
+# Granting the repo root restores parity with the codex provider, which already
+# reads the repo directly under its read-only sandbox.
+# A/B/C/D arm test (2026-09-22, agy 1.2.7, random-token read-back judgement):
+# baseline => EMPTY_OUTPUT; --add-dir alone => HIT. `--add-dir` is sufficient,
+# so --dangerously-skip-permissions is deliberately NOT passed here.
+#
+# Scope note: this only matters when the task asks gemini to go find something
+# itself. A review whose diff is already embedded in the prompt works either
+# way — which is why the S3 M arm runs of 2026-08-13 completed normally with
+# gemini contributing findings, despite predating this flag.
+#
+# CLAUDE_PRISM_NO_ADD_DIR opts out. It exists for the S3 recall benchmark,
+# whose protocol froze before this flag existed: granting the extra capability
+# mid-experiment would make post-fix cells incomparable with the six already
+# collected. Production callers should leave it unset.
+if [[ -z "${CLAUDE_PRISM_NO_ADD_DIR:-}" ]]; then
+    CMD+=(--add-dir "$(command git rev-parse --show-toplevel 2>/dev/null || pwd)")
+fi
+
 ERR_TMP=$(mktemp)
 # Per-invocation OUT_TMP (v0.14.2+): prevents concurrent-tee interleaving when two
 # sub-agents / sessions invoke this wrapper simultaneously. Symlink updated post-wait
