@@ -1069,6 +1069,10 @@ if command -v npm &>/dev/null && command -v node &>/dev/null; then
     else
         pass "T19.5 every script the commands invoke ships in the npm package ($(grep -c . <<< "$T19_NEEDED") scripts)"
     fi
+elif [[ -n "${CI:-}" ]]; then
+    # CI runners ship node/npm today (not pinned); if an image ever drops them,
+    # these checks must fail loudly rather than turn into SKIPs on a green run.
+    fail "T19.2-T19.5 npm/node missing on CI — npm-subset checks did not run"
 else
     skip "T19.2 npm/node not available — npm-subset install not exercised"
     skip "T19.3 npm/node not available — tamper check not exercised"
