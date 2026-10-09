@@ -130,9 +130,15 @@ Output format — one block per finding, exactly this structure:
 
 At most 8 findings — if you found more, keep the highest-impact 8. Prefer one strong finding over several weak ones; do not dilute serious issues with filler.
 
+If you report no findings, the verdict still needs evidence — before it, list what you examined in the code below:
+
+Checked:
+- <file or function under review> — <the failure modes above you tested it against>
+
 End with exactly one line:
 VERDICT: safe | needs-fixes | do-not-merge
-If the change looks safe, say VERDICT: safe directly — do not invent findings to seem thorough.
+
+A verdict on its own is not a complete review. Do not invent findings to seem thorough — when nothing holds up as a real issue, the Checked list followed by VERDICT: safe is the complete answer.
 
 Final self-check: verify each finding is adversarial (not stylistic), tied to concrete code, and plausible under a real failure scenario.
 
@@ -230,9 +236,16 @@ If one provider fails (script exits non-zero or returns an error message):
 - In the output, clearly note: "⚠️ [Provider] unavailable ([reason]) — continuing with [other provider] + Claude."
 - If **both** external providers fail, Claude performs a solo review and notes: "⚠️ Both external providers unavailable ([Codex reason] / [Gemini reason]) — single-perspective review. For single-provider review, try `/pi-code-review` (Codex) or `/pi-ui-review` (Gemini) when they recover."
 
+A provider whose reply is hollow (see Step 5) counts as failed here: continue without it, and give it the Provider Status `unavailable — DEGRADED (hollow response)`.
+
 If a sub-agent reported empty stdout, it should already have fallen back to reading its caller-owned `$OUT_PATH` file (the wrapper's `tee` safety net, v0.14.3+). If even that file is 0 bytes, treat the provider as unavailable and note the failure reason in the Provider Status table.
 
-### 5. Handle non-conforming output
+### 5. Handle hollow and non-conforming output
+
+**Check for a hollow response first.** A provider can exit 0 with a well-formed reply that still carries no review of the code under review: no finding that points at a location, and no `Checked:` entry or sentence naming a file or function under review (e.g. a lone `VERDICT: safe`, or just "No issues found."). Treat that provider as **DEGRADED** and handle it as unavailable under Step 4:
+- Its VERDICT does not enter the Verdict Comparison table — put "—" and note "hollow response (DEGRADED)".
+- It does not count toward consensus: a hollow "safe" is not agreement that the change is safe.
+- Judge by content, not length: a short reply that names the code it checked is a real review. The sub-agent's `response_bytes` is only a rough first signal.
 
 External providers may not follow the requested format (no severity tags, no VERDICT line, pure prose, etc.). When this happens:
 - **Do NOT discard the response or force it into the template.** Extract actionable insights from the raw text.
@@ -453,7 +466,7 @@ A verdict split between providers is a real signal — call it out explicitly an
 After outputting the review, use the Bash tool to append a single-line JSON to the insights log:
 
 ```bash
-echo '{"date":"<ISO 8601 UTC>","project":"<repo or directory name>","scope":"<staged|file:path|diff|pr>","domain":"<frontend|backend|fullstack>","providers":["<list of providers that responded>"],"issues":[<issue objects>]}' >> ~/.claude/logs/review-insights.jsonl
+echo '{"date":"<ISO 8601 UTC>","project":"<repo or directory name>","scope":"<staged|file:path|diff|pr>","domain":"<frontend|backend|fullstack>","providers":["<list of providers that returned a real review>"],"issues":[<issue objects>]}' >> ~/.claude/logs/review-insights.jsonl
 ```
 
 Each issue object in the `issues` array:
@@ -469,6 +482,7 @@ Each issue object in the `issues` array:
 
 Rules:
 - Only record issues that **passed the confidence filter** (≥ 80)
+- Leave a DEGRADED (hollow) provider out of `providers` — it responded but did not review (Step 5)
 - Severity maps directly from the provider's text tags: CRITICAL→critical, MEDIUM→medium, SUGGESTION→suggestion
 - If a provider didn't give structured severity, infer from context (e.g., "security vulnerability" → critical)
 - Use `"guideline"` category for project guideline violations (`CLAUDE.md` / `Agents.md`)

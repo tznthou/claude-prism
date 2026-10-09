@@ -516,7 +516,7 @@ Logging 預設開啟，檢查 `~/.claude/logs/multi-ai.log` 即可驗證。每�
 
 **Q: 如果 provider 回傳格式不符預期？**
 
-Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 severity 標記／verdict 格式回覆，Claude 會用語意比對從原始文字中提取可行動的問題。verdict 欄位在未提供時顯示「—」。
+Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 severity 標記／verdict 格式回覆，Claude 會用語意比對從原始文字中提取可行動的問題。verdict 欄位在未提供時顯示「—」。格式正確但內容空洞的回覆（例如只有一行 `VERDICT: safe`，沒有 finding，也沒點名檢查過哪些程式碼）會被判為 DEGRADED：該 provider 在這次審查中視同不可用，由 Claude 補審。
 
 **Q: 費用多少？**
 

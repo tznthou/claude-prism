@@ -128,6 +128,12 @@ If Gemini fails (script exits non-zero or CLI not found):
 - Include the specific failure reason from stderr (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, NETWORK, EMPTY_OUTPUT, CLI_ERROR, or CLI_NOT_FOUND).
 - Note in output: "⚠️ Gemini unavailable ([reason]) — review conducted by Claude only. For cross-provider review with Codex, try `/pi-multi-review`."
 
+If Gemini returns a hollow response — it exited 0 and the reply may even be well-formed, but it carries no review of the code under review: no finding that points at a location, and no sentence naming a file or component under review (e.g. a lone `VERDICT: ready`):
+- Treat it as **DEGRADED**, not as a clean review — a well-formed verdict is not evidence that the code was read. Do NOT present its VERDICT.
+- Claude performs the UI/UX review independently, as in the failure path above.
+- Judge by content, not length: a short reply that names the code it checked is a real review. Length is only a rough first signal.
+- Note in output: "⚠️ Gemini returned a hollow response (DEGRADED, ~N chars, nothing tied to the code under review) — review conducted by Claude only. For cross-provider review with Codex, try `/pi-multi-review`."
+
 If the Bash tool was backgrounded or returned empty output, read the result from `~/.claude/logs/pi-gemini-last.out` (persisted by the script's `tee` safety net).
 
 ### 5. Screenshot analysis (if provided)
@@ -194,7 +200,7 @@ If project guidelines were found in Step 1.5 (no double-dip with "cites a standa
 
 ### 7. Present results
 
-Render the provider's text severity tags as emoji in the final output: CRITICAL→🔴, MEDIUM→🟡, SUGGESTION→🟢. Include the provider's VERDICT line near the top.
+Render the provider's text severity tags as emoji in the final output: CRITICAL→🔴, MEDIUM→🟡, SUGGESTION→🟢. Include the provider's VERDICT line near the top — unless Gemini was DEGRADED (Step 4).
 
 Show the filtered review grouped by confidence tier:
 - **High confidence (≥ 90)**: Definitely fix

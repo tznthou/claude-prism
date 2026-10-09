@@ -516,7 +516,7 @@ That's fine. All commands include graceful degradation with **structured error d
 
 **Q: What if a provider returns an unexpected format?**
 
-Claude handles it. If Codex or Gemini doesn't follow the requested severity-tag/verdict format, Claude extracts actionable insights from the raw text using semantic matching rather than format parsing. Verdicts show "—" in the comparison table when not provided.
+Claude handles it. If Codex or Gemini doesn't follow the requested severity-tag/verdict format, Claude extracts actionable insights from the raw text using semantic matching rather than format parsing. Verdicts show "—" in the comparison table when not provided. A reply that is well-formed but hollow — e.g. a lone `VERDICT: safe`, with no findings and nothing naming the code it checked — is treated as DEGRADED: that provider counts as unavailable for the review, and Claude reviews in its place.
 
 **Q: How much does this cost?**
 
