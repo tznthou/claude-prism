@@ -272,7 +272,7 @@ FIRST_BYTE_POLL_S=1
         kill -0 "$LAST" 2>/dev/null || exit 0
         sleep "$FIRST_BYTE_POLL_S"
     done
-) &
+) >/dev/null 2>&1 &
 FBPID=$!
 
 # --- Heartbeat subshell (Phase A1, v0.14.4+) ---
@@ -291,7 +291,7 @@ HEARTBEAT_INTERVAL_S=30
         elapsed=$(($(date +%s) - START_TS))
         echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [gemini] [DEBUG] [pid=$MAIN_PID] alive elapsed_s=$elapsed bytes=$bytes" >> "$LOG_FILE"
     done
-) &
+) >/dev/null 2>&1 &
 HBPID=$!
 
 # Watcher: after sleep T, verify pipeline is still alive before firing.
@@ -299,14 +299,17 @@ HBPID=$!
 # without it, a natural-success run could still leave soft_timeout in the log.
 # Order inside the gate: marker → log → pkill (so classification has truth even
 # if pkill is a no-op on already-dead pipeline).
+# The marker/log writes end in `|| true`: under `set -e` a failed write (full
+# disk, unwritable log) would exit this subshell before pkill and silently
+# disable the timeout.
 (
     sleep "$TIMEOUT_S"
     if kill -0 "$LAST" 2>/dev/null; then
-        echo "$TIMEOUT_S" > "$TIMEOUT_MARKER"
-        echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [gemini] [WARN] [pid=$$] soft_timeout stage=exec elapsed_s=$TIMEOUT_S" >> "$LOG_FILE"
+        echo "$TIMEOUT_S" > "$TIMEOUT_MARKER" || true
+        echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [gemini] [WARN] [pid=$$] soft_timeout stage=exec elapsed_s=$TIMEOUT_S" >> "$LOG_FILE" || true
         pkill -TERM -P $$ 2>/dev/null || true
     fi
-) &
+) >/dev/null 2>&1 &
 WPID=$!
 
 # EXIT trap: kill watcher + heartbeat + first-byte detector + KILL-escalate any

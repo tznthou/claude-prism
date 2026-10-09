@@ -361,6 +361,8 @@ _check_prompt_len "call-codex.sh stdin from /dev/null skipped" "$STDIN_OUT" "$ST
 # CODEX_BIN / AGY_BIN env vars so no real API calls are made.
 # 5 assertions: normal path (rc=0), timeout fires (rc=124 + sentinel + log event),
 # custom TIMEOUT=5 honoured, no orphan processes, gemini mirror fires identically.
+# T13.7-T13.9 add $(...) capture checks (GH #24): the caller must not wait on
+# orphaned background sleeps.
 echo ""
 echo "13. Soft-timeout regression..."
 
@@ -470,6 +472,61 @@ if [[ $T13_RC5 -eq 124 ]] && \
     pass "T13.5 gemini timeout mirrors codex (rc=124 + sentinel + [gemini] log event)"
 else
     fail "T13.5 gemini timeout: expected rc=124 + sentinel + [gemini] log, got rc=$T13_RC5"
+fi
+
+# T13.7-T13.9 Command-substitution capture returns promptly (GH #24 regression guard).
+# The pi-* templates capture wrapper output with wrapper_out=$(... 2>&1), which
+# waits for EOF on every write end of the pipe. The background subshells
+# (first-byte detector / heartbeat / watcher) used to inherit stdout, so their
+# orphaned `sleep` kept the pipe open and the caller waited the full TIMEOUT
+# (or the 30s heartbeat interval) even when the provider answered instantly.
+# T13.1-T13.6 redirect to files and never exercise this path.
+
+# T13.7 codex, fast CLI, TIMEOUT=40, $(...) capture: caller gets output in <3s
+T13_LD7=$(mktemp -d); T13_LOGDIRS+=("$T13_LD7")
+T13_START=$(date +%s)
+set +e
+T13_OUT7=$(MULTI_AI_LOG_DIR="$T13_LD7" CODEX_BIN="$T13_FAKE_FAST" CLAUDE_PRISM_TIMEOUT=40 \
+    "$SCRIPT_DIR/scripts/call-codex.sh" "q" < /dev/null 2>&1)
+T13_RC7=$?
+set -e
+T13_EL7=$(( $(date +%s) - T13_START ))
+if [[ $T13_RC7 -eq 0 ]] && (( T13_EL7 < 3 )) && [[ "$T13_OUT7" == *fake-done* ]]; then
+    pass "T13.7 codex \$(...) capture returns promptly (elapsed=${T13_EL7}s, TIMEOUT=40)"
+else
+    fail "T13.7 codex \$(...) capture: expected rc=0 + <3s + fake-done, got rc=$T13_RC7 elapsed=${T13_EL7}s"
+fi
+
+# T13.8 codex, slow CLI, TIMEOUT=5, $(...) capture: soft-timeout still fires and
+# the caller returns soon after it (the 30s heartbeat sleep must not hold the pipe)
+T13_LD8=$(mktemp -d); T13_LOGDIRS+=("$T13_LD8")
+T13_START=$(date +%s)
+set +e
+T13_OUT8=$(MULTI_AI_LOG_DIR="$T13_LD8" CODEX_BIN="$T13_FAKE_SLOW" CLAUDE_PRISM_TIMEOUT=5 \
+    "$SCRIPT_DIR/scripts/call-codex.sh" "q" < /dev/null 2>&1)
+T13_RC8=$?
+set -e
+T13_EL8=$(( $(date +%s) - T13_START ))
+if [[ $T13_RC8 -eq 124 ]] && (( T13_EL8 >= 3 && T13_EL8 <= 9 )) && \
+   [[ "$T13_OUT8" == *"CLAUDE-PRISM: soft-timeout"* ]]; then
+    pass "T13.8 codex \$(...) capture with soft-timeout (rc=124 + sentinel, elapsed=${T13_EL8}s)"
+else
+    fail "T13.8 codex \$(...) soft-timeout: expected rc=124 + 3-9s + sentinel, got rc=$T13_RC8 elapsed=${T13_EL8}s"
+fi
+
+# T13.9 gemini mirror of T13.7 (Keep in sync sibling guard)
+T13_LD9=$(mktemp -d); T13_LOGDIRS+=("$T13_LD9")
+T13_START=$(date +%s)
+set +e
+T13_OUT9=$(MULTI_AI_LOG_DIR="$T13_LD9" AGY_BIN="$T13_FAKE_FAST" CLAUDE_PRISM_TIMEOUT=40 \
+    "$SCRIPT_DIR/scripts/call-gemini.sh" "q" < /dev/null 2>&1)
+T13_RC9=$?
+set -e
+T13_EL9=$(( $(date +%s) - T13_START ))
+if [[ $T13_RC9 -eq 0 ]] && (( T13_EL9 < 3 )) && [[ "$T13_OUT9" == *fake-done* ]]; then
+    pass "T13.9 gemini \$(...) capture returns promptly (elapsed=${T13_EL9}s, TIMEOUT=40)"
+else
+    fail "T13.9 gemini \$(...) capture: expected rc=0 + <3s + fake-done, got rc=$T13_RC9 elapsed=${T13_EL9}s"
 fi
 
 # ─── Test 14: Phase A1 observability (v0.14.4+) ───
