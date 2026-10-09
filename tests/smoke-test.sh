@@ -969,6 +969,113 @@ else
     fail "T18.5 HOME unset: rc=$T18_RC5 out=$(cat "$T18_LD5/out"); err=$(cat "$T18_LD5/err")"
 fi
 
+# ─── Test 19: integrity manifest coverage + npm-subset install (GH #23) ───
+# checksums.sha256 must cover every file install.sh deploys (scripts/*.sh,
+# commands/*.md) plus install.sh / uninstall.sh — four CI-only scripts were
+# never enrolled (#23). Channels ship different subsets: the npm package
+# leaves those scripts out (package.json "files"), and the v0.14.6 / v0.15.0
+# npm installs aborted because the manifest named files the package lacked.
+# T19.2 / T19.3 copy the exact npm file set (asked from npm itself, not
+# re-derived) and run the real install.sh on it with HOME in a temp dir.
+echo ""
+echo "19. Integrity manifest coverage + npm-subset install..."
+
+T19_EXPECTED=$(cd "$SCRIPT_DIR" && printf '%s\n' scripts/*.sh commands/*.md install.sh uninstall.sh | LC_ALL=C sort)
+T19_LISTED=$(awk '{print $2}' "$SCRIPT_DIR/checksums.sha256" | LC_ALL=C sort)
+if [[ "$T19_EXPECTED" == "$T19_LISTED" ]]; then
+    pass "T19.1 checksums.sha256 covers exactly scripts/*.sh + commands/*.md + install.sh + uninstall.sh"
+else
+    T19_MISSING=$(LC_ALL=C comm -23 <(printf '%s\n' "$T19_EXPECTED") <(printf '%s\n' "$T19_LISTED") | tr '\n' ' ')
+    T19_EXTRA=$(LC_ALL=C comm -13 <(printf '%s\n' "$T19_EXPECTED") <(printf '%s\n' "$T19_LISTED") | tr '\n' ' ')
+    fail "T19.1 manifest coverage drift — missing: ${T19_MISSING:-none}; extra: ${T19_EXTRA:-none}"
+fi
+
+if command -v npm &>/dev/null && command -v node &>/dev/null; then
+    T19_DIR=$(mktemp -d); T13_LOGDIRS+=("$T19_DIR")
+    T19_PKG="$T19_DIR/pkg"
+    # --cache keeps npm's cache/logs inside the temp dir; no lifecycle scripts run.
+    T19_NPM_FILES=$(cd "$SCRIPT_DIR" && npm pack --dry-run --json --ignore-scripts --cache "$T19_DIR/npm-cache" 2>/dev/null \
+        | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const f of JSON.parse(s)[0].files)console.log(f.path)})' \
+        || true)
+    _t19_copy_pkg() {  # $1 = destination dir; copies the npm file set
+        local f
+        while IFS= read -r f; do
+            [[ -n "$f" ]] || continue
+            mkdir -p "$1/$(dirname "$f")"
+            cp -p "$SCRIPT_DIR/$f" "$1/$f"
+        done <<< "$T19_NPM_FILES"
+    }
+    _t19_copy_pkg "$T19_PKG"
+    T19_ABSENT=0
+    while read -r _ path; do
+        [[ -f "$T19_PKG/$path" ]] || T19_ABSENT=$((T19_ABSENT + 1))
+    done < "$SCRIPT_DIR/checksums.sha256"
+
+    # T19.2 untouched npm subset installs; manifest entries for files the
+    # package does not ship are skipped, not failed.
+    set +e
+    HOME="$T19_DIR/home2" bash "$T19_PKG/install.sh" > "$T19_DIR/install2.out" 2>&1
+    T19_RC2=$?
+    set -e
+    if [[ $T19_RC2 -eq 0 ]] && grep -q "All checksums verified" "$T19_DIR/install2.out" && \
+       [[ -f "$T19_DIR/home2/.claude/scripts/call-codex.sh" ]] && \
+       [[ -f "$T19_DIR/home2/.claude/commands/pi-askall.md" ]]; then
+        pass "T19.2 npm package subset installs ($T19_ABSENT manifest entries not shipped, skipped)"
+    else
+        fail "T19.2 npm subset install: rc=$T19_RC2 npm_files=$(grep -c . <<< "$T19_NPM_FILES"); $(grep -i -E 'checksum|FAILED' "$T19_DIR/install2.out" | head -3 | tr '\n' ' ')"
+    fi
+
+    # T19.3 a shipped file altered → install aborts before deploying anything
+    # (skipping absent entries must not weaken the check on present ones).
+    echo "# tampered" >> "$T19_PKG/scripts/call-codex.sh"
+    set +e
+    HOME="$T19_DIR/home3" bash "$T19_PKG/install.sh" > "$T19_DIR/install3.out" 2>&1
+    T19_RC3=$?
+    set -e
+    if [[ $T19_RC3 -ne 0 ]] && grep -q "Checksum verification failed" "$T19_DIR/install3.out" && \
+       [[ ! -e "$T19_DIR/home3/.claude/scripts/call-codex.sh" ]]; then
+        pass "T19.3 altered file in npm subset → install aborts (rc=$T19_RC3, nothing deployed)"
+    else
+        fail "T19.3 tamper check: rc=$T19_RC3; deployed=$([[ -e "$T19_DIR/home3/.claude/scripts/call-codex.sh" ]] && echo yes || echo no)"
+    fi
+
+    # T19.4 manifest without a trailing newline: its last entry is still
+    # checked (a skipped last line would let that file through unverified).
+    T19_PKG4="$T19_DIR/pkg4"
+    _t19_copy_pkg "$T19_PKG4"
+    printf '%s' "$(cat "$T19_PKG4/checksums.sha256")" > "$T19_PKG4/checksums.sha256"
+    T19_LAST=$(tail -n 1 "$T19_PKG4/checksums.sha256" | awk '{print $2}')
+    echo "# tampered" >> "$T19_PKG4/$T19_LAST"
+    set +e
+    HOME="$T19_DIR/home4" bash "$T19_PKG4/install.sh" > "$T19_DIR/install4.out" 2>&1
+    T19_RC4=$?
+    set -e
+    if [[ $T19_RC4 -ne 0 ]] && grep -q "Checksum verification failed" "$T19_DIR/install4.out"; then
+        pass "T19.4 manifest without trailing newline → last entry ($T19_LAST) still verified"
+    else
+        fail "T19.4 last manifest line skipped: altered $T19_LAST passed, rc=$T19_RC4"
+    fi
+
+    # T19.5 every script a command invokes ships in the npm package. T19.2's
+    # install skips manifest entries the package lacks, so it cannot tell the
+    # deliberate omissions (CI-only scripts) from a forgotten runtime script
+    # in package.json "files" — that would install fine and break at run time.
+    T19_NEEDED=$(grep -oh -E 'scripts/[A-Za-z0-9_.-]+\.sh' "$SCRIPT_DIR"/commands/*.md | LC_ALL=C sort -u || true)
+    T19_UNSHIPPED=$(LC_ALL=C comm -23 <(printf '%s\n' "$T19_NEEDED") <(printf '%s\n' "$T19_NPM_FILES" | LC_ALL=C sort) | tr '\n' ' ')
+    if [[ -z "$T19_NEEDED" ]]; then
+        fail "T19.5 no script references found in commands/*.md (pattern no longer matches?)"
+    elif [[ -n "${T19_UNSHIPPED// /}" ]]; then
+        fail "T19.5 commands invoke scripts the npm package does not ship: $T19_UNSHIPPED"
+    else
+        pass "T19.5 every script the commands invoke ships in the npm package ($(grep -c . <<< "$T19_NEEDED") scripts)"
+    fi
+else
+    skip "T19.2 npm/node not available — npm-subset install not exercised"
+    skip "T19.3 npm/node not available — tamper check not exercised"
+    skip "T19.4 npm/node not available — trailing-newline check not exercised"
+    skip "T19.5 npm/node not available — command-script shipping check not exercised"
+fi
+
 # ─── Summary ───
 echo ""
 echo "─────────────────────────────────────────"

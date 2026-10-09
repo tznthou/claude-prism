@@ -105,14 +105,29 @@ done
 [[ "$BACKED_UP" == true ]] && info "Existing files backed up to $BACKUP_DIR"
 
 # ─── Verify integrity (if checksums available) ───
+# The manifest lists every file the repo ships, but channels ship different
+# subsets: the npm package leaves out the CI-only scripts (package.json
+# "files"). Entries for files absent from this package are skipped rather
+# than failed — the v0.14.6 and v0.15.0 npm installs aborted here because the
+# manifest named files the package did not contain. Every file that is
+# present is still checked, and the manifest covers everything this script
+# deploys (smoke T19.1), so nothing is installed unverified.
+# Filtered in bash rather than with `shasum --ignore-missing`, which older
+# shasum builds lack. `|| [[ -n ... ]]` keeps a last line that has no
+# trailing newline from being skipped (that would leave its file unchecked).
 CHECKSUM_FILE="$SCRIPT_DIR/checksums.sha256"
 if [[ -f "$CHECKSUM_FILE" ]]; then
     echo "Verifying file integrity..."
-    if (cd "$SCRIPT_DIR" && shasum -a 256 -c "$CHECKSUM_FILE" --quiet 2>/dev/null); then
+    if (cd "$SCRIPT_DIR" &&
+        while read -r sum path || [[ -n "${sum:-}" ]]; do
+            if [[ -f "$path" ]]; then
+                printf '%s  %s\n' "$sum" "$path"
+            fi
+        done < "$CHECKSUM_FILE" | shasum -a 256 -c --quiet 2>/dev/null); then
         ok "All checksums verified"
     else
         fail "Checksum verification failed — files may have been tampered with"
-        echo "  Run 'shasum -a 256 -c checksums.sha256' in the repo root for details." >&2
+        echo "  Run 'shasum -a 256 -c checksums.sha256' in $SCRIPT_DIR for details (files this package does not ship show as 'FAILED open or read')." >&2
         exit 1
     fi
     echo ""
