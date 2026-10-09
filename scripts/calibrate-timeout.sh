@@ -6,7 +6,8 @@
 #
 # Class mapping (frozen v0.14.4 + commit 71f997d):
 #   heavy (5): pi-askall/fact-check/plan/multi-review/code-review → floor 480 / ceiling 540
-#   small (5): pi-ask-codex/ask-gemini/research/ui-design/ui-review → floor 240 / ceiling 300
+#   small (4): pi-ask-codex/ask-gemini/research/ui-design → floor 240 / ceiling 300
+#              (pi-ui-review was the fifth until it was retired in v0.17.0)
 #
 # Formula: suggested = clamp(class_floor, class_ceiling, ceil(p99 * 1.15 / 10) * 10)
 # N<5: stick with current (low confidence)

@@ -15,7 +15,6 @@ claude-prism is a local wrapper — it does not process or bill tokens itself. E
 | `/pi-askall` | 2 (Codex + Gemini) | 500–2K each | 500–2K each | Both providers called in parallel |
 | `/pi-fact-check` | 1 (Gemini) + N (WebSearch) | 1K–5K | 2K–8K | Scales with number of claims; WebSearch runs in parallel |
 | `/pi-code-review` | 1 (Codex) | 2K–10K | 1K–4K | Scales with diff size |
-| `/pi-ui-review` | 1 (Gemini) | 2K–10K | 1K–4K | Scales with file count |
 | `/pi-ui-design` | 1 (Gemini) | 1K–3K | 3K–8K | Output-heavy (HTML generation) |
 | `/pi-research` | 1 (Gemini) + 2–4 (WebSearch) | 1K–5K | 2K–8K | Dual-track search; scales with topic complexity |
 | `/pi-multi-review` | 2 (Codex + Gemini) | Above ×2 | Above ×2 | Both providers called in parallel |

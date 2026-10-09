@@ -40,7 +40,7 @@ done
 echo ""
 echo "2. Command files..."
 
-for cmd in pi-ask-codex pi-ask-gemini pi-code-review pi-multi-review pi-plan pi-research pi-ui-design pi-ui-review; do
+for cmd in pi-ask-codex pi-ask-gemini pi-code-review pi-multi-review pi-plan pi-research pi-ui-design; do
     if [[ -f "$SCRIPT_DIR/commands/$cmd.md" ]]; then
         pass "/$(basename "$cmd") command definition exists"
     else
@@ -1078,6 +1078,42 @@ else
     skip "T19.3 npm/node not available — tamper check not exercised"
     skip "T19.4 npm/node not available — trailing-newline check not exercised"
     skip "T19.5 npm/node not available — command-script shipping check not exercised"
+fi
+
+# ─── Test 20: retired commands removed on upgrade (v0.17.0) ───
+# install.sh copies only what commands/ ships, so a command dropped from the
+# repo would otherwise stay installed — unmaintained but still callable.
+# /pi-ui-review was retired in v0.17.0. Runs the real install.sh with HOME in
+# a temp dir; nothing under the real ~/.claude is touched.
+echo ""
+echo "20. Retired command cleanup on upgrade..."
+
+# T20.1 an earlier install left pi-ui-review.md behind → removed, with a reason
+T20_HOME1=$(mktemp -d); T13_LOGDIRS+=("$T20_HOME1")
+mkdir -p "$T20_HOME1/.claude/commands"
+echo "# copy installed by an earlier version" > "$T20_HOME1/.claude/commands/pi-ui-review.md"
+set +e
+HOME="$T20_HOME1" bash "$SCRIPT_DIR/install.sh" > "$T20_HOME1/install.out" 2>&1
+T20_RC1=$?
+set -e
+if [[ $T20_RC1 -eq 0 ]] && [[ ! -e "$T20_HOME1/.claude/commands/pi-ui-review.md" ]] && \
+   grep -q "Removed /pi-ui-review" "$T20_HOME1/install.out" && \
+   [[ -f "$T20_HOME1/.claude/commands/pi-code-review.md" ]]; then
+    pass "T20.1 upgrade removes the retired /pi-ui-review and says why (other commands installed)"
+else
+    fail "T20.1 retired-command cleanup: rc=$T20_RC1 still_installed=$([[ -e "$T20_HOME1/.claude/commands/pi-ui-review.md" ]] && echo yes || echo no) message=$(grep -c 'Removed /pi-ui-review' "$T20_HOME1/install.out")"
+fi
+
+# T20.2 fresh install → no removal message
+T20_HOME2=$(mktemp -d); T13_LOGDIRS+=("$T20_HOME2")
+set +e
+HOME="$T20_HOME2" bash "$SCRIPT_DIR/install.sh" > "$T20_HOME2/install.out" 2>&1
+T20_RC2=$?
+set -e
+if [[ $T20_RC2 -eq 0 ]] && ! grep -q "pi-ui-review" "$T20_HOME2/install.out"; then
+    pass "T20.2 fresh install prints nothing about /pi-ui-review"
+else
+    fail "T20.2 fresh install: rc=$T20_RC2; $(grep 'pi-ui-review' "$T20_HOME2/install.out" | head -2 | tr '\n' ' ')"
 fi
 
 # ─── Summary ───
