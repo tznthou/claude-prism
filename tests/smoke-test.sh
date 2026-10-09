@@ -801,26 +801,30 @@ exit 0
 FAKEAUTH
 chmod +x "$T17_FAKE_AUTH"
 
-# T17.1 empty output + rc=0 → EMPTY_OUTPUT, exit 1
+# T17.1 empty output + rc=0 → EMPTY_OUTPUT, exit 1. stderr is empty too, so
+# the wrapper must not guess a cause (GH #20: it used to blame the network).
+# HOME → temp dir: the wrapper lists agy's log dir, never read the real one.
 T17_LD1=$(mktemp -d); T13_LOGDIRS+=("$T17_LD1")
 set +e
-MULTI_AI_LOG_DIR="$T17_LD1" AGY_BIN="$T17_FAKE_EMPTY" \
+HOME="$T17_LD1" MULTI_AI_LOG_DIR="$T17_LD1" AGY_BIN="$T17_FAKE_EMPTY" \
     "$SCRIPT_DIR/scripts/call-gemini.sh" "q" > "$T17_LD1/out" 2> "$T17_LD1/err"
 T17_RC1=$?
 set -e
 if [[ $T17_RC1 -eq 1 ]] && \
    grep -q "EMPTY_OUTPUT" "$T17_LD1/err" && \
-   grep -q "EMPTY_OUTPUT" "$T17_LD1/multi-ai.log"; then
-    pass "T17.1 rc=0 + empty output classified EMPTY_OUTPUT (rc=1 + stderr + log)"
+   grep -q "EMPTY_OUTPUT" "$T17_LD1/multi-ai.log" && \
+   ! grep -qi "network" "$T17_LD1/err" && \
+   ! grep -qi "EMPTY_OUTPUT.*network" "$T17_LD1/multi-ai.log"; then
+    pass "T17.1 rc=0 + empty output classified EMPTY_OUTPUT (rc=1 + stderr + log, no guessed cause)"
 else
-    fail "T17.1 EMPTY_OUTPUT: expected rc=1 + diagnostics, got rc=$T17_RC1; err=$(cat "$T17_LD1/err")"
+    fail "T17.1 EMPTY_OUTPUT: expected rc=1 + diagnostics without a guessed cause, got rc=$T17_RC1; err=$(cat "$T17_LD1/err")"
 fi
 
 # T17.2 OAuth prompt + rc=0 → AUTH_ERROR, exit 1 (dual-condition fingerprint:
 # first-line prefix AND OAuth URL marker must both match)
 T17_LD2=$(mktemp -d); T13_LOGDIRS+=("$T17_LD2")
 set +e
-MULTI_AI_LOG_DIR="$T17_LD2" AGY_BIN="$T17_FAKE_AUTH" \
+HOME="$T17_LD2" MULTI_AI_LOG_DIR="$T17_LD2" AGY_BIN="$T17_FAKE_AUTH" \
     "$SCRIPT_DIR/scripts/call-gemini.sh" "q" > "$T17_LD2/out" 2> "$T17_LD2/err"
 T17_RC2=$?
 set -e
@@ -830,6 +834,139 @@ if [[ $T17_RC2 -eq 1 ]] && \
     pass "T17.2 rc=0 + OAuth prompt classified AUTH_ERROR (rc=1 + stderr + log)"
 else
     fail "T17.2 AUTH_ERROR: expected rc=1 + diagnostics, got rc=$T17_RC2; err=$(cat "$T17_LD2/err")"
+fi
+
+# ─── Test 18: agy session meta + EMPTY_OUTPUT explanation (v0.16.1) ───
+# Every gemini call logs the model agy actually used, read from the one file
+# agy added to its log dir during the call — or unknown / ambiguous when that
+# cannot be told — without touching rc or output. On rc=0 + empty stdout,
+# agy's own stderr explanation is relayed instead of a guessed cause (GH #20).
+# HOME → per-test temp dir, so the real agy log dir is never read; the fake
+# CLIs write their own log files there.
+echo ""
+echo "18. agy session meta + EMPTY_OUTPUT explanation..."
+
+T18_DIR=$(mktemp -d); T13_LOGDIRS+=("$T18_DIR")
+T18_FAKE_LABELED="$T18_DIR/fake-labeled-cli"
+T18_FAKE_TWOLOGS="$T18_DIR/fake-twologs-cli"
+T18_FAKE_DENIED="$T18_DIR/fake-denied-cli"
+
+# Log lines copied from a real agy 1.3.2 log (2026-10-09), model name changed.
+cat > "$T18_FAKE_LABELED" <<'FAKELABELED'
+#!/bin/bash
+d="$HOME/.gemini/antigravity-cli/log"; mkdir -p "$d"
+printf '%s\n' \
+  'I1009 19:06:38.977053       1 model_config_manager.go:327] Propagating selected model override to backend: label="Gemini 9.9 Test (High)"' \
+  'I1009 19:06:40.734110     454 model_config_manager.go:327] Propagating selected model override to backend: label="Gemini 9.9 Test (High)"' \
+  > "$d/cli-20991231_235959.log"
+echo "PONG"
+FAKELABELED
+chmod +x "$T18_FAKE_LABELED"
+
+cat > "$T18_FAKE_TWOLOGS" <<'FAKETWOLOGS'
+#!/bin/bash
+d="$HOME/.gemini/antigravity-cli/log"; mkdir -p "$d"
+echo 'label="Gemini 9.9 Test (High)"' > "$d/cli-20991231_235958.log"
+echo 'label="Gemini 9.9 Test (High)"' > "$d/cli-20991231_235959.log"
+echo "PONG"
+FAKETWOLOGS
+chmod +x "$T18_FAKE_TWOLOGS"
+
+# stderr text verbatim from agy 1.3.2 (2026-10-09 probe: a prompt that made
+# the model run `pwd` → rc=0, stdout empty, this on stderr).
+cat > "$T18_FAKE_DENIED" <<'FAKEDENIED'
+#!/bin/bash
+d="$HOME/.gemini/antigravity-cli/log"; mkdir -p "$d"
+printf '%s\n' \
+  'I1009 19:06:38.977053       1 model_config_manager.go:327] Propagating selected model override to backend: label="Gemini 9.9 Test (High)"' \
+  'I1009 19:06:45.700209     508 tool_confirmation_manager.go:212] Print mode: soft-denying tool confirmation "RunCommand" at step 2' \
+  > "$d/cli-20991231_235959.log"
+echo 'jetski: no output produced — a tool required the "command" permission that headless mode cannot prompt for, so it was auto-denied. Add an allow-rule under permissions.allow in settings.json (e.g. command(<target>)). Alternatively, re-run with --dangerously-skip-permissions to auto-approve all tools.' >&2
+exit 0
+FAKEDENIED
+chmod +x "$T18_FAKE_DENIED"
+
+# T18.1 one new log file → its label is logged; a file that existed before the
+# call (different model) must not be picked up; rc + output pass through.
+T18_LD1=$(mktemp -d); T13_LOGDIRS+=("$T18_LD1")
+mkdir -p "$T18_LD1/.gemini/antigravity-cli/log"
+echo 'label="Old Model"' > "$T18_LD1/.gemini/antigravity-cli/log/cli-20200101_000000.log"
+set +e
+HOME="$T18_LD1" MULTI_AI_LOG_DIR="$T18_LD1" AGY_BIN="$T18_FAKE_LABELED" \
+    "$SCRIPT_DIR/scripts/call-gemini.sh" "q" > "$T18_LD1/out" 2> "$T18_LD1/err"
+T18_RC1=$?
+set -e
+if [[ $T18_RC1 -eq 0 ]] && [[ "$(cat "$T18_LD1/out")" == "PONG" ]] && \
+   grep -q 'agy_session model_label="Gemini 9.9 Test (High)" agy_log="cli-20991231_235959.log"' "$T18_LD1/multi-ai.log" && \
+   ! grep -q "Old Model" "$T18_LD1/multi-ai.log"; then
+    pass "T18.1 model label read from the one new agy log (pre-existing log ignored, rc/output intact)"
+else
+    fail "T18.1 model label: rc=$T18_RC1 out=$(cat "$T18_LD1/out"); log=$(grep agy_session "$T18_LD1/multi-ai.log" || echo '(no agy_session line)')"
+fi
+
+# T18.2 no new log file (agy log dir absent) → unknown, rc + output intact
+T18_LD2=$(mktemp -d); T13_LOGDIRS+=("$T18_LD2")
+set +e
+HOME="$T18_LD2" MULTI_AI_LOG_DIR="$T18_LD2" AGY_BIN="$T13_FAKE_FAST" \
+    "$SCRIPT_DIR/scripts/call-gemini.sh" "q" > "$T18_LD2/out" 2> "$T18_LD2/err"
+T18_RC2=$?
+set -e
+if [[ $T18_RC2 -eq 0 ]] && [[ "$(cat "$T18_LD2/out")" == "fake-done" ]] && \
+   grep -q 'agy_session model_label="unknown" agy_log="none"' "$T18_LD2/multi-ai.log"; then
+    pass "T18.2 no new agy log → model_label=unknown (rc/output intact)"
+else
+    fail "T18.2 unknown: rc=$T18_RC2 out=$(cat "$T18_LD2/out"); log=$(grep agy_session "$T18_LD2/multi-ai.log" || echo '(no agy_session line)')"
+fi
+
+# T18.3 two new log files (a concurrent agy run) → ambiguous, never a guess
+T18_LD3=$(mktemp -d); T13_LOGDIRS+=("$T18_LD3")
+set +e
+HOME="$T18_LD3" MULTI_AI_LOG_DIR="$T18_LD3" AGY_BIN="$T18_FAKE_TWOLOGS" \
+    "$SCRIPT_DIR/scripts/call-gemini.sh" "q" > "$T18_LD3/out" 2> "$T18_LD3/err"
+T18_RC3=$?
+set -e
+if [[ $T18_RC3 -eq 0 ]] && [[ "$(cat "$T18_LD3/out")" == "PONG" ]] && \
+   grep -q 'agy_session model_label="ambiguous"' "$T18_LD3/multi-ai.log"; then
+    pass "T18.3 two new agy logs → model_label=ambiguous (rc/output intact)"
+else
+    fail "T18.3 ambiguous: rc=$T18_RC3 out=$(cat "$T18_LD3/out"); log=$(grep agy_session "$T18_LD3/multi-ai.log" || echo '(no agy_session line)')"
+fi
+
+# T18.4 tool auto-denied (rc=0, empty stdout, explanation on stderr) →
+# EMPTY_OUTPUT relays agy's words, names no network, and counters agy's
+# --dangerously-skip-permissions advice; the model line is logged on this
+# error path too.
+T18_LD4=$(mktemp -d); T13_LOGDIRS+=("$T18_LD4")
+set +e
+HOME="$T18_LD4" MULTI_AI_LOG_DIR="$T18_LD4" AGY_BIN="$T18_FAKE_DENIED" \
+    "$SCRIPT_DIR/scripts/call-gemini.sh" "q" > "$T18_LD4/out" 2> "$T18_LD4/err"
+T18_RC4=$?
+set -e
+if [[ $T18_RC4 -eq 1 ]] && \
+   grep -q "EMPTY_OUTPUT" "$T18_LD4/err" && grep -q "auto-denied" "$T18_LD4/err" && \
+   grep -q "EMPTY_OUTPUT: tool call auto-denied in headless mode; agy stderr: jetski" "$T18_LD4/multi-ai.log" && \
+   ! grep -qi "network" "$T18_LD4/err" && \
+   grep -q "deliberately does not auto-approve" "$T18_LD4/err" && \
+   grep -q 'agy_session model_label="Gemini 9.9 Test (High)"' "$T18_LD4/multi-ai.log"; then
+    pass "T18.4 auto-denied tool → EMPTY_OUTPUT relays agy's stderr + counter-note (no network guess, model logged)"
+else
+    fail "T18.4 auto-denied: rc=$T18_RC4; err=$(cat "$T18_LD4/err"); log=$(grep -E 'EMPTY_OUTPUT|agy_session' "$T18_LD4/multi-ai.log" || echo '(none)')"
+fi
+
+# T18.5 HOME unset → the lookup degrades to unknown instead of aborting the
+# call under set -u (with AGY_BIN + MULTI_AI_LOG_DIR set, nothing else in the
+# wrapper needs HOME).
+T18_LD5=$(mktemp -d); T13_LOGDIRS+=("$T18_LD5")
+set +e
+env -u HOME MULTI_AI_LOG_DIR="$T18_LD5" AGY_BIN="$T13_FAKE_FAST" \
+    "$SCRIPT_DIR/scripts/call-gemini.sh" "q" > "$T18_LD5/out" 2> "$T18_LD5/err"
+T18_RC5=$?
+set -e
+if [[ $T18_RC5 -eq 0 ]] && [[ "$(cat "$T18_LD5/out")" == "fake-done" ]] && \
+   grep -q 'agy_session model_label="unknown"' "$T18_LD5/multi-ai.log"; then
+    pass "T18.5 HOME unset → model_label=unknown, call unaffected"
+else
+    fail "T18.5 HOME unset: rc=$T18_RC5 out=$(cat "$T18_LD5/out"); err=$(cat "$T18_LD5/err")"
 fi
 
 # ─── Summary ───
