@@ -41,7 +41,7 @@ AI code review 很吵。市場上最好的工具 F1 score 大概也才 64%——
 | **Provider 多樣性** | Codex + Gemini + Claude（3 個獨立模型） | 多個 agent，同一底層模型 |
 | **盲點覆蓋** | 跨訓練資料：每個模型抓到其他模型漏掉的 | 同一訓練資料偏差在 agent 間放大 |
 | **成本** | 近乎零（用現有 Codex CLI / Antigravity CLI 訂閱） | 每 PR $15–25（官方工具，Team/Enterprise 方案） |
-| **速度** | 1–2 分鐘 | ~20 分鐘 |
+| **速度** | 只叫一家約 1–2 分鐘；`/pi-multi-review` 要等 Gemini 3.8，通常 3–7 分鐘 | ~20 分鐘 |
 | **可用性** | 任何有 CLI 的人 | 僅限付費團隊方案 |
 | **評分方式** | 證據導向公式（[公開 spec](spec/confidence-scoring-v1.md)），deterministic 核心，同樣證據 = 同樣分數 | LLM 自評，AI 給自己打信心分數 |
 | **資料路徑** | Local-first：直連 provider API，無中繼伺服器 | 依服務而異 |
@@ -515,7 +515,7 @@ Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 severity 標記／
 
 **Q: Gemini provider 一直 timeout 或回應很慢？**
 
-很可能是 Pro 模型限流。設定 `GEMINI_MODEL="Gemini 3.5 Flash (Medium)"`（執行 `agy models` 確認名稱）——Flash 更快，coding benchmark 分數也更高。如果症狀是空輸出而不是慢，先互動式執行一次 `agy` 確認登入狀態——`agy` 遇到部分認證與網路錯誤時會以正常結束碼回傳空輸出，wrapper 會將其分類為 `EMPTY_OUTPUT` / `AUTH_ERROR`。
+很可能是 Pro 模型限流。設定 `GEMINI_MODEL="Gemini 3.5 Flash (Medium)"`（執行 `agy models` 確認名稱）——Flash 更快，coding benchmark 分數也更高。如果症狀是空輸出而不是慢，先看錯誤訊息：wrapper 現在會直接轉述 agy 自己的說明。最常見的原因是 Gemini 想跑指令，被 headless 模式自動拒絕。把 Gemini 需要的內容直接放進問題裡，不要叫它自己去跑（`/pi-multi-review` 已經在 prompt 裡交代了），也別用 `--dangerously-skip-permissions` 硬繞過去。
 
 **Q: 可以搭配其他 Claude Code 設定使用嗎？**
 

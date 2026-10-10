@@ -41,7 +41,7 @@ There's a deeper structural issue: when Claude Code writes your code **and** rev
 | **Provider diversity** | Codex + Gemini + Claude (3 independent models) | Multiple agents, same underlying model |
 | **Blind spot coverage** | Cross-training-data: each model catches what others miss | Same training data bias amplified across agents |
 | **Cost** | Near-zero (runs on existing Codex CLI / Antigravity CLI subscriptions) | $15–25 per PR (official tools, Team/Enterprise plans) |
-| **Speed** | 1–2 minutes | ~20 minutes |
+| **Speed** | 1–2 min with a single provider; `/pi-multi-review` waits on Gemini 3.8, usually 3–7 min | ~20 minutes |
 | **Availability** | Anyone with CLI access | Paid team plans only |
 | **Scoring method** | Evidence-based formula ([open spec](spec/confidence-scoring-v1.md)) — deterministic core, same evidence = same score | LLM self-assessment — AI grades its own confidence |
 | **Data path** | Local-first: direct to provider APIs, no intermediary server | Varies by service |
@@ -515,7 +515,7 @@ See [docs/cost.md](docs/cost.md) for per-command token consumption ranges and co
 
 **Q: The Gemini provider keeps timing out or responding very slowly?**
 
-Likely caused by Pro model rate limiting. Set `GEMINI_MODEL="Gemini 3.5 Flash (Medium)"` (run `agy models` for the exact name) — Flash is faster and scores higher on coding benchmarks. If the symptom is empty output rather than slowness, run `agy` once interactively to confirm you are logged in — `agy` reports some auth and network failures as a normal exit with empty output, which the wrapper classifies as `EMPTY_OUTPUT` / `AUTH_ERROR`.
+Likely caused by Pro model rate limiting. Set `GEMINI_MODEL="Gemini 3.5 Flash (Medium)"` (run `agy models` for the exact name) — Flash is faster and scores higher on coding benchmarks. If the symptom is empty output rather than slowness, read the error first: the wrapper now relays agy's own explanation. The usual cause is a tool call that headless agy auto-denied because Gemini tried to run a command. Put what Gemini needs into the question instead of asking it to run anything (`/pi-multi-review` already tells it not to), and don't work around it with `--dangerously-skip-permissions`.
 
 **Q: Can I use this with other Claude Code setups?**
 
