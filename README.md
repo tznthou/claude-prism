@@ -41,7 +41,7 @@ There's a deeper structural issue: when Claude Code writes your code **and** rev
 | **Provider diversity** | Codex + Gemini + Claude (3 independent models) | Multiple agents, same underlying model |
 | **Blind spot coverage** | Cross-training-data: each model catches what others miss | Same training data bias amplified across agents |
 | **Cost** | Near-zero (runs on existing Codex CLI / Antigravity CLI subscriptions) | $15–25 per PR (official tools, Team/Enterprise plans) |
-| **Speed** | 1–2 minutes | ~20 minutes |
+| **Speed** | 1–2 min with a single provider; `/pi-multi-review` waits on Gemini 3.8, usually 3–7 min | ~20 minutes |
 | **Availability** | Anyone with CLI access | Paid team plans only |
 | **Scoring method** | Evidence-based formula ([open spec](spec/confidence-scoring-v1.md)) — deterministic core, same evidence = same score | LLM self-assessment — AI grades its own confidence |
 | **Data path** | Local-first: direct to provider APIs, no intermediary server | Varies by service |
@@ -176,10 +176,11 @@ npx claud-prism-aireview --uninstall
 | `/pi-code-review` | Codex | Adversarial code review — break confidence in changes, not validate them (with confidence scoring) |
 | `/pi-fact-check` | Gemini + WebSearch + Claude | Fact-check content — dual-track search (Gemini + WebSearch), Claude validates with convergence scoring |
 | `/pi-ui-design` | Gemini | HTML mockup from design spec |
-| `/pi-ui-review` | Gemini | UI/UX accessibility & design audit (with confidence scoring) |
 | `/pi-research` | Gemini + WebSearch + Claude | Structured technical research — dual-track search (Gemini + WebSearch parallel) |
 | `/pi-multi-review` | Codex + Gemini + Claude | Triple-provider adversarial review with divided attack surfaces (smart routing + confidence scoring) |
 | `/pi-plan` | Codex + Gemini + Claude | Multi-provider implementation planning for architectural decisions |
+
+> `/pi-ui-review` was removed in v0.17.0: ask Claude Code directly for UI/UX review; for a cross-provider second opinion, use `/pi-multi-review <file>` — its Gemini track focuses on design, UX, and accessibility.
 
 All commands include **graceful degradation** — if a provider is unavailable, Claude continues with the remaining providers instead of failing. Every failure includes a **structured error diagnostic** (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, SANDBOX, NETWORK, EMPTY_OUTPUT, CLI_ERROR, or CLI_NOT_FOUND) and suggests an alternative command.
 
@@ -240,16 +241,6 @@ Gemini reads a design specification and generates a self-contained HTML mockup (
 /pi-ui-design "a SaaS dashboard"          # no spec → Gemini drafts spec first, then mockup
 ```
 
-### `/pi-ui-review` — UI/UX Audit
-
-Gemini reviews frontend code for accessibility, responsive design, component structure, and UX patterns. Issues are confidence-scored with UI-specific factors (WCAG citations, user impact descriptions). Guideline compliance is checked if `CLAUDE.md` or `Agents.md` exists.
-
-```
-/pi-ui-review src/components/Header.tsx
-/pi-ui-review src/app/(public)/
-/pi-ui-review --screenshot ./screenshot.png   # uses Claude's vision instead
-```
-
 ### `/pi-research` — Technical Research
 
 Dual-track search: Gemini (search grounding) and WebSearch run in parallel for structured technical research with comparison tables, recommendations, and source URLs. If one track fails, the other covers the gap — same resilience architecture as `/pi-fact-check`. If the topic relates to the current project, relevant context (dependencies, existing patterns) is automatically included. Results can optionally be saved to `.claude/pi-research/` for future reference.
@@ -298,7 +289,7 @@ Best for complex decisions; for simple task breakdown, use Claude Code's built-i
 flowchart LR
     User["👤 You"] <--> Claude["🟣 Claude Code\n(Orchestrator)"]
     Claude -->|"/pi-ask-codex\n/pi-askall\n/pi-code-review\n/pi-multi-review\n/pi-plan"| Codex["🟢 Codex CLI"]
-    Claude -->|"/pi-ask-gemini\n/pi-askall\n/pi-fact-check\n/pi-ui-design\n/pi-ui-review\n/pi-research\n/pi-multi-review\n/pi-plan"| Gemini["🔵 agy (Antigravity CLI)"]
+    Claude -->|"/pi-ask-gemini\n/pi-askall\n/pi-fact-check\n/pi-ui-design\n/pi-research\n/pi-multi-review\n/pi-plan"| Gemini["🔵 agy (Antigravity CLI)"]
     CI["⚙️ GitHub Actions"] -->|"ci-review.sh"| GeminiAPI["🔵 Gemini API"]
     CI -->|"ci-review.sh"| OpenAIAPI["🟢 OpenAI API"]
     CI -->|"synthesis"| ClaudeAPI["🟣 Claude API"]
@@ -516,7 +507,7 @@ That's fine. All commands include graceful degradation with **structured error d
 
 **Q: What if a provider returns an unexpected format?**
 
-Claude handles it. If Codex or Gemini doesn't follow the requested severity-tag/verdict format, Claude extracts actionable insights from the raw text using semantic matching rather than format parsing. Verdicts show "—" in the comparison table when not provided.
+Claude handles it. If Codex or Gemini doesn't follow the requested severity-tag/verdict format, Claude extracts actionable insights from the raw text using semantic matching rather than format parsing. Verdicts show "—" in the comparison table when not provided. A reply that is well-formed but hollow — e.g. a lone `VERDICT: safe`, with no findings and nothing naming the code it checked — is treated as DEGRADED: that provider counts as unavailable for the review, and Claude reviews in its place.
 
 **Q: How much does this cost?**
 
@@ -524,7 +515,7 @@ See [docs/cost.md](docs/cost.md) for per-command token consumption ranges and co
 
 **Q: The Gemini provider keeps timing out or responding very slowly?**
 
-Likely caused by Pro model rate limiting. Set `GEMINI_MODEL="Gemini 3.5 Flash (Medium)"` (run `agy models` for the exact name) — Flash is faster and scores higher on coding benchmarks. If the symptom is empty output rather than slowness, run `agy` once interactively to confirm you are logged in — `agy` reports some auth and network failures as a normal exit with empty output, which the wrapper classifies as `EMPTY_OUTPUT` / `AUTH_ERROR`.
+Likely caused by Pro model rate limiting. Set `GEMINI_MODEL="Gemini 3.5 Flash (Medium)"` (run `agy models` for the exact name) — Flash is faster and scores higher on coding benchmarks. If the symptom is empty output rather than slowness, read the error first: the wrapper now relays agy's own explanation. The usual cause is a tool call that headless agy auto-denied because Gemini tried to run a command. Put what Gemini needs into the question instead of asking it to run anything (`/pi-multi-review` already tells it not to), and don't work around it with `--dangerously-skip-permissions`.
 
 **Q: Can I use this with other Claude Code setups?**
 

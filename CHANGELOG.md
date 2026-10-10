@@ -2,6 +2,43 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.17.0 (2026-10-10) — trustworthy results: hollow verdicts flagged, padded waits removed, Gemini failures explained; `/pi-ui-review` retired
+
+**Most of this release is about whether what the commands report can be believed.** A provider that replied with a bare `VERDICT: safe` was shown as a clean review; `/pi-askall`, `/pi-multi-review` and `/pi-plan` waited out the full timeout after the providers had already answered, then reported that wait as provider runtime; and when Gemini came back empty, the wrapper blamed the network while agy had in fact refused a tool call. All three are fixed. The one breaking change is the removal of `/pi-ui-review`.
+
+#### Removed
+
+- **BREAKING: `/pi-ui-review`** — Claude Code now handles UI/UX and visual-design review directly, and `/pi-multi-review <file>` already gives a cross-provider second opinion: its Gemini track is framed around design quality, UX impact and accessibility. On upgrade, `install.sh` deletes the `pi-ui-review.md` an earlier install left behind and prints one line saying why; `uninstall.sh` already removes every installed `pi-*.md` (`ac5373e`)
+
+#### Fixed (review results)
+
+- **A bare verdict no longer counts as a review** — `/pi-code-review` and `/pi-multi-review` used to tell the provider to say "VERDICT: safe" directly when nothing looked wrong, which made the shortest legal reply a 14-byte constant unrelated to the code. A reply with no findings must now list what it examined (`Checked:` entries naming the code under review) before the verdict. A reply with neither a located finding nor anything naming the code is marked DEGRADED: its verdict is not shown, `/pi-multi-review` leaves it out of the verdict comparison and consensus, Claude reviews in its place, and the provider is left out of `providers` in `review-insights.jsonl`. Judged by content, not length (`11bee5e`)
+- **Gemini stays off tools in `/pi-multi-review`** — even with the full diff in the prompt, Gemini sometimes decided to run a shell command; headless agy auto-denies it and the turn ends with no output. The Gemini prompt now says that everything it needs is in the prompt and that it should not run commands, use tools, or read files. On the same diff that had come back empty, two acceptance runs both returned full reviews. The Codex prompt is unchanged — Codex keeps its repository access (`43226ed`, #20)
+
+#### Fixed (wrappers)
+
+- **Fan-out commands no longer wait out the timeout** — the wrappers' first-byte detector, heartbeat and watcher each left a background `sleep` that held the caller's pipe open after the wrapper exited. `/pi-askall`, `/pi-multi-review` and `/pi-plan` therefore waited the full `CLAUDE_PRISM_TIMEOUT` (540 s) or the 30 s heartbeat even when the provider answered in seconds, and the runtime they reported was that wait, not the provider's. The three subshells now write to `/dev/null`, and the watcher's own log and marker writes are best-effort, so a failed write can no longer silently disable the soft timeout (`ecb1d09`, #24 #17 #18)
+- **EMPTY_OUTPUT says what actually happened** — when agy exited 0 with no output, the wrapper blamed a "likely network/upstream failure". It now relays agy's own explanation from stderr; when that is an auto-denied tool call, the message says so up front and adds a note on why the wrapper will not pass `--dangerously-skip-permissions`. With nothing on stderr, the cause is reported as undetermined instead of guessed (`eb79c0e`, #20)
+- **Gemini can read the workspace** — headless agy auto-denied any tool call outside its workspace, so Gemini could only work from the prompt text. `call-gemini.sh` now passes `--add-dir <repo root>`, which gives Gemini the read access Codex already had, without the permission-skipping flag. Set `CLAUDE_PRISM_NO_ADD_DIR` to any non-empty value to opt out. This covers reading files only; running commands is still denied, hence the `/pi-multi-review` change above (`576ed9f`)
+- **Fan-out sub-agents run where you started** — `/pi-multi-review`, `/pi-askall` and `/pi-plan` now record `pwd` before anything else and send each sub-agent back to it. A sub-agent starts wherever the main conversation happens to be, so after a `cd` into a scratch directory the wrapper ran outside the project: Codex got `--skip-git-repo-check` and Gemini's `--add-dir` pointed at the scratch directory (`99065e8`, #20)
+
+#### Fixed (install)
+
+- **Every shipped file is verified, npm installs included** — `checksums.sha256` listed only 4 of the 8 scripts. It now covers every script and command, and `install.sh` verifies the entries present in the package it runs from, so the npm package, which deliberately leaves out CI-only scripts, still installs. The npm installs of v0.14.6 and v0.15.0 failed this check outright; v0.15.1 got around it by shrinking the manifest, which is how the gap appeared (`2f04f78`, #23)
+
+#### Added
+
+- **The Gemini model is logged** — agy picks the model itself when `GEMINI_MODEL` is unset, so every Gemini call now writes `agy_session model_label="…" agy_log="…"` to the wrapper log. Best-effort: it never affects the return code or the output (`eb79c0e`)
+
+#### Changed (tests and CI)
+
+- Smoke tests cover each fix above: T13.7–T13.9 (callers that capture the wrapper with `$(...)`), T17–T18 (EMPTY_OUTPUT relay, model label), T19 (manifest coverage, npm-subset sandbox install, tamper check), T20 (`pi-ui-review` cleanup on upgrade), T21 (fan-out working directory). On CI, the npm-subset checks now fail instead of silently skipping when npm or node is missing (`c28e3d5`)
+
+#### Changed (docs)
+
+- **README.md + README.zh-TW.md** — new comparison with OpenAI's official `codex-plugin-cc`, whose adversarial-review prompt shares `/pi-code-review`'s core instruction: if Codex is the only second opinion you want, the official plugin is the better tool; a second provider is what it structurally cannot offer. Four positioning statements reworded from "blind spots cancel each other out", an effect still being measured, to juxtaposition: the disagreement between providers is the signal (`7f34101`). The FAQ explains DEGRADED replies (`11bee5e`); `/pi-ui-review` is gone from the command table, usage section and diagram (`ac5373e`). The Speed row now says `/pi-multi-review` waits on Gemini 3.8, usually 3–7 min, and the FAQ's empty-output answer points to the relayed explanation instead of a login check
+- **checksums.sha256** — regenerated; 19 entries after the removal
+
 ## v0.16.0 (2026-08-11) — provider prompt overhaul: one-shot contract + text-based output format
 
 **All 10 pi-* provider prompts rewritten around three system-wide contracts: a one-shot turn contract (state assumptions instead of asking — headless CLI calls have no second round), per-skill output budgets, and a text-based severity/verdict format replacing emoji + 1-10 scores.** The execution layers (dispatch rules, timeouts, fallbacks) are untouched; this release changes only what travels to Codex/Gemini and the few presentation-layer lines that consume it.

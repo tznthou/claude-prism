@@ -130,5 +130,5 @@ Save the HTML file next to the design spec (or in a user-specified location). Th
 Open the HTML file in a browser to preview. When you're happy with the design:
 1. **Adjust** — Tell me what to change in the mockup
 2. **Implement** — I can implement this design into your project (Next.js / React / etc.)
-3. **Run `/pi-ui-review`** — Have Gemini audit the mockup for accessibility and UX
+3. **Review** — I can audit the mockup for accessibility and UX; for a cross-provider second opinion, run `/pi-multi-review <file>`
 ```

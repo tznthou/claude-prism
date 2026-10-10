@@ -41,7 +41,7 @@ AI code review 很吵。市場上最好的工具 F1 score 大概也才 64%——
 | **Provider 多樣性** | Codex + Gemini + Claude（3 個獨立模型） | 多個 agent，同一底層模型 |
 | **盲點覆蓋** | 跨訓練資料：每個模型抓到其他模型漏掉的 | 同一訓練資料偏差在 agent 間放大 |
 | **成本** | 近乎零（用現有 Codex CLI / Antigravity CLI 訂閱） | 每 PR $15–25（官方工具，Team/Enterprise 方案） |
-| **速度** | 1–2 分鐘 | ~20 分鐘 |
+| **速度** | 只叫一家約 1–2 分鐘；`/pi-multi-review` 要等 Gemini 3.8，通常 3–7 分鐘 | ~20 分鐘 |
 | **可用性** | 任何有 CLI 的人 | 僅限付費團隊方案 |
 | **評分方式** | 證據導向公式（[公開 spec](spec/confidence-scoring-v1.md)），deterministic 核心，同樣證據 = 同樣分數 | LLM 自評，AI 給自己打信心分數 |
 | **資料路徑** | Local-first：直連 provider API，無中繼伺服器 | 依服務而異 |
@@ -176,10 +176,11 @@ npx claud-prism-aireview --uninstall
 | `/pi-code-review` | Codex | 對抗式程式碼審查 — 打破信心而非驗證（含信心度評分） |
 | `/pi-fact-check` | Gemini + WebSearch + Claude | 事實查核 — 雙軌搜尋（Gemini + WebSearch 同步），Claude 以收斂度評分驗證 |
 | `/pi-ui-design` | Gemini | 從設計規格產生 HTML mockup |
-| `/pi-ui-review` | Gemini | UI/UX 無障礙與設計審查（含信心度評分） |
 | `/pi-research` | Gemini + WebSearch + Claude | 結構化技術研究 — 雙軌搜尋（Gemini + WebSearch 同步） |
 | `/pi-multi-review` | Codex + Gemini + Claude | 三方對抗式審查 — 分工攻擊面（智慧路由 + 信心度評分） |
 | `/pi-plan` | Codex + Gemini + Claude | 多方觀點實作規劃，適用於架構決策 |
+
+> `/pi-ui-review` 已在 v0.17.0 移除：UI/UX 審查直接請 Claude Code 做；想要跨 provider 的第二意見，用 `/pi-multi-review <file>`，它的 Gemini 那一路專審設計、UX 和無障礙。
 
 所有指令皆內建 **graceful degradation** — 若某個 provider 不可用，Claude 會用剩餘的 provider 繼續執行，而非直接失敗。每次失敗都附帶**結構化錯誤診斷**（TIMEOUT、RATE_LIMIT、AUTH_ERROR、PERMISSION、SANDBOX、NETWORK、EMPTY_OUTPUT、CLI_ERROR 或 CLI_NOT_FOUND）並建議替代指令。
 
@@ -240,16 +241,6 @@ Gemini 讀取設計規格文件，產出可在瀏覽器預覽的自包含 HTML m
 /pi-ui-design "一個 SaaS dashboard"        # 沒有設計檔 → Gemini 先產規格再產 mockup
 ```
 
-### `/pi-ui-review` — UI/UX 審查
-
-Gemini 審查前端程式碼的無障礙、響應式設計、元件結構和 UX 模式。Issue 使用 UI 專用信心度評分（WCAG 引用、使用者影響描述）。若專案有 `CLAUDE.md` 或 `Agents.md`，會自動檢查規範合規性。
-
-```
-/pi-ui-review src/components/Header.tsx
-/pi-ui-review src/app/(public)/
-/pi-ui-review --screenshot ./screenshot.png   # 改用 Claude 視覺分析
-```
-
 ### `/pi-research` — 技術研究
 
 雙軌搜尋：Gemini（search grounding）和 WebSearch 同步執行，產出結構化技術研究報告，含比較表、推薦方案和來源 URL。任一軌道失敗時另一軌道自動補位——與 `/pi-fact-check` 相同的韌性架構。若研究主題與當前專案相關，會自動帶入相關 context（依賴、既有模式）。研究結果可選擇存到 `.claude/pi-research/` 供日後參考。
@@ -298,7 +289,7 @@ Gemini 審查前端程式碼的無障礙、響應式設計、元件結構和 UX 
 flowchart LR
     User["👤 使用者"] <--> Claude["🟣 Claude Code\n(調度者)"]
     Claude -->|"/pi-ask-codex\n/pi-askall\n/pi-code-review\n/pi-multi-review\n/pi-plan"| Codex["🟢 Codex CLI"]
-    Claude -->|"/pi-ask-gemini\n/pi-askall\n/pi-fact-check\n/pi-ui-design\n/pi-ui-review\n/pi-research\n/pi-multi-review\n/pi-plan"| Gemini["🔵 agy (Antigravity CLI)"]
+    Claude -->|"/pi-ask-gemini\n/pi-askall\n/pi-fact-check\n/pi-ui-design\n/pi-research\n/pi-multi-review\n/pi-plan"| Gemini["🔵 agy (Antigravity CLI)"]
     CI["⚙️ GitHub Actions"] -->|"ci-review.sh"| GeminiAPI["🔵 Gemini API"]
     CI -->|"ci-review.sh"| OpenAIAPI["🟢 OpenAI API"]
     CI -->|"synthesis"| ClaudeAPI["🟣 Claude API"]
@@ -516,7 +507,7 @@ Logging 預設開啟，檢查 `~/.claude/logs/multi-ai.log` 即可驗證。每�
 
 **Q: 如果 provider 回傳格式不符預期？**
 
-Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 severity 標記／verdict 格式回覆，Claude 會用語意比對從原始文字中提取可行動的問題。verdict 欄位在未提供時顯示「—」。
+Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 severity 標記／verdict 格式回覆，Claude 會用語意比對從原始文字中提取可行動的問題。verdict 欄位在未提供時顯示「—」。格式正確但內容空洞的回覆（例如只有一行 `VERDICT: safe`，沒有 finding，也沒點名檢查過哪些程式碼）會被判為 DEGRADED：該 provider 在這次審查中視同不可用，由 Claude 補審。
 
 **Q: 費用多少？**
 
@@ -524,7 +515,7 @@ Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 severity 標記／
 
 **Q: Gemini provider 一直 timeout 或回應很慢？**
 
-很可能是 Pro 模型限流。設定 `GEMINI_MODEL="Gemini 3.5 Flash (Medium)"`（執行 `agy models` 確認名稱）——Flash 更快，coding benchmark 分數也更高。如果症狀是空輸出而不是慢，先互動式執行一次 `agy` 確認登入狀態——`agy` 遇到部分認證與網路錯誤時會以正常結束碼回傳空輸出，wrapper 會將其分類為 `EMPTY_OUTPUT` / `AUTH_ERROR`。
+很可能是 Pro 模型限流。設定 `GEMINI_MODEL="Gemini 3.5 Flash (Medium)"`（執行 `agy models` 確認名稱）——Flash 更快，coding benchmark 分數也更高。如果症狀是空輸出而不是慢，先看錯誤訊息：wrapper 現在會直接轉述 agy 自己的說明。最常見的原因是 Gemini 想跑指令，被 headless 模式自動拒絕。把 Gemini 需要的內容直接放進問題裡，不要叫它自己去跑（`/pi-multi-review` 已經在 prompt 裡交代了），也別用 `--dangerously-skip-permissions` 硬繞過去。
 
 **Q: 可以搭配其他 Claude Code 設定使用嗎？**
 

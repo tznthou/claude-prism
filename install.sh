@@ -50,7 +50,7 @@ else
     if [[ -x "$HOME/.local/bin/agy" ]]; then
         ok "agy CLI found at ~/.local/bin/agy"
     else
-        warn "agy CLI not found — /pi-ask-gemini, /pi-ui-design, /pi-ui-review, /pi-research will not work"
+        warn "agy CLI not found — /pi-ask-gemini, /pi-ui-design, /pi-research will not work"
         info "Install: curl -fsSL https://antigravity.google/cli/install.sh | bash"
         PREREQ_OK=false
     fi
@@ -105,14 +105,29 @@ done
 [[ "$BACKED_UP" == true ]] && info "Existing files backed up to $BACKUP_DIR"
 
 # ─── Verify integrity (if checksums available) ───
+# The manifest lists every file the repo ships, but channels ship different
+# subsets: the npm package leaves out the CI-only scripts (package.json
+# "files"). Entries for files absent from this package are skipped rather
+# than failed — the v0.14.6 and v0.15.0 npm installs aborted here because the
+# manifest named files the package did not contain. Every file that is
+# present is still checked, and the manifest covers everything this script
+# deploys (smoke T19.1), so nothing is installed unverified.
+# Filtered in bash rather than with `shasum --ignore-missing`, which older
+# shasum builds lack. `|| [[ -n ... ]]` keeps a last line that has no
+# trailing newline from being skipped (that would leave its file unchecked).
 CHECKSUM_FILE="$SCRIPT_DIR/checksums.sha256"
 if [[ -f "$CHECKSUM_FILE" ]]; then
     echo "Verifying file integrity..."
-    if (cd "$SCRIPT_DIR" && shasum -a 256 -c "$CHECKSUM_FILE" --quiet 2>/dev/null); then
+    if (cd "$SCRIPT_DIR" &&
+        while read -r sum path || [[ -n "${sum:-}" ]]; do
+            if [[ -f "$path" ]]; then
+                printf '%s  %s\n' "$sum" "$path"
+            fi
+        done < "$CHECKSUM_FILE" | shasum -a 256 -c --quiet 2>/dev/null); then
         ok "All checksums verified"
     else
         fail "Checksum verification failed — files may have been tampered with"
-        echo "  Run 'shasum -a 256 -c checksums.sha256' in the repo root for details." >&2
+        echo "  Run 'shasum -a 256 -c checksums.sha256' in $SCRIPT_DIR for details (files this package does not ship show as 'FAILED open or read')." >&2
         exit 1
     fi
     echo ""
@@ -147,6 +162,18 @@ if [[ $legacy_removed -gt 0 ]]; then
     echo ""
 fi
 
+# ─── Remove retired commands (installed by earlier versions) ───
+# This script copies only what commands/ ships, so a command dropped from the
+# repo would otherwise stay installed — unmaintained but still callable.
+# /pi-ui-review: retired in v0.17.0. Claude Code now handles UI/UX and visual
+# design review directly, and /pi-multi-review's Gemini track keeps the
+# cross-provider design / UX / accessibility angle. uninstall.sh needs no
+# entry: it removes every installed pi-*.md.
+if [[ -f "$CLAUDE_DIR/commands/pi-ui-review.md" ]]; then
+    rm "$CLAUDE_DIR/commands/pi-ui-review.md"
+    info "Removed /pi-ui-review (retired in v0.17.0): Claude Code now handles UI/UX review directly — for a cross-provider second opinion, use /pi-multi-review <file>"
+fi
+
 # ─── Install commands ───
 echo ""
 echo "Installing commands..."
@@ -169,7 +196,6 @@ echo "  /pi-ask-gemini    — Ask Gemini a question"
 echo "  /pi-askall        — Ask all providers + Claude synthesis"
 echo "  /pi-code-review   — Cross-provider code review via Codex"
 echo "  /pi-ui-design     — HTML mockup from design spec via Gemini"
-echo "  /pi-ui-review     — UI/UX review via Gemini"
 echo "  /pi-research      — Technical research via Gemini"
 echo "  /pi-multi-review  — Triple-provider adversarial review (with smart routing)"
 echo "  /pi-plan          — Multi-provider planning for architectural decisions"

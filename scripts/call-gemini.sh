@@ -170,13 +170,16 @@ CMD=("$AGY_BIN")
 # --- Workspace access (2026-09-22) ---
 # In headless mode agy auto-denies tool calls that fall outside its workspace,
 # so the model can only re-read the prompt text it was handed. The failure
-# surfaces as `EMPTY_OUTPUT: ... Likely network or upstream failure`, which
-# points at the wrong layer entirely and hid the real cause for months.
+# surfaces as EMPTY_OUTPUT, which before v0.16.1 this wrapper blamed on the
+# network — the wrong layer entirely, and it hid the real cause for months.
 # Granting the repo root restores parity with the codex provider, which already
 # reads the repo directly under its read-only sandbox.
 # A/B/C/D arm test (2026-09-22, agy 1.2.7, random-token read-back judgement):
-# baseline => EMPTY_OUTPUT; --add-dir alone => HIT. `--add-dir` is sufficient,
-# so --dangerously-skip-permissions is deliberately NOT passed here.
+# baseline => EMPTY_OUTPUT; --add-dir alone => HIT. `--add-dir` is sufficient
+# for reading files, so --dangerously-skip-permissions is deliberately NOT
+# passed here. It does not cover commands: a model that decides to run one
+# (e.g. `git diff`) is still auto-denied (RunCommand, agy 1.3.2, 2026-10-09),
+# so a prompt must carry such content itself rather than ask gemini to fetch it.
 #
 # Scope note: this only matters when the task asks gemini to go find something
 # itself. A review whose diff is already embedded in the prompt works either
@@ -190,6 +193,32 @@ CMD=("$AGY_BIN")
 if [[ -z "${CLAUDE_PRISM_NO_ADD_DIR:-}" ]]; then
     CMD+=(--add-dir "$(command git rev-parse --show-toplevel 2>/dev/null || pwd)")
 fi
+
+# --- agy session log: which model actually answered (v0.16.1, gemini-only) ---
+# GEMINI_MODEL is normally unset, so model= above logs "(default)" and agy
+# picks the model itself — and agy self-upgrades several versions a week.
+# agy writes one log file per run (cli-YYYYMMDD_HHMMSS.log) and names the
+# selected model there as `label="..."`. Snapshot the file list here; after the
+# run, the one file that was added is this call's. The format is undocumented,
+# so this is best-effort and never touches rc or output: no new file or no
+# label line → "unknown"; two or more new files (another agy run started
+# meanwhile, so which one is ours cannot be told) → "ambiguous".
+# No codex mirror: codex keeps its session files, so its model can be looked
+# up afterwards; agy prunes its log dir (rule undocumented — files from
+# September 2026 were gone by October 9), so the label is read right away.
+# Placed before the temp files below are created: a failure past that point
+# and before the EXIT trap is installed would leave them behind.
+# `${HOME:-}`: under set -u an unset HOME must degrade to "unknown", not abort
+# the call. `-f` (here and below) skips FIFOs, which would block grep forever.
+AGY_LOG_DIR="${HOME:-}/.gemini/antigravity-cli/log"
+_agy_logs() {
+    local f
+    for f in "$AGY_LOG_DIR"/cli-*.log; do
+        [[ -f "$f" ]] && printf '%s\n' "${f##*/}"
+    done
+    return 0
+}
+AGY_LOGS_BEFORE=$(_agy_logs)
 
 ERR_TMP=$(mktemp)
 # Per-invocation OUT_TMP (v0.14.2+): prevents concurrent-tee interleaving when two
@@ -272,7 +301,7 @@ FIRST_BYTE_POLL_S=1
         kill -0 "$LAST" 2>/dev/null || exit 0
         sleep "$FIRST_BYTE_POLL_S"
     done
-) &
+) >/dev/null 2>&1 &
 FBPID=$!
 
 # --- Heartbeat subshell (Phase A1, v0.14.4+) ---
@@ -291,7 +320,7 @@ HEARTBEAT_INTERVAL_S=30
         elapsed=$(($(date +%s) - START_TS))
         echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [gemini] [DEBUG] [pid=$MAIN_PID] alive elapsed_s=$elapsed bytes=$bytes" >> "$LOG_FILE"
     done
-) &
+) >/dev/null 2>&1 &
 HBPID=$!
 
 # Watcher: after sleep T, verify pipeline is still alive before firing.
@@ -299,14 +328,17 @@ HBPID=$!
 # without it, a natural-success run could still leave soft_timeout in the log.
 # Order inside the gate: marker → log → pkill (so classification has truth even
 # if pkill is a no-op on already-dead pipeline).
+# The marker/log writes end in `|| true`: under `set -e` a failed write (full
+# disk, unwritable log) would exit this subshell before pkill and silently
+# disable the timeout.
 (
     sleep "$TIMEOUT_S"
     if kill -0 "$LAST" 2>/dev/null; then
-        echo "$TIMEOUT_S" > "$TIMEOUT_MARKER"
-        echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [gemini] [WARN] [pid=$$] soft_timeout stage=exec elapsed_s=$TIMEOUT_S" >> "$LOG_FILE"
+        echo "$TIMEOUT_S" > "$TIMEOUT_MARKER" || true
+        echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [gemini] [WARN] [pid=$$] soft_timeout stage=exec elapsed_s=$TIMEOUT_S" >> "$LOG_FILE" || true
         pkill -TERM -P $$ 2>/dev/null || true
     fi
-) &
+) >/dev/null 2>&1 &
 WPID=$!
 
 # EXIT trap: kill watcher + heartbeat + first-byte detector + KILL-escalate any
@@ -347,6 +379,36 @@ _first_byte_meta() {
     FIRST_BYTE_METHOD="na"
 }
 
+# --- agy session meta helper (v0.16.1, see the snapshot block above) ---
+# Sets AGY_MODEL_LABEL and AGY_LOG_NAME as globals. The label pattern excludes
+# `"` and newlines, and the file name is stripped of both, so neither can
+# split or forge a log line (OWASP A09).
+_agy_session_meta() {
+    local f name new=0 ours="" label
+    AGY_MODEL_LABEL="unknown"
+    AGY_LOG_NAME="none"
+    for f in "$AGY_LOG_DIR"/cli-*.log; do
+        [[ -f "$f" ]] || continue
+        name="${f##*/}"
+        case $'\n'"$AGY_LOGS_BEFORE"$'\n' in
+            *$'\n'"$name"$'\n'*) continue ;;
+        esac
+        new=$((new + 1))
+        ours="$f"
+    done
+    if (( new > 1 )); then
+        AGY_MODEL_LABEL="ambiguous"
+        AGY_LOG_NAME="ambiguous($new)"
+    elif (( new == 1 )); then
+        AGY_LOG_NAME=$(printf '%s' "${ours##*/}" | tr -d '\n"')
+        label=$(grep -m1 -o 'label="[^"]*"' "$ours" 2>/dev/null || true)
+        label="${label#label=\"}"
+        label="${label%\"}"
+        [[ -n "$label" ]] && AGY_MODEL_LABEL="${label:0:100}"
+    fi
+    return 0
+}
+
 set +e
 wait "$LAST" 2>/dev/null
 rc=$?
@@ -359,6 +421,11 @@ if [[ -s "$FIRST_BYTE_MARKER" ]]; then
     wait "$FBPID" 2>/dev/null || true
 fi
 _first_byte_meta
+
+# Logged before any outcome branch so every exit path (success, soft-timeout,
+# CLI error, EMPTY_OUTPUT, AUTH_ERROR) carries the model line.
+_agy_session_meta
+_log INFO "agy_session model_label=\"$AGY_MODEL_LABEL\" agy_log=\"$AGY_LOG_NAME\""
 
 # Atomic symlink update (v0.14.2+): "pi-gemini-last.out" points to this invocation's
 # OUT_TMP. Runs after wait so OUT_TMP is fully written. Not conditioned on rc —
@@ -420,15 +487,49 @@ if [[ $rc -ne 0 ]]; then
 fi
 
 # --- rc=0 content classification (agy migration, 2026-06-10) ---
-# Empirically verified on agy 1.0.6: two failure modes bypass stderr/rc
-# entirely and would otherwise be logged as success —
-#   network failure  → rc=0, empty stdout, empty stderr
-#   missing auth     → rc=0, OAuth prompt text on STDOUT
+# Failure modes that exit 0 and would otherwise be logged as success:
+#   network failure  → empty stdout, empty stderr          (agy 1.0.6)
+#   missing auth     → OAuth prompt text on STDOUT          (agy 1.0.6)
+#   tool auto-denied → empty stdout, explanation on stderr  (agy 1.1.28 / 1.2.17 / 1.3.2):
+#     headless print mode cannot ask for permission, so a tool call the model
+#     decides to make (RunCommand, or ViewFile outside the workspace) is
+#     denied and the run ends without an answer.
 # Classify on output content so the skill layer sees a real error instead of
 # an empty file or an OAuth URL masquerading as a model response.
+# EMPTY_OUTPUT relays agy's own stderr when there is any, and otherwise names
+# no cause (GH #20): the old "likely network" text was wrong for all 4
+# EMPTY_OUTPUTs of 2026-10-04..09 whose agy log survives — each one had a
+# soft-deny line, and none of the 6 successes in that window did.
 if [[ ! -f "$OUT_TMP" || ! -s "$OUT_TMP" ]]; then
-    _log ERROR "agy call failed (EMPTY_OUTPUT: rc=0 with no output — likely network/upstream failure)"
-    echo "Error: EMPTY_OUTPUT: agy exited 0 but produced no output. Likely network or upstream failure." >&2
+    err_text=$(cat "$ERR_TMP" 2>/dev/null || true)
+    if [[ -n "$err_text" ]]; then
+        # Same newline strip as the CLI-error path below (OWASP A09).
+        err_text_safe=$(printf '%s' "$err_text" | tr '\n' ' ')
+        # The match only shapes the summary and the note below; agy's wording
+        # is undocumented, so if it changes this degrades to a plain relay.
+        # The summary leads the log message because analyze-log.sh shows
+        # only its first 80 characters.
+        tool_denied=false
+        empty_summary="rc=0 with no output"
+        if [[ "$err_text" == *auto-denied* || "$err_text" == *dangerously-skip-permissions* ]]; then
+            tool_denied=true
+            empty_summary="tool call auto-denied in headless mode"
+        fi
+        _log ERROR "agy call failed (EMPTY_OUTPUT: $empty_summary; agy stderr: $err_text_safe)"
+        echo "Error: EMPTY_OUTPUT: agy exited 0 but produced no output (agy's explanation below)." >&2
+        echo "Details: $err_text" >&2
+        # agy's explanation ends by suggesting --dangerously-skip-permissions,
+        # which this wrapper deliberately does not pass (see Workspace access
+        # above): auto-approving every tool would let a model that is reading
+        # untrusted input, such as a third-party diff, run shell commands.
+        # Counter that advice and name the remedy that fits here.
+        if [[ "$tool_denied" == true ]]; then
+            echo "Note: claude-prism deliberately does not auto-approve agy tools (no --dangerously-skip-permissions); include what Gemini needs, such as command output or a diff, in the prompt instead." >&2
+        fi
+    else
+        _log ERROR "agy call failed (EMPTY_OUTPUT: rc=0 with no output and empty stderr; cause not determined, agy_log=$AGY_LOG_NAME)"
+        echo "Error: EMPTY_OUTPUT: agy exited 0 with no output and nothing on stderr; cause not determined. Check agy's log dir $AGY_LOG_DIR (this run: $AGY_LOG_NAME)." >&2
+    fi
     exit 1
 fi
 # Dual-condition fingerprint: first-line prefix AND an OAuth URL in the body.

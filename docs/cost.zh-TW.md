@@ -15,7 +15,6 @@ claude-prism 是本地端 wrapper——它本身不處理也不計費 token。�
 | `/pi-askall` | 2 (Codex + Gemini) | 各 500–2K | 各 500–2K | 兩個 provider 並行呼叫 |
 | `/pi-fact-check` | 1 (Gemini) + N (WebSearch) | 1K–5K | 2K–8K | 隨聲明數量增減；WebSearch 平行執行 |
 | `/pi-code-review` | 1 (Codex) | 2K–10K | 1K–4K | 隨 diff 大小增減 |
-| `/pi-ui-review` | 1 (Gemini) | 2K–10K | 1K–4K | 隨檔案數量增減 |
 | `/pi-ui-design` | 1 (Gemini) | 1K–3K | 3K–8K | 產出較重（HTML 生成） |
 | `/pi-research` | 1 (Gemini) + 2–4 (WebSearch) | 1K–5K | 2K–8K | 雙軌搜尋；隨主題複雜度增減 |
 | `/pi-multi-review` | 2 (Codex + Gemini) | 上述 ×2 | 上述 ×2 | 兩個 provider 並行呼叫 |

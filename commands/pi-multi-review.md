@@ -13,6 +13,10 @@ Send the same code to both Codex and Gemini for **adversarial review with divide
 >
 > Inside each sub-agent, run `call-codex.sh` / `call-gemini.sh` in **foreground synchronous mode** with `timeout: 600000` (Bash tool's 10-minute ceiling). Do not use `&`, `nohup`, or `run_in_background: true` — Claude Code 2026-04+ has an auto-background child-lifecycle regression that silently kills the child (output file stays 0 bytes). If a sub-agent's Bash returns empty stdout, the Bash template below falls back to reading the caller-owned `$OUT_PATH` file (v0.14.3+, wrapper `tee`s here via `CLAUDE_PRISM_OUT_TMP`).
 
+### 0. Pin the working directory
+
+Before any other step, run `pwd` and keep the result as `<WORKDIR>`. Sub-agents start in whatever directory the main conversation is in when it dispatches them; if you `cd` elsewhere in between (a scratch directory to try something out, say), the wrapper would run outside this project. The template in Step 3c sends each sub-agent back to `<WORKDIR>` first.
+
 ### 1. Determine review scope
 
 Same as `/pi-code-review`, based on `$ARGUMENTS`:
@@ -130,9 +134,15 @@ Output format — one block per finding, exactly this structure:
 
 At most 8 findings — if you found more, keep the highest-impact 8. Prefer one strong finding over several weak ones; do not dilute serious issues with filler.
 
+If you report no findings, the verdict still needs evidence — before it, list what you examined in the code below:
+
+Checked:
+- <file or function under review> — <the failure modes above you tested it against>
+
 End with exactly one line:
 VERDICT: safe | needs-fixes | do-not-merge
-If the change looks safe, say VERDICT: safe directly — do not invent findings to seem thorough.
+
+A verdict on its own is not a complete review. Do not invent findings to seem thorough — when nothing holds up as a real issue, the Checked list followed by VERDICT: safe is the complete answer.
 
 Final self-check: verify each finding is adversarial (not stylistic), tied to concrete code, and plausible under a real failure scenario.
 
@@ -166,19 +176,24 @@ $(code)
   7. Inline annotation violations (IMPORTANT/WARNING/FIXME/TODO/NOTE comments)
   ```
 - **Domain-aware surface trim**: if the domain detected in Step 2.5 is `backend`, omit item 2 (accessibility/responsive/UI states — inapplicable to backend-only diffs) and renumber the remaining items. For `frontend` and `fullstack`, keep the full list.
+- **No tools**: right after the line `If context is missing, state your assumptions and answer anyway.`, add this line to the Gemini prompt only:
+  `Everything you need is in this prompt: do not run commands, use tools, or read files.`
+  Gemini runs through agy in headless mode, where a tool call that needs permission is auto-denied and the turn ends with no output (EMPTY_OUTPUT). Do not add this line to the Codex prompt — Codex keeps its repository access.
 
 **Step 3b — Persist each prompt to its own temp file**:
 
 1. Bash: `CODEX_PROMPT=$(mktemp -t prism-review-codex-XXXXXX.md) && GEMINI_PROMPT=$(mktemp -t prism-review-gemini-XXXXXX.md) && echo "CODEX=$CODEX_PROMPT" && echo "GEMINI=$GEMINI_PROMPT"` — capture both paths.
 2. Use the Write tool twice — write the Codex-focus prompt to `$CODEX_PROMPT` and the Gemini-focus prompt to `$GEMINI_PROMPT`.
 
-**Step 3c — Send ONE response with two `Agent` tool calls in parallel.** Both use `subagent_type: "general-purpose"`. Fill `<CODEX_PROMPT>` / `<GEMINI_PROMPT>` with the actual paths from Step 3b.
+**Step 3c — Send ONE response with two `Agent` tool calls in parallel.** Both use `subagent_type: "general-purpose"`. Fill `<CODEX_PROMPT>` / `<GEMINI_PROMPT>` with the actual paths from Step 3b, and `<WORKDIR>` with the path from Step 0 — do not run `pwd` again here.
 
 <!-- Keep in sync with commands/pi-askall.md and commands/pi-plan.md — the sub-agent Bash template shape is shared across these three skills. -->
 
 **Why the Bash template below uses `wrapper_out=$(...) < "<PATH>"` rather than `cat <PATH> | ...`** (skill-maintainer note — NOT shipped to the sub-agent):
 - `< "<PATH>"` direct redirect keeps `$?` as the wrapper's true exit code. A `cat | wrapper` pipeline without `set -o pipefail` would mask wrapper failure — `$?` on a pipe only reflects the tail command's rc, so a missing / unreadable prompt file could silently run the wrapper on empty stdin.
 - The `wrapper_out=$(...)` capture lets the emptiness check run BEFORE the META block is printed. If we echoed META first, stdout would never be empty (META always fills it), so the `pi-*-last.out` fallback for silent-kill / auto-bg regressions would never trigger.
+
+**Why the template opens with `cd "<WORKDIR>"`** (skill-maintainer note — NOT shipped to the sub-agent): sub-agents start in the main conversation's current working directory, and by the time Step 3c runs the main conversation may have `cd`'d into a scratch directory. Without the `cd`, the wrapper runs outside the project — Codex gets `--skip-git-repo-check` and Gemini's `--add-dir` points at the wrong directory.
 
 **Codex agent** (description: "Codex adversarial review — security focus"):
 
@@ -187,6 +202,7 @@ Task: run one foreground-synchronous Bash command and return its output verbatim
 
 Step 1. Run this exact Bash command (timeout 600000 ms; no `&`, `nohup`, or `run_in_background: true`):
 
+    cd "<WORKDIR>" || exit 1
     OUT_PATH=$(mktemp "${TMPDIR:-/tmp}/prism-codex-out-XXXXXX")
     start_ts=$(date +%s)
     # CLAUDE_PRISM_TIMEOUT=540: 60s buffer below 600s Bash tool ceiling so
@@ -205,7 +221,7 @@ Step 1. Run this exact Bash command (timeout 600000 ms; no `&`, `nohup`, or `run
     echo "runtime=$((end_ts - start_ts))s"
     echo "response_bytes=$(wc -c < "$OUT_PATH" 2>/dev/null || echo NA)"
 
-Step 2. Return to me: the complete printed output verbatim (do NOT summarize, paraphrase, or reformat the Codex review — it will feed Claude's synthesis and confidence scoring with full fidelity), including the META block. If the Bash command printed a `[FALLBACK: ...]` line, relay that too — it signals the wrapper was silently killed and the response came from the tee safety net. If rc != 0, include any stderr — the wrapper classifies failures as TIMEOUT / RATE_LIMIT / AUTH_ERROR / SANDBOX / NETWORK / CLI_ERROR / CLI_NOT_FOUND.
+Step 2. Return to me: the complete printed output verbatim (do NOT summarize, paraphrase, or reformat the Codex review — it will feed Claude's synthesis and confidence scoring with full fidelity), including the META block. If the Bash command printed a `[FALLBACK: ...]` line, relay that too — it signals the wrapper was silently killed and the response came from the tee safety net. If rc != 0, include any stderr — the wrapper classifies failures as TIMEOUT / RATE_LIMIT / AUTH_ERROR / SANDBOX / NETWORK / CLI_ERROR / CLI_NOT_FOUND. If the `cd` on the first line fails, return its error as is — do not change the path or re-run the command without the `cd`.
 
 Only use Bash and Read tools.
 ```
@@ -228,11 +244,18 @@ If one provider fails (script exits non-zero or returns an error message):
 - Claude always participates, so at minimum you have Claude + one external provider.
 - Include the specific failure reason from stderr (TIMEOUT, RATE_LIMIT, AUTH_ERROR, SANDBOX, PERMISSION, NETWORK, EMPTY_OUTPUT, CLI_ERROR, or CLI_NOT_FOUND).
 - In the output, clearly note: "⚠️ [Provider] unavailable ([reason]) — continuing with [other provider] + Claude."
-- If **both** external providers fail, Claude performs a solo review and notes: "⚠️ Both external providers unavailable ([Codex reason] / [Gemini reason]) — single-perspective review. For single-provider review, try `/pi-code-review` (Codex) or `/pi-ui-review` (Gemini) when they recover."
+- If **both** external providers fail, Claude performs a solo review and notes: "⚠️ Both external providers unavailable ([Codex reason] / [Gemini reason]) — single-perspective review. For a single-provider review, try `/pi-code-review` (Codex) when it recovers."
+
+A provider whose reply is hollow (see Step 5) counts as failed here: continue without it, and give it the Provider Status `unavailable — DEGRADED (hollow response)`.
 
 If a sub-agent reported empty stdout, it should already have fallen back to reading its caller-owned `$OUT_PATH` file (the wrapper's `tee` safety net, v0.14.3+). If even that file is 0 bytes, treat the provider as unavailable and note the failure reason in the Provider Status table.
 
-### 5. Handle non-conforming output
+### 5. Handle hollow and non-conforming output
+
+**Check for a hollow response first.** A provider can exit 0 with a well-formed reply that still carries no review of the code under review: no finding that points at a location, and no `Checked:` entry or sentence naming a file or function under review (e.g. a lone `VERDICT: safe`, or just "No issues found."). Treat that provider as **DEGRADED** and handle it as unavailable under Step 4:
+- Its VERDICT does not enter the Verdict Comparison table — put "—" and note "hollow response (DEGRADED)".
+- It does not count toward consensus: a hollow "safe" is not agreement that the change is safe.
+- Judge by content, not length: a short reply that names the code it checked is a real review. The sub-agent's `response_bytes` is only a rough first signal.
 
 External providers may not follow the requested format (no severity tags, no VERDICT line, pure prose, etc.). When this happens:
 - **Do NOT discard the response or force it into the template.** Extract actionable insights from the raw text.
@@ -453,7 +476,7 @@ A verdict split between providers is a real signal — call it out explicitly an
 After outputting the review, use the Bash tool to append a single-line JSON to the insights log:
 
 ```bash
-echo '{"date":"<ISO 8601 UTC>","project":"<repo or directory name>","scope":"<staged|file:path|diff|pr>","domain":"<frontend|backend|fullstack>","providers":["<list of providers that responded>"],"issues":[<issue objects>]}' >> ~/.claude/logs/review-insights.jsonl
+echo '{"date":"<ISO 8601 UTC>","project":"<repo or directory name>","scope":"<staged|file:path|diff|pr>","domain":"<frontend|backend|fullstack>","providers":["<list of providers that returned a real review>"],"issues":[<issue objects>]}' >> ~/.claude/logs/review-insights.jsonl
 ```
 
 Each issue object in the `issues` array:
@@ -469,6 +492,7 @@ Each issue object in the `issues` array:
 
 Rules:
 - Only record issues that **passed the confidence filter** (≥ 80)
+- Leave a DEGRADED (hollow) provider out of `providers` — it responded but did not review (Step 5)
 - Severity maps directly from the provider's text tags: CRITICAL→critical, MEDIUM→medium, SUGGESTION→suggestion
 - If a provider didn't give structured severity, infer from context (e.g., "security vulnerability" → critical)
 - Use `"guideline"` category for project guideline violations (`CLAUDE.md` / `Agents.md`)

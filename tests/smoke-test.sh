@@ -40,7 +40,7 @@ done
 echo ""
 echo "2. Command files..."
 
-for cmd in pi-ask-codex pi-ask-gemini pi-code-review pi-multi-review pi-plan pi-research pi-ui-design pi-ui-review; do
+for cmd in pi-ask-codex pi-ask-gemini pi-code-review pi-multi-review pi-plan pi-research pi-ui-design; do
     if [[ -f "$SCRIPT_DIR/commands/$cmd.md" ]]; then
         pass "/$(basename "$cmd") command definition exists"
     else
@@ -361,6 +361,8 @@ _check_prompt_len "call-codex.sh stdin from /dev/null skipped" "$STDIN_OUT" "$ST
 # CODEX_BIN / AGY_BIN env vars so no real API calls are made.
 # 5 assertions: normal path (rc=0), timeout fires (rc=124 + sentinel + log event),
 # custom TIMEOUT=5 honoured, no orphan processes, gemini mirror fires identically.
+# T13.7-T13.9 add $(...) capture checks (GH #24): the caller must not wait on
+# orphaned background sleeps.
 echo ""
 echo "13. Soft-timeout regression..."
 
@@ -470,6 +472,61 @@ if [[ $T13_RC5 -eq 124 ]] && \
     pass "T13.5 gemini timeout mirrors codex (rc=124 + sentinel + [gemini] log event)"
 else
     fail "T13.5 gemini timeout: expected rc=124 + sentinel + [gemini] log, got rc=$T13_RC5"
+fi
+
+# T13.7-T13.9 Command-substitution capture returns promptly (GH #24 regression guard).
+# The pi-* templates capture wrapper output with wrapper_out=$(... 2>&1), which
+# waits for EOF on every write end of the pipe. The background subshells
+# (first-byte detector / heartbeat / watcher) used to inherit stdout, so their
+# orphaned `sleep` kept the pipe open and the caller waited the full TIMEOUT
+# (or the 30s heartbeat interval) even when the provider answered instantly.
+# T13.1-T13.6 redirect to files and never exercise this path.
+
+# T13.7 codex, fast CLI, TIMEOUT=40, $(...) capture: caller gets output in <3s
+T13_LD7=$(mktemp -d); T13_LOGDIRS+=("$T13_LD7")
+T13_START=$(date +%s)
+set +e
+T13_OUT7=$(MULTI_AI_LOG_DIR="$T13_LD7" CODEX_BIN="$T13_FAKE_FAST" CLAUDE_PRISM_TIMEOUT=40 \
+    "$SCRIPT_DIR/scripts/call-codex.sh" "q" < /dev/null 2>&1)
+T13_RC7=$?
+set -e
+T13_EL7=$(( $(date +%s) - T13_START ))
+if [[ $T13_RC7 -eq 0 ]] && (( T13_EL7 < 3 )) && [[ "$T13_OUT7" == *fake-done* ]]; then
+    pass "T13.7 codex \$(...) capture returns promptly (elapsed=${T13_EL7}s, TIMEOUT=40)"
+else
+    fail "T13.7 codex \$(...) capture: expected rc=0 + <3s + fake-done, got rc=$T13_RC7 elapsed=${T13_EL7}s"
+fi
+
+# T13.8 codex, slow CLI, TIMEOUT=5, $(...) capture: soft-timeout still fires and
+# the caller returns soon after it (the 30s heartbeat sleep must not hold the pipe)
+T13_LD8=$(mktemp -d); T13_LOGDIRS+=("$T13_LD8")
+T13_START=$(date +%s)
+set +e
+T13_OUT8=$(MULTI_AI_LOG_DIR="$T13_LD8" CODEX_BIN="$T13_FAKE_SLOW" CLAUDE_PRISM_TIMEOUT=5 \
+    "$SCRIPT_DIR/scripts/call-codex.sh" "q" < /dev/null 2>&1)
+T13_RC8=$?
+set -e
+T13_EL8=$(( $(date +%s) - T13_START ))
+if [[ $T13_RC8 -eq 124 ]] && (( T13_EL8 >= 3 && T13_EL8 <= 9 )) && \
+   [[ "$T13_OUT8" == *"CLAUDE-PRISM: soft-timeout"* ]]; then
+    pass "T13.8 codex \$(...) capture with soft-timeout (rc=124 + sentinel, elapsed=${T13_EL8}s)"
+else
+    fail "T13.8 codex \$(...) soft-timeout: expected rc=124 + 3-9s + sentinel, got rc=$T13_RC8 elapsed=${T13_EL8}s"
+fi
+
+# T13.9 gemini mirror of T13.7 (Keep in sync sibling guard)
+T13_LD9=$(mktemp -d); T13_LOGDIRS+=("$T13_LD9")
+T13_START=$(date +%s)
+set +e
+T13_OUT9=$(MULTI_AI_LOG_DIR="$T13_LD9" AGY_BIN="$T13_FAKE_FAST" CLAUDE_PRISM_TIMEOUT=40 \
+    "$SCRIPT_DIR/scripts/call-gemini.sh" "q" < /dev/null 2>&1)
+T13_RC9=$?
+set -e
+T13_EL9=$(( $(date +%s) - T13_START ))
+if [[ $T13_RC9 -eq 0 ]] && (( T13_EL9 < 3 )) && [[ "$T13_OUT9" == *fake-done* ]]; then
+    pass "T13.9 gemini \$(...) capture returns promptly (elapsed=${T13_EL9}s, TIMEOUT=40)"
+else
+    fail "T13.9 gemini \$(...) capture: expected rc=0 + <3s + fake-done, got rc=$T13_RC9 elapsed=${T13_EL9}s"
 fi
 
 # ─── Test 14: Phase A1 observability (v0.14.4+) ───
@@ -744,26 +801,30 @@ exit 0
 FAKEAUTH
 chmod +x "$T17_FAKE_AUTH"
 
-# T17.1 empty output + rc=0 → EMPTY_OUTPUT, exit 1
+# T17.1 empty output + rc=0 → EMPTY_OUTPUT, exit 1. stderr is empty too, so
+# the wrapper must not guess a cause (GH #20: it used to blame the network).
+# HOME → temp dir: the wrapper lists agy's log dir, never read the real one.
 T17_LD1=$(mktemp -d); T13_LOGDIRS+=("$T17_LD1")
 set +e
-MULTI_AI_LOG_DIR="$T17_LD1" AGY_BIN="$T17_FAKE_EMPTY" \
+HOME="$T17_LD1" MULTI_AI_LOG_DIR="$T17_LD1" AGY_BIN="$T17_FAKE_EMPTY" \
     "$SCRIPT_DIR/scripts/call-gemini.sh" "q" > "$T17_LD1/out" 2> "$T17_LD1/err"
 T17_RC1=$?
 set -e
 if [[ $T17_RC1 -eq 1 ]] && \
    grep -q "EMPTY_OUTPUT" "$T17_LD1/err" && \
-   grep -q "EMPTY_OUTPUT" "$T17_LD1/multi-ai.log"; then
-    pass "T17.1 rc=0 + empty output classified EMPTY_OUTPUT (rc=1 + stderr + log)"
+   grep -q "EMPTY_OUTPUT" "$T17_LD1/multi-ai.log" && \
+   ! grep -qi "network" "$T17_LD1/err" && \
+   ! grep -qi "EMPTY_OUTPUT.*network" "$T17_LD1/multi-ai.log"; then
+    pass "T17.1 rc=0 + empty output classified EMPTY_OUTPUT (rc=1 + stderr + log, no guessed cause)"
 else
-    fail "T17.1 EMPTY_OUTPUT: expected rc=1 + diagnostics, got rc=$T17_RC1; err=$(cat "$T17_LD1/err")"
+    fail "T17.1 EMPTY_OUTPUT: expected rc=1 + diagnostics without a guessed cause, got rc=$T17_RC1; err=$(cat "$T17_LD1/err")"
 fi
 
 # T17.2 OAuth prompt + rc=0 → AUTH_ERROR, exit 1 (dual-condition fingerprint:
 # first-line prefix AND OAuth URL marker must both match)
 T17_LD2=$(mktemp -d); T13_LOGDIRS+=("$T17_LD2")
 set +e
-MULTI_AI_LOG_DIR="$T17_LD2" AGY_BIN="$T17_FAKE_AUTH" \
+HOME="$T17_LD2" MULTI_AI_LOG_DIR="$T17_LD2" AGY_BIN="$T17_FAKE_AUTH" \
     "$SCRIPT_DIR/scripts/call-gemini.sh" "q" > "$T17_LD2/out" 2> "$T17_LD2/err"
 T17_RC2=$?
 set -e
@@ -774,6 +835,328 @@ if [[ $T17_RC2 -eq 1 ]] && \
 else
     fail "T17.2 AUTH_ERROR: expected rc=1 + diagnostics, got rc=$T17_RC2; err=$(cat "$T17_LD2/err")"
 fi
+
+# ─── Test 18: agy session meta + EMPTY_OUTPUT explanation (v0.16.1) ───
+# Every gemini call logs the model agy actually used, read from the one file
+# agy added to its log dir during the call — or unknown / ambiguous when that
+# cannot be told — without touching rc or output. On rc=0 + empty stdout,
+# agy's own stderr explanation is relayed instead of a guessed cause (GH #20).
+# HOME → per-test temp dir, so the real agy log dir is never read; the fake
+# CLIs write their own log files there.
+echo ""
+echo "18. agy session meta + EMPTY_OUTPUT explanation..."
+
+T18_DIR=$(mktemp -d); T13_LOGDIRS+=("$T18_DIR")
+T18_FAKE_LABELED="$T18_DIR/fake-labeled-cli"
+T18_FAKE_TWOLOGS="$T18_DIR/fake-twologs-cli"
+T18_FAKE_DENIED="$T18_DIR/fake-denied-cli"
+
+# Log lines copied from a real agy 1.3.2 log (2026-10-09), model name changed.
+cat > "$T18_FAKE_LABELED" <<'FAKELABELED'
+#!/bin/bash
+d="$HOME/.gemini/antigravity-cli/log"; mkdir -p "$d"
+printf '%s\n' \
+  'I1009 19:06:38.977053       1 model_config_manager.go:327] Propagating selected model override to backend: label="Gemini 9.9 Test (High)"' \
+  'I1009 19:06:40.734110     454 model_config_manager.go:327] Propagating selected model override to backend: label="Gemini 9.9 Test (High)"' \
+  > "$d/cli-20991231_235959.log"
+echo "PONG"
+FAKELABELED
+chmod +x "$T18_FAKE_LABELED"
+
+cat > "$T18_FAKE_TWOLOGS" <<'FAKETWOLOGS'
+#!/bin/bash
+d="$HOME/.gemini/antigravity-cli/log"; mkdir -p "$d"
+echo 'label="Gemini 9.9 Test (High)"' > "$d/cli-20991231_235958.log"
+echo 'label="Gemini 9.9 Test (High)"' > "$d/cli-20991231_235959.log"
+echo "PONG"
+FAKETWOLOGS
+chmod +x "$T18_FAKE_TWOLOGS"
+
+# stderr text verbatim from agy 1.3.2 (2026-10-09 probe: a prompt that made
+# the model run `pwd` → rc=0, stdout empty, this on stderr).
+cat > "$T18_FAKE_DENIED" <<'FAKEDENIED'
+#!/bin/bash
+d="$HOME/.gemini/antigravity-cli/log"; mkdir -p "$d"
+printf '%s\n' \
+  'I1009 19:06:38.977053       1 model_config_manager.go:327] Propagating selected model override to backend: label="Gemini 9.9 Test (High)"' \
+  'I1009 19:06:45.700209     508 tool_confirmation_manager.go:212] Print mode: soft-denying tool confirmation "RunCommand" at step 2' \
+  > "$d/cli-20991231_235959.log"
+echo 'jetski: no output produced — a tool required the "command" permission that headless mode cannot prompt for, so it was auto-denied. Add an allow-rule under permissions.allow in settings.json (e.g. command(<target>)). Alternatively, re-run with --dangerously-skip-permissions to auto-approve all tools.' >&2
+exit 0
+FAKEDENIED
+chmod +x "$T18_FAKE_DENIED"
+
+# T18.1 one new log file → its label is logged; a file that existed before the
+# call (different model) must not be picked up; rc + output pass through.
+T18_LD1=$(mktemp -d); T13_LOGDIRS+=("$T18_LD1")
+mkdir -p "$T18_LD1/.gemini/antigravity-cli/log"
+echo 'label="Old Model"' > "$T18_LD1/.gemini/antigravity-cli/log/cli-20200101_000000.log"
+set +e
+HOME="$T18_LD1" MULTI_AI_LOG_DIR="$T18_LD1" AGY_BIN="$T18_FAKE_LABELED" \
+    "$SCRIPT_DIR/scripts/call-gemini.sh" "q" > "$T18_LD1/out" 2> "$T18_LD1/err"
+T18_RC1=$?
+set -e
+if [[ $T18_RC1 -eq 0 ]] && [[ "$(cat "$T18_LD1/out")" == "PONG" ]] && \
+   grep -q 'agy_session model_label="Gemini 9.9 Test (High)" agy_log="cli-20991231_235959.log"' "$T18_LD1/multi-ai.log" && \
+   ! grep -q "Old Model" "$T18_LD1/multi-ai.log"; then
+    pass "T18.1 model label read from the one new agy log (pre-existing log ignored, rc/output intact)"
+else
+    fail "T18.1 model label: rc=$T18_RC1 out=$(cat "$T18_LD1/out"); log=$(grep agy_session "$T18_LD1/multi-ai.log" || echo '(no agy_session line)')"
+fi
+
+# T18.2 no new log file (agy log dir absent) → unknown, rc + output intact
+T18_LD2=$(mktemp -d); T13_LOGDIRS+=("$T18_LD2")
+set +e
+HOME="$T18_LD2" MULTI_AI_LOG_DIR="$T18_LD2" AGY_BIN="$T13_FAKE_FAST" \
+    "$SCRIPT_DIR/scripts/call-gemini.sh" "q" > "$T18_LD2/out" 2> "$T18_LD2/err"
+T18_RC2=$?
+set -e
+if [[ $T18_RC2 -eq 0 ]] && [[ "$(cat "$T18_LD2/out")" == "fake-done" ]] && \
+   grep -q 'agy_session model_label="unknown" agy_log="none"' "$T18_LD2/multi-ai.log"; then
+    pass "T18.2 no new agy log → model_label=unknown (rc/output intact)"
+else
+    fail "T18.2 unknown: rc=$T18_RC2 out=$(cat "$T18_LD2/out"); log=$(grep agy_session "$T18_LD2/multi-ai.log" || echo '(no agy_session line)')"
+fi
+
+# T18.3 two new log files (a concurrent agy run) → ambiguous, never a guess
+T18_LD3=$(mktemp -d); T13_LOGDIRS+=("$T18_LD3")
+set +e
+HOME="$T18_LD3" MULTI_AI_LOG_DIR="$T18_LD3" AGY_BIN="$T18_FAKE_TWOLOGS" \
+    "$SCRIPT_DIR/scripts/call-gemini.sh" "q" > "$T18_LD3/out" 2> "$T18_LD3/err"
+T18_RC3=$?
+set -e
+if [[ $T18_RC3 -eq 0 ]] && [[ "$(cat "$T18_LD3/out")" == "PONG" ]] && \
+   grep -q 'agy_session model_label="ambiguous"' "$T18_LD3/multi-ai.log"; then
+    pass "T18.3 two new agy logs → model_label=ambiguous (rc/output intact)"
+else
+    fail "T18.3 ambiguous: rc=$T18_RC3 out=$(cat "$T18_LD3/out"); log=$(grep agy_session "$T18_LD3/multi-ai.log" || echo '(no agy_session line)')"
+fi
+
+# T18.4 tool auto-denied (rc=0, empty stdout, explanation on stderr) →
+# EMPTY_OUTPUT relays agy's words, names no network, and counters agy's
+# --dangerously-skip-permissions advice; the model line is logged on this
+# error path too.
+T18_LD4=$(mktemp -d); T13_LOGDIRS+=("$T18_LD4")
+set +e
+HOME="$T18_LD4" MULTI_AI_LOG_DIR="$T18_LD4" AGY_BIN="$T18_FAKE_DENIED" \
+    "$SCRIPT_DIR/scripts/call-gemini.sh" "q" > "$T18_LD4/out" 2> "$T18_LD4/err"
+T18_RC4=$?
+set -e
+if [[ $T18_RC4 -eq 1 ]] && \
+   grep -q "EMPTY_OUTPUT" "$T18_LD4/err" && grep -q "auto-denied" "$T18_LD4/err" && \
+   grep -q "EMPTY_OUTPUT: tool call auto-denied in headless mode; agy stderr: jetski" "$T18_LD4/multi-ai.log" && \
+   ! grep -qi "network" "$T18_LD4/err" && \
+   grep -q "deliberately does not auto-approve" "$T18_LD4/err" && \
+   grep -q 'agy_session model_label="Gemini 9.9 Test (High)"' "$T18_LD4/multi-ai.log"; then
+    pass "T18.4 auto-denied tool → EMPTY_OUTPUT relays agy's stderr + counter-note (no network guess, model logged)"
+else
+    fail "T18.4 auto-denied: rc=$T18_RC4; err=$(cat "$T18_LD4/err"); log=$(grep -E 'EMPTY_OUTPUT|agy_session' "$T18_LD4/multi-ai.log" || echo '(none)')"
+fi
+
+# T18.5 HOME unset → the lookup degrades to unknown instead of aborting the
+# call under set -u (with AGY_BIN + MULTI_AI_LOG_DIR set, nothing else in the
+# wrapper needs HOME).
+T18_LD5=$(mktemp -d); T13_LOGDIRS+=("$T18_LD5")
+set +e
+env -u HOME MULTI_AI_LOG_DIR="$T18_LD5" AGY_BIN="$T13_FAKE_FAST" \
+    "$SCRIPT_DIR/scripts/call-gemini.sh" "q" > "$T18_LD5/out" 2> "$T18_LD5/err"
+T18_RC5=$?
+set -e
+if [[ $T18_RC5 -eq 0 ]] && [[ "$(cat "$T18_LD5/out")" == "fake-done" ]] && \
+   grep -q 'agy_session model_label="unknown"' "$T18_LD5/multi-ai.log"; then
+    pass "T18.5 HOME unset → model_label=unknown, call unaffected"
+else
+    fail "T18.5 HOME unset: rc=$T18_RC5 out=$(cat "$T18_LD5/out"); err=$(cat "$T18_LD5/err")"
+fi
+
+# ─── Test 19: integrity manifest coverage + npm-subset install (GH #23) ───
+# checksums.sha256 must cover every file install.sh deploys (scripts/*.sh,
+# commands/*.md) plus install.sh / uninstall.sh — four CI-only scripts were
+# never enrolled (#23). Channels ship different subsets: the npm package
+# leaves those scripts out (package.json "files"), and the v0.14.6 / v0.15.0
+# npm installs aborted because the manifest named files the package lacked.
+# T19.2 / T19.3 copy the exact npm file set (asked from npm itself, not
+# re-derived) and run the real install.sh on it with HOME in a temp dir.
+echo ""
+echo "19. Integrity manifest coverage + npm-subset install..."
+
+T19_EXPECTED=$(cd "$SCRIPT_DIR" && printf '%s\n' scripts/*.sh commands/*.md install.sh uninstall.sh | LC_ALL=C sort)
+T19_LISTED=$(awk '{print $2}' "$SCRIPT_DIR/checksums.sha256" | LC_ALL=C sort)
+if [[ "$T19_EXPECTED" == "$T19_LISTED" ]]; then
+    pass "T19.1 checksums.sha256 covers exactly scripts/*.sh + commands/*.md + install.sh + uninstall.sh"
+else
+    T19_MISSING=$(LC_ALL=C comm -23 <(printf '%s\n' "$T19_EXPECTED") <(printf '%s\n' "$T19_LISTED") | tr '\n' ' ')
+    T19_EXTRA=$(LC_ALL=C comm -13 <(printf '%s\n' "$T19_EXPECTED") <(printf '%s\n' "$T19_LISTED") | tr '\n' ' ')
+    fail "T19.1 manifest coverage drift — missing: ${T19_MISSING:-none}; extra: ${T19_EXTRA:-none}"
+fi
+
+if command -v npm &>/dev/null && command -v node &>/dev/null; then
+    T19_DIR=$(mktemp -d); T13_LOGDIRS+=("$T19_DIR")
+    T19_PKG="$T19_DIR/pkg"
+    # --cache keeps npm's cache/logs inside the temp dir; no lifecycle scripts run.
+    T19_NPM_FILES=$(cd "$SCRIPT_DIR" && npm pack --dry-run --json --ignore-scripts --cache "$T19_DIR/npm-cache" 2>/dev/null \
+        | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const f of JSON.parse(s)[0].files)console.log(f.path)})' \
+        || true)
+    _t19_copy_pkg() {  # $1 = destination dir; copies the npm file set
+        local f
+        while IFS= read -r f; do
+            [[ -n "$f" ]] || continue
+            mkdir -p "$1/$(dirname "$f")"
+            cp -p "$SCRIPT_DIR/$f" "$1/$f"
+        done <<< "$T19_NPM_FILES"
+    }
+    _t19_copy_pkg "$T19_PKG"
+    T19_ABSENT=0
+    while read -r _ path; do
+        [[ -f "$T19_PKG/$path" ]] || T19_ABSENT=$((T19_ABSENT + 1))
+    done < "$SCRIPT_DIR/checksums.sha256"
+
+    # T19.2 untouched npm subset installs; manifest entries for files the
+    # package does not ship are skipped, not failed.
+    set +e
+    HOME="$T19_DIR/home2" bash "$T19_PKG/install.sh" > "$T19_DIR/install2.out" 2>&1
+    T19_RC2=$?
+    set -e
+    if [[ $T19_RC2 -eq 0 ]] && grep -q "All checksums verified" "$T19_DIR/install2.out" && \
+       [[ -f "$T19_DIR/home2/.claude/scripts/call-codex.sh" ]] && \
+       [[ -f "$T19_DIR/home2/.claude/commands/pi-askall.md" ]]; then
+        pass "T19.2 npm package subset installs ($T19_ABSENT manifest entries not shipped, skipped)"
+    else
+        fail "T19.2 npm subset install: rc=$T19_RC2 npm_files=$(grep -c . <<< "$T19_NPM_FILES"); $(grep -i -E 'checksum|FAILED' "$T19_DIR/install2.out" | head -3 | tr '\n' ' ')"
+    fi
+
+    # T19.3 a shipped file altered → install aborts before deploying anything
+    # (skipping absent entries must not weaken the check on present ones).
+    echo "# tampered" >> "$T19_PKG/scripts/call-codex.sh"
+    set +e
+    HOME="$T19_DIR/home3" bash "$T19_PKG/install.sh" > "$T19_DIR/install3.out" 2>&1
+    T19_RC3=$?
+    set -e
+    if [[ $T19_RC3 -ne 0 ]] && grep -q "Checksum verification failed" "$T19_DIR/install3.out" && \
+       [[ ! -e "$T19_DIR/home3/.claude/scripts/call-codex.sh" ]]; then
+        pass "T19.3 altered file in npm subset → install aborts (rc=$T19_RC3, nothing deployed)"
+    else
+        fail "T19.3 tamper check: rc=$T19_RC3; deployed=$([[ -e "$T19_DIR/home3/.claude/scripts/call-codex.sh" ]] && echo yes || echo no)"
+    fi
+
+    # T19.4 manifest without a trailing newline: its last entry is still
+    # checked (a skipped last line would let that file through unverified).
+    T19_PKG4="$T19_DIR/pkg4"
+    _t19_copy_pkg "$T19_PKG4"
+    printf '%s' "$(cat "$T19_PKG4/checksums.sha256")" > "$T19_PKG4/checksums.sha256"
+    T19_LAST=$(tail -n 1 "$T19_PKG4/checksums.sha256" | awk '{print $2}')
+    echo "# tampered" >> "$T19_PKG4/$T19_LAST"
+    set +e
+    HOME="$T19_DIR/home4" bash "$T19_PKG4/install.sh" > "$T19_DIR/install4.out" 2>&1
+    T19_RC4=$?
+    set -e
+    if [[ $T19_RC4 -ne 0 ]] && grep -q "Checksum verification failed" "$T19_DIR/install4.out"; then
+        pass "T19.4 manifest without trailing newline → last entry ($T19_LAST) still verified"
+    else
+        fail "T19.4 last manifest line skipped: altered $T19_LAST passed, rc=$T19_RC4"
+    fi
+
+    # T19.5 every script a command invokes ships in the npm package. T19.2's
+    # install skips manifest entries the package lacks, so it cannot tell the
+    # deliberate omissions (CI-only scripts) from a forgotten runtime script
+    # in package.json "files" — that would install fine and break at run time.
+    T19_NEEDED=$(grep -oh -E 'scripts/[A-Za-z0-9_.-]+\.sh' "$SCRIPT_DIR"/commands/*.md | LC_ALL=C sort -u || true)
+    T19_UNSHIPPED=$(LC_ALL=C comm -23 <(printf '%s\n' "$T19_NEEDED") <(printf '%s\n' "$T19_NPM_FILES" | LC_ALL=C sort) | tr '\n' ' ')
+    if [[ -z "$T19_NEEDED" ]]; then
+        fail "T19.5 no script references found in commands/*.md (pattern no longer matches?)"
+    elif [[ -n "${T19_UNSHIPPED// /}" ]]; then
+        fail "T19.5 commands invoke scripts the npm package does not ship: $T19_UNSHIPPED"
+    else
+        pass "T19.5 every script the commands invoke ships in the npm package ($(grep -c . <<< "$T19_NEEDED") scripts)"
+    fi
+elif [[ -n "${CI:-}" ]]; then
+    # CI runners ship node/npm today (not pinned); if an image ever drops them,
+    # these checks must fail loudly rather than turn into SKIPs on a green run.
+    fail "T19.2-T19.5 npm/node missing on CI — npm-subset checks did not run"
+else
+    skip "T19.2 npm/node not available — npm-subset install not exercised"
+    skip "T19.3 npm/node not available — tamper check not exercised"
+    skip "T19.4 npm/node not available — trailing-newline check not exercised"
+    skip "T19.5 npm/node not available — command-script shipping check not exercised"
+fi
+
+# ─── Test 20: retired commands removed on upgrade (v0.17.0) ───
+# install.sh copies only what commands/ ships, so a command dropped from the
+# repo would otherwise stay installed — unmaintained but still callable.
+# /pi-ui-review was retired in v0.17.0. Runs the real install.sh with HOME in
+# a temp dir; nothing under the real ~/.claude is touched.
+echo ""
+echo "20. Retired command cleanup on upgrade..."
+
+# T20.1 an earlier install left pi-ui-review.md behind → removed, with a reason
+T20_HOME1=$(mktemp -d); T13_LOGDIRS+=("$T20_HOME1")
+mkdir -p "$T20_HOME1/.claude/commands"
+echo "# copy installed by an earlier version" > "$T20_HOME1/.claude/commands/pi-ui-review.md"
+set +e
+HOME="$T20_HOME1" bash "$SCRIPT_DIR/install.sh" > "$T20_HOME1/install.out" 2>&1
+T20_RC1=$?
+set -e
+if [[ $T20_RC1 -eq 0 ]] && [[ ! -e "$T20_HOME1/.claude/commands/pi-ui-review.md" ]] && \
+   grep -q "Removed /pi-ui-review" "$T20_HOME1/install.out" && \
+   [[ -f "$T20_HOME1/.claude/commands/pi-code-review.md" ]]; then
+    pass "T20.1 upgrade removes the retired /pi-ui-review and says why (other commands installed)"
+else
+    fail "T20.1 retired-command cleanup: rc=$T20_RC1 still_installed=$([[ -e "$T20_HOME1/.claude/commands/pi-ui-review.md" ]] && echo yes || echo no) message=$(grep -c 'Removed /pi-ui-review' "$T20_HOME1/install.out")"
+fi
+
+# T20.2 fresh install → no removal message
+T20_HOME2=$(mktemp -d); T13_LOGDIRS+=("$T20_HOME2")
+set +e
+HOME="$T20_HOME2" bash "$SCRIPT_DIR/install.sh" > "$T20_HOME2/install.out" 2>&1
+T20_RC2=$?
+set -e
+if [[ $T20_RC2 -eq 0 ]] && ! grep -q "pi-ui-review" "$T20_HOME2/install.out"; then
+    pass "T20.2 fresh install prints nothing about /pi-ui-review"
+else
+    fail "T20.2 fresh install: rc=$T20_RC2; $(grep 'pi-ui-review' "$T20_HOME2/install.out" | head -2 | tr '\n' ' ')"
+fi
+
+# ─── Test 21: fan-out sub-agents pin the working directory (v0.17.0) ───
+# The main conversation can cd elsewhere (a scratch dir, say) before it
+# dispatches the provider sub-agents, and they inherit that directory: the
+# wrapper then runs outside the project (codex gets --skip-git-repo-check,
+# gemini's --add-dir points at the wrong directory). Each fan-out command
+# records the directory in Step 0 and the sub-agent template cds back to it
+# first. Exact-line checks on purpose: these lines are the whole fix, and
+# whether the main conversation fills <WORKDIR> correctly only shows up in a
+# real run.
+echo ""
+echo "21. Sub-agent working-directory pin..."
+
+for t21_cmd in pi-multi-review pi-askall pi-plan; do
+    t21_file="$SCRIPT_DIR/commands/$t21_cmd.md"
+
+    # T21.1 Step 0 records the directory before any other step
+    t21_step0=$(grep -n '^### 0\. Pin the working directory' "$t21_file" | head -1 | cut -d: -f1 || true)
+    t21_step1=$(grep -n '^### 1\. ' "$t21_file" | head -1 | cut -d: -f1 || true)
+    if [[ -n "$t21_step0" && -n "$t21_step1" ]] && (( t21_step0 < t21_step1 )); then
+        pass "T21.1 $t21_cmd: Step 0 pins the working directory before Step 1"
+    else
+        fail "T21.1 $t21_cmd: no '### 0. Pin the working directory' ahead of '### 1.' (step0=${t21_step0:-none} step1=${t21_step1:-none})"
+    fi
+
+    # T21.2 the sub-agent's Bash command starts by returning to <WORKDIR>
+    t21_first=$(awk '/^Step 1\. Run this exact Bash command/ { in_step = 1; next }
+                     in_step && /^    [^ ]/ { print; exit }' "$t21_file")
+    if [[ "$t21_first" == '    cd "<WORKDIR>" || exit 1' ]]; then
+        pass "T21.2 $t21_cmd: sub-agent template opens with cd \"<WORKDIR>\" || exit 1"
+    else
+        fail "T21.2 $t21_cmd: sub-agent template opens with '${t21_first}'"
+    fi
+
+    # T21.3 the dispatch step tells the main conversation to fill <WORKDIR>
+    t21_dispatch=$(grep 'Send ONE response with two .Agent. tool calls' "$t21_file" || true)
+    if [[ "$t21_dispatch" == *'<WORKDIR>'* ]]; then
+        pass "T21.3 $t21_cmd: dispatch step says how to fill <WORKDIR>"
+    else
+        fail "T21.3 $t21_cmd: dispatch step never mentions <WORKDIR>"
+    fi
+done
 
 # ─── Summary ───
 echo ""

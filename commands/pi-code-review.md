@@ -119,9 +119,15 @@ Output format — one block per finding, exactly this structure:
 
 At most 8 findings — if you found more, keep the highest-impact 8. Prefer one strong finding over several weak ones; do not dilute serious issues with filler.
 
+If you report no findings, the verdict still needs evidence — before it, list what you examined in the code below:
+
+Checked:
+- <file or function under review> — <the failure modes above you tested it against>
+
 End with exactly one line:
 VERDICT: safe | needs-fixes | do-not-merge
-If the change looks safe, say VERDICT: safe directly — do not invent findings to seem thorough.
+
+A verdict on its own is not a complete review. Do not invent findings to seem thorough — when nothing holds up as a real issue, the Checked list followed by VERDICT: safe is the complete answer.
 
 Final self-check: before outputting, verify each finding is adversarial (not stylistic), tied to a concrete code location, plausible under a real failure scenario, and actionable.
 
@@ -146,6 +152,12 @@ The CLI argument is a short label — the actual prompt travels via stdin.
 - Do NOT abort. Claude performs the review independently instead.
 - Include the specific failure reason from stderr (TIMEOUT, RATE_LIMIT, AUTH_ERROR, SANDBOX, NETWORK, CLI_ERROR, or CLI_NOT_FOUND).
 - Note in output: "⚠️ Codex unavailable ([reason]) — review conducted by Claude only (same-source blind spot caveat applies). For cross-provider review with Gemini, try `/pi-multi-review`."
+
+**If Codex returns a hollow response** — check this before the format handling below. Codex exited 0 and the reply may even be well-formed, but it carries no review of the code under review: no finding that points at a location, and no `Checked:` entry or sentence naming a file or function under review (e.g. a lone `VERDICT: safe`, or just "No issues found."):
+- Treat it as **DEGRADED**, not as a clean review — a well-formed verdict is not evidence that the code was read. Do NOT present its VERDICT.
+- Claude performs the review independently, as in the failure path above.
+- Judge by content, not length: a short reply that names the code it checked is a real review. Length is only a rough first signal.
+- Note in output: "⚠️ Codex returned a hollow response (DEGRADED, ~N chars, nothing tied to the code under review) — review conducted by Claude only (same-source blind spot caveat applies). For cross-provider review with Gemini, try `/pi-multi-review`."
 
 **If Codex output doesn't match requested format** (no severity tags, no VERDICT line, pure prose):
 - Extract actionable issues from the raw text. Do NOT discard the response.
@@ -207,7 +219,7 @@ If project guidelines were found in Step 1.5, score guideline violations separat
 
 ### 5.5 Present results
 
-Render the provider's text severity tags as emoji in the final output: CRITICAL→🔴, MEDIUM→🟡, SUGGESTION→🟢. Include the provider's VERDICT line near the top.
+Render the provider's text severity tags as emoji in the final output: CRITICAL→🔴, MEDIUM→🟡, SUGGESTION→🟢. Include the provider's VERDICT line near the top — unless Codex was DEGRADED (Step 4).
 
 Show the filtered review labeled **Codex**, grouped by confidence tier:
 - **High confidence (≥ 90)**: Definitely fix
@@ -279,7 +291,7 @@ If Codex makes obvious misjudgments (e.g., misunderstanding language features), 
 After outputting the review, use the Bash tool to append a single-line JSON to the insights log:
 
 ```bash
-echo '{"date":"<ISO 8601 UTC>","project":"<repo or directory name>","scope":"<staged|file:path|diff|pr>","domain":"<frontend|backend|fullstack>","providers":["<list of providers that responded>"],"issues":[<issue objects>]}' >> ~/.claude/logs/review-insights.jsonl
+echo '{"date":"<ISO 8601 UTC>","project":"<repo or directory name>","scope":"<staged|file:path|diff|pr>","domain":"<frontend|backend|fullstack>","providers":["<list of providers that returned a real review>"],"issues":[<issue objects>]}' >> ~/.claude/logs/review-insights.jsonl
 ```
 
 Each issue object in the `issues` array:
@@ -295,6 +307,7 @@ Each issue object in the `issues` array:
 
 Rules:
 - Only record issues that **passed the confidence filter** (≥ 80)
+- Leave a DEGRADED (hollow) provider out of `providers` — it responded but did not review (Step 4)
 - Severity maps directly from the provider's text tags: CRITICAL→critical, MEDIUM→medium, SUGGESTION→suggestion
 - If Codex didn't give structured severity, infer from context
 - Use `"guideline"` category for project guideline violations
