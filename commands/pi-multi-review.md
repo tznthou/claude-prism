@@ -176,6 +176,9 @@ $(code)
   7. Inline annotation violations (IMPORTANT/WARNING/FIXME/TODO/NOTE comments)
   ```
 - **Domain-aware surface trim**: if the domain detected in Step 2.5 is `backend`, omit item 2 (accessibility/responsive/UI states — inapplicable to backend-only diffs) and renumber the remaining items. For `frontend` and `fullstack`, keep the full list.
+- **No tools**: right after the line `If context is missing, state your assumptions and answer anyway.`, add this line to the Gemini prompt only:
+  `Everything you need is in this prompt: do not run commands, use tools, or read files.`
+  Gemini runs through agy in headless mode, where a tool call that needs permission is auto-denied and the turn ends with no output (EMPTY_OUTPUT). Do not add this line to the Codex prompt — Codex keeps its repository access.
 
 **Step 3b — Persist each prompt to its own temp file**:
 
