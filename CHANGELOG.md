@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## v0.17.0 (YYYY-MM-DD) — trustworthy results: hollow verdicts flagged, padded waits removed, Gemini failures explained; `/pi-ui-review` retired
+## v0.17.0 (2026-10-10) — trustworthy results: hollow verdicts flagged, padded waits removed, Gemini failures explained; `/pi-ui-review` retired
 
 **Most of this release is about whether what the commands report can be believed.** A provider that replied with a bare `VERDICT: safe` was shown as a clean review; `/pi-askall`, `/pi-multi-review` and `/pi-plan` waited out the full timeout after the providers had already answered, then reported that wait as provider runtime; and when Gemini came back empty, the wrapper blamed the network while agy had in fact refused a tool call. All three are fixed. The one breaking change is the removal of `/pi-ui-review`.
 
