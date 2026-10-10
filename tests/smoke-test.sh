@@ -1116,6 +1116,48 @@ else
     fail "T20.2 fresh install: rc=$T20_RC2; $(grep 'pi-ui-review' "$T20_HOME2/install.out" | head -2 | tr '\n' ' ')"
 fi
 
+# ─── Test 21: fan-out sub-agents pin the working directory (v0.17.0) ───
+# The main conversation can cd elsewhere (a scratch dir, say) before it
+# dispatches the provider sub-agents, and they inherit that directory: the
+# wrapper then runs outside the project (codex gets --skip-git-repo-check,
+# gemini's --add-dir points at the wrong directory). Each fan-out command
+# records the directory in Step 0 and the sub-agent template cds back to it
+# first. Exact-line checks on purpose: these lines are the whole fix, and
+# whether the main conversation fills <WORKDIR> correctly only shows up in a
+# real run.
+echo ""
+echo "21. Sub-agent working-directory pin..."
+
+for t21_cmd in pi-multi-review pi-askall pi-plan; do
+    t21_file="$SCRIPT_DIR/commands/$t21_cmd.md"
+
+    # T21.1 Step 0 records the directory before any other step
+    t21_step0=$(grep -n '^### 0\. Pin the working directory' "$t21_file" | head -1 | cut -d: -f1 || true)
+    t21_step1=$(grep -n '^### 1\. ' "$t21_file" | head -1 | cut -d: -f1 || true)
+    if [[ -n "$t21_step0" && -n "$t21_step1" ]] && (( t21_step0 < t21_step1 )); then
+        pass "T21.1 $t21_cmd: Step 0 pins the working directory before Step 1"
+    else
+        fail "T21.1 $t21_cmd: no '### 0. Pin the working directory' ahead of '### 1.' (step0=${t21_step0:-none} step1=${t21_step1:-none})"
+    fi
+
+    # T21.2 the sub-agent's Bash command starts by returning to <WORKDIR>
+    t21_first=$(awk '/^Step 1\. Run this exact Bash command/ { in_step = 1; next }
+                     in_step && /^    [^ ]/ { print; exit }' "$t21_file")
+    if [[ "$t21_first" == '    cd "<WORKDIR>" || exit 1' ]]; then
+        pass "T21.2 $t21_cmd: sub-agent template opens with cd \"<WORKDIR>\" || exit 1"
+    else
+        fail "T21.2 $t21_cmd: sub-agent template opens with '${t21_first}'"
+    fi
+
+    # T21.3 the dispatch step tells the main conversation to fill <WORKDIR>
+    t21_dispatch=$(grep 'Send ONE response with two .Agent. tool calls' "$t21_file" || true)
+    if [[ "$t21_dispatch" == *'<WORKDIR>'* ]]; then
+        pass "T21.3 $t21_cmd: dispatch step says how to fill <WORKDIR>"
+    else
+        fail "T21.3 $t21_cmd: dispatch step never mentions <WORKDIR>"
+    fi
+done
+
 # ─── Summary ───
 echo ""
 echo "─────────────────────────────────────────"

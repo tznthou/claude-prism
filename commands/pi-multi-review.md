@@ -13,6 +13,10 @@ Send the same code to both Codex and Gemini for **adversarial review with divide
 >
 > Inside each sub-agent, run `call-codex.sh` / `call-gemini.sh` in **foreground synchronous mode** with `timeout: 600000` (Bash tool's 10-minute ceiling). Do not use `&`, `nohup`, or `run_in_background: true` — Claude Code 2026-04+ has an auto-background child-lifecycle regression that silently kills the child (output file stays 0 bytes). If a sub-agent's Bash returns empty stdout, the Bash template below falls back to reading the caller-owned `$OUT_PATH` file (v0.14.3+, wrapper `tee`s here via `CLAUDE_PRISM_OUT_TMP`).
 
+### 0. Pin the working directory
+
+Before any other step, run `pwd` and keep the result as `<WORKDIR>`. Sub-agents start in whatever directory the main conversation is in when it dispatches them; if you `cd` elsewhere in between (a scratch directory to try something out, say), the wrapper would run outside this project. The template in Step 3c sends each sub-agent back to `<WORKDIR>` first.
+
 ### 1. Determine review scope
 
 Same as `/pi-code-review`, based on `$ARGUMENTS`:
@@ -178,13 +182,15 @@ $(code)
 1. Bash: `CODEX_PROMPT=$(mktemp -t prism-review-codex-XXXXXX.md) && GEMINI_PROMPT=$(mktemp -t prism-review-gemini-XXXXXX.md) && echo "CODEX=$CODEX_PROMPT" && echo "GEMINI=$GEMINI_PROMPT"` — capture both paths.
 2. Use the Write tool twice — write the Codex-focus prompt to `$CODEX_PROMPT` and the Gemini-focus prompt to `$GEMINI_PROMPT`.
 
-**Step 3c — Send ONE response with two `Agent` tool calls in parallel.** Both use `subagent_type: "general-purpose"`. Fill `<CODEX_PROMPT>` / `<GEMINI_PROMPT>` with the actual paths from Step 3b.
+**Step 3c — Send ONE response with two `Agent` tool calls in parallel.** Both use `subagent_type: "general-purpose"`. Fill `<CODEX_PROMPT>` / `<GEMINI_PROMPT>` with the actual paths from Step 3b, and `<WORKDIR>` with the path from Step 0 — do not run `pwd` again here.
 
 <!-- Keep in sync with commands/pi-askall.md and commands/pi-plan.md — the sub-agent Bash template shape is shared across these three skills. -->
 
 **Why the Bash template below uses `wrapper_out=$(...) < "<PATH>"` rather than `cat <PATH> | ...`** (skill-maintainer note — NOT shipped to the sub-agent):
 - `< "<PATH>"` direct redirect keeps `$?` as the wrapper's true exit code. A `cat | wrapper` pipeline without `set -o pipefail` would mask wrapper failure — `$?` on a pipe only reflects the tail command's rc, so a missing / unreadable prompt file could silently run the wrapper on empty stdin.
 - The `wrapper_out=$(...)` capture lets the emptiness check run BEFORE the META block is printed. If we echoed META first, stdout would never be empty (META always fills it), so the `pi-*-last.out` fallback for silent-kill / auto-bg regressions would never trigger.
+
+**Why the template opens with `cd "<WORKDIR>"`** (skill-maintainer note — NOT shipped to the sub-agent): sub-agents start in the main conversation's current working directory, and by the time Step 3c runs the main conversation may have `cd`'d into a scratch directory. Without the `cd`, the wrapper runs outside the project — Codex gets `--skip-git-repo-check` and Gemini's `--add-dir` points at the wrong directory.
 
 **Codex agent** (description: "Codex adversarial review — security focus"):
 
@@ -193,6 +199,7 @@ Task: run one foreground-synchronous Bash command and return its output verbatim
 
 Step 1. Run this exact Bash command (timeout 600000 ms; no `&`, `nohup`, or `run_in_background: true`):
 
+    cd "<WORKDIR>" || exit 1
     OUT_PATH=$(mktemp "${TMPDIR:-/tmp}/prism-codex-out-XXXXXX")
     start_ts=$(date +%s)
     # CLAUDE_PRISM_TIMEOUT=540: 60s buffer below 600s Bash tool ceiling so
@@ -211,7 +218,7 @@ Step 1. Run this exact Bash command (timeout 600000 ms; no `&`, `nohup`, or `run
     echo "runtime=$((end_ts - start_ts))s"
     echo "response_bytes=$(wc -c < "$OUT_PATH" 2>/dev/null || echo NA)"
 
-Step 2. Return to me: the complete printed output verbatim (do NOT summarize, paraphrase, or reformat the Codex review — it will feed Claude's synthesis and confidence scoring with full fidelity), including the META block. If the Bash command printed a `[FALLBACK: ...]` line, relay that too — it signals the wrapper was silently killed and the response came from the tee safety net. If rc != 0, include any stderr — the wrapper classifies failures as TIMEOUT / RATE_LIMIT / AUTH_ERROR / SANDBOX / NETWORK / CLI_ERROR / CLI_NOT_FOUND.
+Step 2. Return to me: the complete printed output verbatim (do NOT summarize, paraphrase, or reformat the Codex review — it will feed Claude's synthesis and confidence scoring with full fidelity), including the META block. If the Bash command printed a `[FALLBACK: ...]` line, relay that too — it signals the wrapper was silently killed and the response came from the tee safety net. If rc != 0, include any stderr — the wrapper classifies failures as TIMEOUT / RATE_LIMIT / AUTH_ERROR / SANDBOX / NETWORK / CLI_ERROR / CLI_NOT_FOUND. If the `cd` on the first line fails, return its error as is — do not change the path or re-run the command without the `cd`.
 
 Only use Bash and Read tools.
 ```
