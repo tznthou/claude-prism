@@ -521,6 +521,10 @@ Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 severity 標記／
 
 可以。Commands 和 scripts 是獨立的，只依賴 Claude Code 的 `~/.claude/` 目錄慣例。
 
+**Q: 可以用 headless 方式跑嗎？像是 `claude -p`、Agent SDK 或 CI？**
+
+可以，但權限模式要自己指定。headless 模式下沒有人能按核准，如果跑在 `default` 模式，用來啟動 Codex、Gemini wrapper 的 Bash 呼叫就會被拒絕。指令不會因此停下來，graceful degradation 會在少了這些 provider 的情況下照樣跑完，最後拿到的只有 Claude 的結果。Claude Code 2.1.302 起，`claude -p` 和 Agent SDK 的 session 若沒設定權限模式，在第三方 provider（Bedrock、Vertex、Foundry）、關閉 telemetry 或全新安裝的環境下，一律從 `default` 起跑。其中有些情況以前是從 auto 模式起跑，所以原本好好的設定，升級後可能就開始少掉 provider。請加上 `--permission-mode auto`，或在 settings 裡設定 `permissions.defaultMode`。auto 模式下每個呼叫還是要過分類器這一關，所以記得確認 provider 真的有跑：只要有 provider 沒跑成，每個指令都會在輸出裡加註 `⚠️ … unavailable`；用 `--output-format stream-json` 的話，最後的 `result` 事件也會列出 `permission_denials`。
+
 **Q: 隱私政策 / 供應鏈安全細節在哪？**
 
 [docs/privacy.zh-TW.md](docs/privacy.zh-TW.md) 與 [docs/supply-chain-security.zh-TW.md](docs/supply-chain-security.zh-TW.md)。

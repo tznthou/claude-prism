@@ -521,6 +521,10 @@ Likely caused by Pro model rate limiting. Set `GEMINI_MODEL="Gemini 3.5 Flash (M
 
 Yes. The commands and scripts are standalone — they only depend on `~/.claude/` directory conventions that Claude Code uses.
 
+**Q: Can I run the commands headless — `claude -p`, the Agent SDK, or CI?**
+
+Yes, but set the permission mode yourself. A headless session has no one to approve anything, so in `default` mode the Bash calls that start the Codex and Gemini wrappers get denied. The command keeps going — graceful degradation carries on without those providers — and you end up with a Claude-only answer. Since Claude Code 2.1.302, `claude -p` and Agent SDK sessions with no permission mode start in `default` on third-party providers (Bedrock, Vertex, Foundry), with telemetry off, or on a fresh install. Some of those cases used to start in auto mode, so a setup that worked before can start dropping its providers after an upgrade. Pass `--permission-mode auto`, or set `permissions.defaultMode` in your settings. Auto mode still runs every call past a classifier, so confirm the providers actually ran: each command adds a `⚠️ … unavailable` note when one drops out, and with `--output-format stream-json` the final `result` event lists any `permission_denials`.
+
 **Q: Where's the Privacy / Supply Chain Security info?**
 
 In [docs/privacy.md](docs/privacy.md) and [docs/supply-chain-security.md](docs/supply-chain-security.md).
