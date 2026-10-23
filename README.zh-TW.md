@@ -174,13 +174,14 @@ npx claud-prism-aireview --uninstall
 | `/pi-ask-gemini` | Gemini | 直接提問 — 取得 Google 觀點 |
 | `/pi-askall` | Codex + Gemini + Claude | 同時詢問所有 provider — 三方觀點 + 綜合分析 |
 | `/pi-code-review` | Codex | 對抗式程式碼審查 — 打破信心而非驗證（含信心度評分） |
-| `/pi-fact-check` | Gemini + WebSearch + Claude | 事實查核 — 雙軌搜尋（Gemini + WebSearch 同步），Claude 以收斂度評分驗證 |
 | `/pi-ui-design` | Gemini | 從設計規格產生 HTML mockup |
 | `/pi-research` | Gemini + WebSearch + Claude | 結構化技術研究 — 雙軌搜尋（Gemini + WebSearch 同步） |
 | `/pi-multi-review` | Codex + Gemini + Claude | 三方對抗式審查 — 分工攻擊面（智慧路由 + 信心度評分） |
 | `/pi-plan` | Codex + Gemini + Claude | 多方觀點實作規劃，適用於架構決策 |
 
 > `/pi-ui-review` 已在 v0.17.0 移除：UI/UX 審查直接請 Claude Code 做；想要跨 provider 的第二意見，用 `/pi-multi-review <file>`，它的 Gemini 那一路專審設計、UX 和無障礙。
+>
+> `/pi-fact-check` 已在 v0.18.0 移除：事實查核直接請 Claude Code 用網路搜尋做。它的 Gemini 那一路只是多一個搜尋引擎，而且在 agy 的 headless 模式下，Gemini 只要想打開網頁，整次就沒有輸出。
 
 所有指令皆內建 **graceful degradation** — 若某個 provider 不可用，Claude 會用剩餘的 provider 繼續執行，而非直接失敗。每次失敗都附帶**結構化錯誤診斷**（TIMEOUT、RATE_LIMIT、AUTH_ERROR、PERMISSION、SANDBOX、NETWORK、EMPTY_OUTPUT、CLI_ERROR 或 CLI_NOT_FOUND）並建議替代指令。
 
@@ -209,16 +210,6 @@ npx claud-prism-aireview --uninstall
 /pi-askall 協作編輯器的即時同步最佳方案？
 ```
 
-### `/pi-fact-check` — 跨 Provider 事實查核
-
-雙軌搜尋：Gemini（search grounding）與 WebSearch 同步執行，消除等待時間。Claude 獨立交叉驗證、URL 存在性檢查、以來源收斂度評分信心（多少獨立來源一致）。包含來源層級排名（L1 官方紀錄到 L6 社群）、同源報導去重、對抗性證據檢查。
-
-```
-/pi-fact-check article.md
-/pi-fact-check https://example.com/blog-post
-/pi-fact-check "特斯拉 2024 年交付 180 萬輛，市場佔有率超過 50%"
-```
-
 ### `/pi-code-review` — 對抗式 Code Review
 
 Codex 以**對抗式立場** review Claude 寫的程式碼——reviewer 的任務是打破你對這份改動的信心，而非驗證它。核心用例依然是**不同 AI 寫、不同 AI 審**，但 prompt 從中性的 "Senior Reviewer" 升級為 adversarial stance，定義了 9 類攻擊面（auth、data loss、race condition、rollback safety 等），每個 finding 必須回答四個問題：會出什麼問題、為什麼脆弱、影響多大、怎麼修。
@@ -243,7 +234,7 @@ Gemini 讀取設計規格文件，產出可在瀏覽器預覽的自包含 HTML m
 
 ### `/pi-research` — 技術研究
 
-雙軌搜尋：Gemini（search grounding）和 WebSearch 同步執行，產出結構化技術研究報告，含比較表、推薦方案和來源 URL。任一軌道失敗時另一軌道自動補位——與 `/pi-fact-check` 相同的韌性架構。若研究主題與當前專案相關，會自動帶入相關 context（依賴、既有模式）。研究結果可選擇存到 `.claude/pi-research/` 供日後參考。
+雙軌搜尋：Gemini（search grounding）和 WebSearch 同步執行，產出結構化技術研究報告，含比較表、推薦方案和來源 URL。任一軌道失敗時另一軌道自動補位。Gemini 只用搜尋結果作答（headless 的 agy 下，它一想打開網頁或檔案，整個回答就沒了）；它的出處是 Google grounding 的轉址連結，查證前會先解成真實網址。若研究主題與當前專案相關，會自動帶入相關 context（依賴、既有模式）。研究結果可選擇存到 `.claude/pi-research/` 供日後參考。
 
 ```
 /pi-research Next.js App Router 最佳認證方案
@@ -289,7 +280,7 @@ Gemini 讀取設計規格文件，產出可在瀏覽器預覽的自包含 HTML m
 flowchart LR
     User["👤 使用者"] <--> Claude["🟣 Claude Code\n(調度者)"]
     Claude -->|"/pi-ask-codex\n/pi-askall\n/pi-code-review\n/pi-multi-review\n/pi-plan"| Codex["🟢 Codex CLI"]
-    Claude -->|"/pi-ask-gemini\n/pi-askall\n/pi-fact-check\n/pi-ui-design\n/pi-research\n/pi-multi-review\n/pi-plan"| Gemini["🔵 agy (Antigravity CLI)"]
+    Claude -->|"/pi-ask-gemini\n/pi-askall\n/pi-ui-design\n/pi-research\n/pi-multi-review\n/pi-plan"| Gemini["🔵 agy (Antigravity CLI)"]
     CI["⚙️ GitHub Actions"] -->|"ci-review.sh"| GeminiAPI["🔵 Gemini API"]
     CI -->|"ci-review.sh"| OpenAIAPI["🟢 OpenAI API"]
     CI -->|"synthesis"| ClaudeAPI["🟣 Claude API"]
@@ -366,7 +357,7 @@ sequenceDiagram
 
 ### 這為什麼重要
 
-`pi-askall`、`pi-plan`、`pi-multi-review`、`pi-fact-check`——凡是會呼叫兩個以上 provider 的指令，都走 **sub-agent fan-out**，不在主對話直接發並行 Bash。這不是架構偏好，是**唯一能在 Claude Code 的 structural FIFO 下拿到真並行的執行層**。
+`pi-askall`、`pi-plan`、`pi-multi-review`——凡是會呼叫兩個以上 provider 的指令，都走 **sub-agent fan-out**，不在主對話直接發並行 Bash。這不是架構偏好，是**唯一能在 Claude Code 的 structural FIFO 下拿到真並行的執行層**。
 
 完整摘要、分層資料、產品決策 trace：[docs/research/bash-tool-parallelism.md](docs/research/bash-tool-parallelism.md)（英文）。
 
@@ -503,7 +494,7 @@ Logging 預設開啟，檢查 `~/.claude/logs/multi-ai.log` 即可驗證。每�
 
 **Q: 如果我只裝了其中一個 provider 的 CLI？**
 
-沒問題。所有指令都內建 graceful degradation 和**結構化錯誤診斷**——若 provider 不可用，失敗訊息會包含具體原因（TIMEOUT、RATE_LIMIT、AUTH_ERROR、PERMISSION、SANDBOX、NETWORK、EMPTY_OUTPUT、CLI_ERROR 或 CLI_NOT_FOUND）並建議替代指令。`/pi-multi-review` 和 `/pi-askall` 會使用 Claude + 可用的 provider（兩方觀點取代三方）。`/pi-code-review` 會退回 Claude 獨立審查並加註同源盲點警告，同時建議改用 `/pi-multi-review`。`/pi-fact-check` 和 `/pi-research` 都採用雙軌搜尋（Gemini + WebSearch 同步）；若兩者皆失敗才退至 Claude 訓練資料。
+沒問題。所有指令都內建 graceful degradation 和**結構化錯誤診斷**——若 provider 不可用，失敗訊息會包含具體原因（TIMEOUT、RATE_LIMIT、AUTH_ERROR、PERMISSION、SANDBOX、NETWORK、EMPTY_OUTPUT、CLI_ERROR 或 CLI_NOT_FOUND）並建議替代指令。`/pi-multi-review` 和 `/pi-askall` 會使用 Claude + 可用的 provider（兩方觀點取代三方）。`/pi-code-review` 會退回 Claude 獨立審查並加註同源盲點警告，同時建議改用 `/pi-multi-review`。`/pi-research` 採用雙軌搜尋（Gemini + WebSearch 同步）；若兩者皆失敗才退至 Claude 訓練資料。
 
 **Q: 如果 provider 回傳格式不符預期？**
 
@@ -548,7 +539,7 @@ Claude 會處理。若 Codex 或 Gemini 沒有按照要求的 severity 標記／
 
 ## 致謝
 
-`/pi-fact-check` 一開始有參考 [newtype-os](https://github.com/newtype-01/newtype-os) 的 `super-fact-checker` 方法論（作者是我很喜歡的 YouTuber）。後來覺得直接搬別人的框架不太對，就整個砍掉重寫了，加入跨 provider 驗證、對抗性證據這些我們自己的東西。但起點的功勞還是值得大書特書的。
+`/pi-fact-check`（已在 v0.18.0 移除）一開始有參考 [newtype-os](https://github.com/newtype-01/newtype-os) 的 `super-fact-checker` 方法論（作者是我很喜歡的 YouTuber）。後來覺得直接搬別人的框架不太對，就整個砍掉重寫了，加入跨 provider 驗證、對抗性證據這些我們自己的東西。但起點的功勞還是值得大書特書的。
 
 ---
 
