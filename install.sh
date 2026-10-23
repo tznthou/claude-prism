@@ -165,13 +165,21 @@ fi
 # ─── Remove retired commands (installed by earlier versions) ───
 # This script copies only what commands/ ships, so a command dropped from the
 # repo would otherwise stay installed — unmaintained but still callable.
+# uninstall.sh needs no entry for these: it removes every installed pi-*.md.
 # /pi-ui-review: retired in v0.17.0. Claude Code now handles UI/UX and visual
 # design review directly, and /pi-multi-review's Gemini track keeps the
-# cross-provider design / UX / accessibility angle. uninstall.sh needs no
-# entry: it removes every installed pi-*.md.
+# cross-provider design / UX / accessibility angle.
 if [[ -f "$CLAUDE_DIR/commands/pi-ui-review.md" ]]; then
     rm "$CLAUDE_DIR/commands/pi-ui-review.md"
     info "Removed /pi-ui-review (retired in v0.17.0): Claude Code now handles UI/UX review directly — for a cross-provider second opinion, use /pi-multi-review <file>"
+fi
+# /pi-fact-check: retired in v0.18.0. Its Gemini track only added a second
+# search engine, and headless agy ends the turn with no output when Gemini
+# tries to open a page; what was left (WebSearch plus Claude's judgment) is
+# something Claude Code does directly.
+if [[ -f "$CLAUDE_DIR/commands/pi-fact-check.md" ]]; then
+    rm "$CLAUDE_DIR/commands/pi-fact-check.md"
+    info "Removed /pi-fact-check (retired in v0.18.0): ask Claude Code directly to fact-check with web search"
 fi
 
 # ─── Install commands ───

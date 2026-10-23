@@ -174,13 +174,14 @@ npx claud-prism-aireview --uninstall
 | `/pi-ask-gemini` | Gemini | Direct Q&A — get Google's perspective |
 | `/pi-askall` | Codex + Gemini + Claude | Ask all providers the same question — three perspectives with synthesis |
 | `/pi-code-review` | Codex | Adversarial code review — break confidence in changes, not validate them (with confidence scoring) |
-| `/pi-fact-check` | Gemini + WebSearch + Claude | Fact-check content — dual-track search (Gemini + WebSearch), Claude validates with convergence scoring |
 | `/pi-ui-design` | Gemini | HTML mockup from design spec |
 | `/pi-research` | Gemini + WebSearch + Claude | Structured technical research — dual-track search (Gemini + WebSearch parallel) |
 | `/pi-multi-review` | Codex + Gemini + Claude | Triple-provider adversarial review with divided attack surfaces (smart routing + confidence scoring) |
 | `/pi-plan` | Codex + Gemini + Claude | Multi-provider implementation planning for architectural decisions |
 
 > `/pi-ui-review` was removed in v0.17.0: ask Claude Code directly for UI/UX review; for a cross-provider second opinion, use `/pi-multi-review <file>` — its Gemini track focuses on design, UX, and accessibility.
+>
+> `/pi-fact-check` was removed in v0.18.0: ask Claude Code directly to fact-check with web search. Its Gemini track only added a second search engine, and under agy's headless mode it came back empty whenever Gemini tried to open a page.
 
 All commands include **graceful degradation** — if a provider is unavailable, Claude continues with the remaining providers instead of failing. Every failure includes a **structured error diagnostic** (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, SANDBOX, NETWORK, EMPTY_OUTPUT, CLI_ERROR, or CLI_NOT_FOUND) and suggests an alternative command.
 
@@ -209,16 +210,6 @@ Ask Codex and Gemini the same question in parallel and read the answers side by 
 /pi-askall What's the best approach for real-time sync in a collaborative editor?
 ```
 
-### `/pi-fact-check` — Cross-Provider Fact Verification
-
-Dual-track search: Gemini (search grounding) and WebSearch run simultaneously — no dead-wait time. Claude cross-verifies with independent judgment, validates URLs, and scores confidence using source convergence (how many independent sources agree). Includes source tier ranking (L1 official records through L6 community), editorial chain deduplication, and adversarial evidence checking.
-
-```
-/pi-fact-check article.md
-/pi-fact-check https://example.com/blog-post
-/pi-fact-check "Tesla delivered 1.8M vehicles in 2024 and holds over 50% market share"
-```
-
 ### `/pi-code-review` — Adversarial Code Review
 
 Codex reviews code that Claude wrote with an **adversarial stance** — the reviewer's job is to break confidence in the change, not validate it. The core use case is still **different AI, different blind spots**, but the prompt has been upgraded from a neutral "Senior Reviewer" to an adversarial role with 9 attack surface categories (auth, data loss, race conditions, rollback safety, etc.), a finding bar (every finding must answer: what can go wrong, why vulnerable, likely impact, concrete fix), and calibration rules ("prefer one strong finding over several weak ones").
@@ -243,7 +234,7 @@ Gemini reads a design specification and generates a self-contained HTML mockup (
 
 ### `/pi-research` — Technical Research
 
-Dual-track search: Gemini (search grounding) and WebSearch run in parallel for structured technical research with comparison tables, recommendations, and source URLs. If one track fails, the other covers the gap — same resilience architecture as `/pi-fact-check`. If the topic relates to the current project, relevant context (dependencies, existing patterns) is automatically included. Results can optionally be saved to `.claude/pi-research/` for future reference.
+Dual-track search: Gemini (search grounding) and WebSearch run in parallel for structured technical research with comparison tables, recommendations, and source URLs. If one track fails, the other covers the gap. Gemini works from its search results only (headless agy ends its answer if it tries to open a page or a file), and its citations, which arrive as Google grounding redirect links, are resolved to the real URLs before they're checked. If the topic relates to the current project, relevant context (dependencies, existing patterns) is automatically included. Results can optionally be saved to `.claude/pi-research/` for future reference.
 
 ```
 /pi-research Best authentication libraries for Next.js App Router
@@ -289,7 +280,7 @@ Best for complex decisions; for simple task breakdown, use Claude Code's built-i
 flowchart LR
     User["👤 You"] <--> Claude["🟣 Claude Code\n(Orchestrator)"]
     Claude -->|"/pi-ask-codex\n/pi-askall\n/pi-code-review\n/pi-multi-review\n/pi-plan"| Codex["🟢 Codex CLI"]
-    Claude -->|"/pi-ask-gemini\n/pi-askall\n/pi-fact-check\n/pi-ui-design\n/pi-research\n/pi-multi-review\n/pi-plan"| Gemini["🔵 agy (Antigravity CLI)"]
+    Claude -->|"/pi-ask-gemini\n/pi-askall\n/pi-ui-design\n/pi-research\n/pi-multi-review\n/pi-plan"| Gemini["🔵 agy (Antigravity CLI)"]
     CI["⚙️ GitHub Actions"] -->|"ci-review.sh"| GeminiAPI["🔵 Gemini API"]
     CI -->|"ci-review.sh"| OpenAIAPI["🟢 OpenAI API"]
     CI -->|"synthesis"| ClaudeAPI["🟣 Claude API"]
@@ -366,7 +357,7 @@ sequenceDiagram
 
 ### Why this matters
 
-`pi-askall`, `pi-plan`, `pi-multi-review`, `pi-fact-check` — every command that calls 2+ providers — uses **sub-agent fan-out**, not direct parallel Bash. That's not an architectural preference. It's the only layer that delivers real concurrency under Claude Code's structural FIFO.
+`pi-askall`, `pi-plan`, `pi-multi-review` — every command that calls 2+ providers — uses **sub-agent fan-out**, not direct parallel Bash. That's not an architectural preference. It's the only layer that delivers real concurrency under Claude Code's structural FIFO.
 
 Summary, per-layer data, and product decision trace: [docs/research/bash-tool-parallelism.md](docs/research/bash-tool-parallelism.md).
 
@@ -503,7 +494,7 @@ With logging enabled (default), check `~/.claude/logs/multi-ai.log` to verify. E
 
 **Q: What if I only have one provider CLI installed?**
 
-That's fine. All commands include graceful degradation with **structured error diagnostics** — if a provider is unavailable, the failure message includes the specific reason (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, SANDBOX, NETWORK, EMPTY_OUTPUT, CLI_ERROR, or CLI_NOT_FOUND) and suggests an alternative command. `/pi-multi-review` and `/pi-askall` will use Claude + the available provider (two perspectives instead of three). `/pi-code-review` will fall back to a Claude-only review with a caveat note and suggest `/pi-multi-review`. `/pi-fact-check` and `/pi-research` both use dual-track (Gemini + WebSearch simultaneously); if both fail, falls back to Claude's training data.
+That's fine. All commands include graceful degradation with **structured error diagnostics** — if a provider is unavailable, the failure message includes the specific reason (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, SANDBOX, NETWORK, EMPTY_OUTPUT, CLI_ERROR, or CLI_NOT_FOUND) and suggests an alternative command. `/pi-multi-review` and `/pi-askall` will use Claude + the available provider (two perspectives instead of three). `/pi-code-review` will fall back to a Claude-only review with a caveat note and suggest `/pi-multi-review`. `/pi-research` uses dual-track search (Gemini + WebSearch simultaneously); if both fail, it falls back to Claude's training data.
 
 **Q: What if a provider returns an unexpected format?**
 
@@ -548,7 +539,7 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 
 ## Acknowledgments
 
-`/pi-fact-check` started by referencing the `super-fact-checker` methodology from [newtype-os](https://github.com/newtype-01/newtype-os) (whose author is a YouTuber I really enjoy). We later realized borrowing someone else's framework didn't feel right, so we rewrote the whole thing from scratch with our own approach: cross-provider verification, adversarial evidence, and a simplified verdict system. Huge thanks for the starting point.
+`/pi-fact-check` (retired in v0.18.0) started by referencing the `super-fact-checker` methodology from [newtype-os](https://github.com/newtype-01/newtype-os) (whose author is a YouTuber I really enjoy). We later realized borrowing someone else's framework didn't feel right, so we rewrote the whole thing from scratch with our own approach: cross-provider verification, adversarial evidence, and a simplified verdict system. Huge thanks for the starting point.
 
 ---
 
