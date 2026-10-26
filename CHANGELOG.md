@@ -20,6 +20,7 @@ All notable changes to this project will be documented in this file.
 - Smoke T20.3: an earlier install's `pi-fact-check.md` is removed on upgrade, with the reason printed; T20.2 also checks that a fresh install says nothing about it.
 - **README.md + README.zh-TW.md** — `/pi-fact-check` removed from the command list, the architecture diagram and the fan-out note; the acknowledgment keeps its credit in the past tense; `/pi-research` now says how it keeps Gemini on search results and resolves its citations.
 - **docs/cost{,.zh-TW}.md** — `/pi-fact-check` row removed.
+- **Antigravity terms risk and per-provider data use** (README.md + README.zh-TW.md, docs/privacy{,.zh-TW}.md) — Google's Antigravity FAQ says wrapping `agy` inside third-party coding agents "is not supported under consumer plans", and section 6 of its Additional Terms treats using the Service "in connection with products not provided by us" as abuse that may lead to suspension or termination. The README drops the near-zero-cost and unlimited claims and adds a "Gemini on Google consumer plans" section before Install; docs/privacy links each provider's terms by sign-in method (the Anthropic link was a 404) and quotes what a personal Google or ChatGPT plan collects for training and how to opt out (`4d79211`)
 - **checksums.sha256** — regenerated; 18 entries after the removal.
 
 ## v0.17.0 (2026-10-10) — trustworthy results: hollow verdicts flagged, padded waits removed, Gemini failures explained; `/pi-ui-review` retired
