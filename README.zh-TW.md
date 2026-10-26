@@ -40,7 +40,7 @@ AI code review 很吵。市場上最好的工具 F1 score 大概也才 64%——
 |---|---|---|
 | **Provider 多樣性** | Codex + Gemini + Claude（3 個獨立模型） | 多個 agent，同一底層模型 |
 | **盲點覆蓋** | 跨訓練資料：每個模型抓到其他模型漏掉的 | 同一訓練資料偏差在 agent 間放大 |
-| **成本** | 近乎零（用現有 Codex CLI / Antigravity CLI 訂閱） | 每 PR $15–25（官方工具，Team/Enterprise 方案） |
+| **成本** | 不按 PR 收費，用你現有的 Codex CLI / Antigravity CLI 方案（[Gemini 走 Google 個人方案有條款風險](#在-google-個人方案上使用-gemini)） | 每 PR $15–25（官方工具，Team/Enterprise 方案） |
 | **速度** | 只叫一家約 1–2 分鐘；`/pi-multi-review` 要等 Gemini 3.8，通常 3–7 分鐘 | ~20 分鐘 |
 | **可用性** | 任何有 CLI 的人 | 僅限付費團隊方案 |
 | **評分方式** | 證據導向公式（[公開 spec](spec/confidence-scoring-v1.md)），deterministic 核心，同樣證據 = 同樣分數 | LLM 自評，AI 給自己打信心分數 |
@@ -55,15 +55,15 @@ Anthropic 在 2026-04-16 隨 Claude Opus 4.7 一起推出 [`/ultrareview`](https
 | **模型多樣性** | Codex + Gemini + Claude（3 個獨立模型） | 多個 Claude agent，同一底層模型 |
 | **盲點策略** | 異質訓練資料——provider 之間的分歧把盲區浮出來 | 同源——多跑幾次，盲區一樣 |
 | **審查立場** | 對抗式，攻擊面分工 | 驗證導向（降低誤報率） |
-| **免費額度** | 無上限（用現有 CLI 訂閱） | 每帳號終身 3 次，**用完不補** |
-| **Team / Enterprise 免費次數** | 無上限 | 0 |
-| **超過免費額度後** | 仍然無上限 | 每次約 $5–$20，計入 extra usage |
+| **免費額度** | claude-prism 不限次數，額度看各家方案（[Gemini 走個人方案的條款風險](#在-google-個人方案上使用-gemini)） | 每帳號終身 3 次，**用完不補** |
+| **Team / Enterprise 免費次數** | claude-prism 不設限（受各家額度限制） | 0 |
+| **超過免費額度後** | claude-prism 不另收費 | 每次約 $5–$20，計入 extra usage |
 | **僅用 API key 的 Claude Code** | 可用 | 被擋（必須 Claude.ai 登入） |
 | **Bedrock / Vertex / Foundry** | 可用（provider-agnostic） | 不支援 |
-| **Zero Data Retention 組織** | 可用 | 被擋 |
+| **Zero Data Retention 組織** | 能跑，但 ZDR 只涵蓋 Claude 這一端：送到 Codex 與 Gemini 的程式碼適用它們自己的條款，Google 個人方案還會保留，並可能用於模型開發與人工審閱（[詳見](docs/privacy.zh-TW.md#我們無法控制的部分)） | 被擋 |
 | **CI/CD** | `ci-review.sh` 跑在 GitHub Actions | 僅限互動 session |
 
-兩個工具優化的場景不同。`/ultrareview` 適合 Pro/Max 用戶在 Claude 生態內做 pre-merge 信心確認。`/pi-multi-review` 則是為那個圈子外的一切而生——CI pipeline、受法規/ZDR 管制的環境、沒有 Pro/Max 授權的團隊，以及任何想要「不共享 Claude 訓練資料的第三方觀點」的人。
+兩個工具優化的場景不同。`/ultrareview` 適合 Pro/Max 用戶在 Claude 生態內做 pre-merge 信心確認。`/pi-multi-review` 則是為那個圈子外的一切而生——CI pipeline、沒有 Pro/Max 授權的團隊，以及任何想要「不共享 Claude 訓練資料的第三方觀點」的人。但它不能直接拿來處理受 ZDR 或法規管制的程式碼：review prompt（含程式碼）會送到 Codex 與 Gemini，適用的是這兩家自己的條款（[詳見](docs/privacy.zh-TW.md#我們無法控制的部分)）。
 
 ### 與 `codex-plugin-cc`（OpenAI 官方）的比較
 
@@ -113,6 +113,18 @@ claude-prism 的 [Confidence Scoring Framework](spec/confidence-scoring-v1.md) �
 > **不變的部分**：腳本檔名、`[gemini]` log tag、`GEMINI_MODEL` 模型覆蓋全部照舊——既有的 log 與指令不受影響。
 >
 > **改變的部分**：認證只走 OAuth（先執行一次 `agy` 完成登入；wrapper 不再讀取 `GEMINI_API_KEY`），執行檔路徑覆蓋改用 `AGY_BIN`（`GEMINI_BIN` 僅在指向 `agy` 執行檔時作為過渡別名接受）。如果機器上還裝著 `@google/gemini-cli`，它已不再被使用，可以解除安裝。
+
+### 在 Google 個人方案上使用 Gemini
+
+> **⚠️ 用個人 Google 帳號登入 `agy` 之前，請先看這段**
+>
+> Gemini 相關指令是以 subprocess 執行官方、未修改的 `agy`，用你自己的 Google 帳號登入；claude-prism 不讀取、也不轉送你的 OAuth token。即使如此，Google 的文件仍把這種用法列在 consumer plans（也就是個人 Google 帳號的方案，例如 Google AI Pro）的支援範圍之外（2026-10-26 查證）：
+>
+> - [Antigravity FAQ](https://antigravity.google/docs/faq#can-i-use-antigravity-cli-headless-mode-in-third-party-coding-agents-or-automate-account-switching)：*"Antigravity CLI headless mode (agy -p) is intended for direct scripting and CI workflows. Wrapping agy inside third-party coding agents or applications, or automating account rotation, is not supported under consumer plans."* 驅動 claude-prism 的 Claude Code，就是第三方 coding agent。
+> - [Antigravity 附加服務條款](https://antigravity.google/terms)第 6 條：*"This includes, but is not limited to, using the Service in connection with products not provided by us. Using third party software, tools, or services to access the Service (e.g. using OpenClaw with Antigravity OAuth) is a breach of this Agreement. Such actions may be grounds for suspension or termination of your Antigravity and/or Gemini CLI accounts."*
+> - FAQ [點名 Claude Code 的那一條](https://antigravity.google/docs/faq#why-cant-i-use-third-party-software-such-as-claude-code-openclaw-or-opencode-with-my-antigravity-login)，建議第三方 coding agent 改用 Gemini Enterprise 或 Google AI Studio 的 API key。
+>
+> 所以在個人方案上跑 Gemini 指令，可能導致 Antigravity 帳號被停權或終止。互動式的 Gemini 指令目前只支援 `agy` 登入；只有 `ci-review.sh` 是用 `GEMINI_API_KEY` 直接呼叫 Gemini API。不想承擔這個風險，就不要安裝 `agy`：`/pi-ask-codex` 和 `/pi-code-review` 只靠 Codex 就能跑。
 
 ### 安裝
 

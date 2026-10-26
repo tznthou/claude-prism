@@ -40,7 +40,7 @@ There's a deeper structural issue: when Claude Code writes your code **and** rev
 |---|---|---|
 | **Provider diversity** | Codex + Gemini + Claude (3 independent models) | Multiple agents, same underlying model |
 | **Blind spot coverage** | Cross-training-data: each model catches what others miss | Same training data bias amplified across agents |
-| **Cost** | Near-zero (runs on existing Codex CLI / Antigravity CLI subscriptions) | $15–25 per PR (official tools, Team/Enterprise plans) |
+| **Cost** | No per-PR fee — runs on your existing Codex CLI / Antigravity CLI plans ([Gemini on a Google consumer plan carries a terms risk](#gemini-on-google-consumer-plans)) | $15–25 per PR (official tools, Team/Enterprise plans) |
 | **Speed** | 1–2 min with a single provider; `/pi-multi-review` waits on Gemini 3.8, usually 3–7 min | ~20 minutes |
 | **Availability** | Anyone with CLI access | Paid team plans only |
 | **Scoring method** | Evidence-based formula ([open spec](spec/confidence-scoring-v1.md)) — deterministic core, same evidence = same score | LLM self-assessment — AI grades its own confidence |
@@ -55,15 +55,15 @@ Anthropic shipped [`/ultrareview`](https://code.claude.com/docs/en/ultrareview.m
 | **Model diversity** | Codex + Gemini + Claude (3 independent models) | Many Claude agents, one underlying model |
 | **Blind-spot strategy** | Heterogeneous training data — disagreement between providers surfaces gaps | Homogeneous — more passes, same gaps |
 | **Review stance** | Adversarial, divided attack surfaces | Verification-focused (lower false-positive rate) |
-| **Free tier** | Unlimited (uses existing CLI subscriptions) | 3 runs per account, one-time — does not refresh |
-| **Team / Enterprise free runs** | Unlimited | 0 |
-| **After free tier** | Still unlimited | ~$5–$20 per run as extra usage |
+| **Free tier** | No run limit from claude-prism; each provider plan's quota applies ([Gemini on a consumer plan: terms risk](#gemini-on-google-consumer-plans)) | 3 runs per account, one-time — does not refresh |
+| **Team / Enterprise free runs** | No claude-prism limit (provider quotas apply) | 0 |
+| **After free tier** | No claude-prism fee | ~$5–$20 per run as extra usage |
 | **API-key-only Claude Code** | Works | Blocked (Claude.ai login required) |
 | **Bedrock / Vertex / Foundry** | Works (provider-agnostic) | Not supported |
-| **Zero Data Retention orgs** | Works | Blocked |
+| **Zero Data Retention orgs** | Runs, but ZDR covers only the Claude side: code sent to Codex and Gemini falls under their own terms, and a Google consumer plan keeps it and may use it for model development and human review ([details](docs/privacy.md#what-we-dont-control)) | Blocked |
 | **CI/CD** | `ci-review.sh` in GitHub Actions | Interactive session only |
 
-The two tools optimize for different scenarios. `/ultrareview` is a solid pre-merge confidence boost for Pro/Max users working inside the Claude ecosystem. `/pi-multi-review` exists for everything outside that box — CI pipelines, regulated / ZDR environments, teams without Pro/Max seats, and anyone who wants perspectives that don't share Claude's training data.
+The two tools optimize for different scenarios. `/ultrareview` is a solid pre-merge confidence boost for Pro/Max users working inside the Claude ecosystem. `/pi-multi-review` exists for everything outside that box — CI pipelines, teams without Pro/Max seats, and anyone who wants perspectives that don't share Claude's training data. It is not a drop-in fit for ZDR or regulated codebases, though: the review prompts, code included, go to Codex and Gemini under those providers' own terms ([details](docs/privacy.md#what-we-dont-control)).
 
 ### Compared to `codex-plugin-cc` (OpenAI official)
 
@@ -113,6 +113,18 @@ claude-prism's [Confidence Scoring Framework](spec/confidence-scoring-v1.md) wor
 > **What stays the same**: the script name, the `[gemini]` log tag, and the `GEMINI_MODEL` override all keep working — existing logs and commands are unaffected.
 >
 > **What changed**: authentication is OAuth-only (run `agy` once to log in; `GEMINI_API_KEY` is no longer read by the wrapper), and the binary path override is now `AGY_BIN` (`GEMINI_BIN` is honored as a deprecated alias only if it points to an `agy` binary). If you still have `@google/gemini-cli` installed, it is no longer used — you can uninstall it.
+
+### Gemini on Google consumer plans
+
+> **⚠️ Read this before signing in to `agy` with a personal Google account**
+>
+> The Gemini commands run the official, unmodified `agy` binary as a subprocess, signed in with your own Google account; claude-prism never reads or forwards your OAuth tokens. Even so, Google's documentation places this setup outside what it supports on consumer plans, meaning the plans on a personal Google account such as Google AI Pro (checked 2026-10-26):
+>
+> - [Antigravity FAQ](https://antigravity.google/docs/faq#can-i-use-antigravity-cli-headless-mode-in-third-party-coding-agents-or-automate-account-switching): *"Antigravity CLI headless mode (agy -p) is intended for direct scripting and CI workflows. Wrapping agy inside third-party coding agents or applications, or automating account rotation, is not supported under consumer plans."* claude-prism is driven by Claude Code, which is a third-party coding agent.
+> - [Antigravity Additional Terms](https://antigravity.google/terms), section 6: *"This includes, but is not limited to, using the Service in connection with products not provided by us. Using third party software, tools, or services to access the Service (e.g. using OpenClaw with Antigravity OAuth) is a breach of this Agreement. Such actions may be grounds for suspension or termination of your Antigravity and/or Gemini CLI accounts."*
+> - The [FAQ entry that names Claude Code](https://antigravity.google/docs/faq#why-cant-i-use-third-party-software-such-as-claude-code-openclaw-or-opencode-with-my-antigravity-login) recommends a Gemini Enterprise or Google AI Studio API key for third-party coding agents.
+>
+> Running the Gemini commands on a consumer plan may therefore get your Antigravity account suspended or terminated. The interactive Gemini commands currently support only `agy` sign-in; `ci-review.sh` is the only path that calls the Gemini API with `GEMINI_API_KEY`. If you'd rather not take the risk, don't install `agy`: `/pi-ask-codex` and `/pi-code-review` run on Codex alone.
 
 ### Install
 
