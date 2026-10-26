@@ -40,7 +40,7 @@ There's a deeper structural issue: when Claude Code writes your code **and** rev
 |---|---|---|
 | **Provider diversity** | Codex + Gemini + Claude (3 independent models) | Multiple agents, same underlying model |
 | **Blind spot coverage** | Cross-training-data: each model catches what others miss | Same training data bias amplified across agents |
-| **Cost** | Near-zero (runs on existing Codex CLI / Antigravity CLI subscriptions) | $15–25 per PR (official tools, Team/Enterprise plans) |
+| **Cost** | No per-PR fee — runs on your existing Codex CLI / Antigravity CLI plans ([Gemini on a Google consumer plan carries a terms risk](#gemini-on-google-consumer-plans)) | $15–25 per PR (official tools, Team/Enterprise plans) |
 | **Speed** | 1–2 min with a single provider; `/pi-multi-review` waits on Gemini 3.8, usually 3–7 min | ~20 minutes |
 | **Availability** | Anyone with CLI access | Paid team plans only |
 | **Scoring method** | Evidence-based formula ([open spec](spec/confidence-scoring-v1.md)) — deterministic core, same evidence = same score | LLM self-assessment — AI grades its own confidence |
@@ -55,15 +55,15 @@ Anthropic shipped [`/ultrareview`](https://code.claude.com/docs/en/ultrareview.m
 | **Model diversity** | Codex + Gemini + Claude (3 independent models) | Many Claude agents, one underlying model |
 | **Blind-spot strategy** | Heterogeneous training data — disagreement between providers surfaces gaps | Homogeneous — more passes, same gaps |
 | **Review stance** | Adversarial, divided attack surfaces | Verification-focused (lower false-positive rate) |
-| **Free tier** | Unlimited (uses existing CLI subscriptions) | 3 runs per account, one-time — does not refresh |
-| **Team / Enterprise free runs** | Unlimited | 0 |
-| **After free tier** | Still unlimited | ~$5–$20 per run as extra usage |
+| **Free tier** | No run limit from claude-prism; each provider plan's quota applies ([Gemini on a consumer plan: terms risk](#gemini-on-google-consumer-plans)) | 3 runs per account, one-time — does not refresh |
+| **Team / Enterprise free runs** | No claude-prism limit (provider quotas apply) | 0 |
+| **After free tier** | No claude-prism fee | ~$5–$20 per run as extra usage |
 | **API-key-only Claude Code** | Works | Blocked (Claude.ai login required) |
 | **Bedrock / Vertex / Foundry** | Works (provider-agnostic) | Not supported |
-| **Zero Data Retention orgs** | Works | Blocked |
+| **Zero Data Retention orgs** | Runs, but ZDR covers only the Claude side: code sent to Codex and Gemini falls under their own terms, and a Google consumer plan keeps it and may use it for model development and human review ([details](docs/privacy.md#what-we-dont-control)) | Blocked |
 | **CI/CD** | `ci-review.sh` in GitHub Actions | Interactive session only |
 
-The two tools optimize for different scenarios. `/ultrareview` is a solid pre-merge confidence boost for Pro/Max users working inside the Claude ecosystem. `/pi-multi-review` exists for everything outside that box — CI pipelines, regulated / ZDR environments, teams without Pro/Max seats, and anyone who wants perspectives that don't share Claude's training data.
+The two tools optimize for different scenarios. `/ultrareview` is a solid pre-merge confidence boost for Pro/Max users working inside the Claude ecosystem. `/pi-multi-review` exists for everything outside that box — CI pipelines, teams without Pro/Max seats, and anyone who wants perspectives that don't share Claude's training data. It is not a drop-in fit for ZDR or regulated codebases, though: the review prompts, code included, go to Codex and Gemini under those providers' own terms ([details](docs/privacy.md#what-we-dont-control)).
 
 ### Compared to `codex-plugin-cc` (OpenAI official)
 
@@ -113,6 +113,18 @@ claude-prism's [Confidence Scoring Framework](spec/confidence-scoring-v1.md) wor
 > **What stays the same**: the script name, the `[gemini]` log tag, and the `GEMINI_MODEL` override all keep working — existing logs and commands are unaffected.
 >
 > **What changed**: authentication is OAuth-only (run `agy` once to log in; `GEMINI_API_KEY` is no longer read by the wrapper), and the binary path override is now `AGY_BIN` (`GEMINI_BIN` is honored as a deprecated alias only if it points to an `agy` binary). If you still have `@google/gemini-cli` installed, it is no longer used — you can uninstall it.
+
+### Gemini on Google consumer plans
+
+> **⚠️ Read this before signing in to `agy` with a personal Google account**
+>
+> The Gemini commands run the official, unmodified `agy` binary as a subprocess, signed in with your own Google account; claude-prism never reads or forwards your OAuth tokens. Even so, Google's documentation places this setup outside what it supports on consumer plans, meaning the plans on a personal Google account such as Google AI Pro (checked 2026-10-26):
+>
+> - [Antigravity FAQ](https://antigravity.google/docs/faq#can-i-use-antigravity-cli-headless-mode-in-third-party-coding-agents-or-automate-account-switching): *"Antigravity CLI headless mode (agy -p) is intended for direct scripting and CI workflows. Wrapping agy inside third-party coding agents or applications, or automating account rotation, is not supported under consumer plans."* claude-prism is driven by Claude Code, which is a third-party coding agent.
+> - [Antigravity Additional Terms](https://antigravity.google/terms), section 6: *"This includes, but is not limited to, using the Service in connection with products not provided by us. Using third party software, tools, or services to access the Service (e.g. using OpenClaw with Antigravity OAuth) is a breach of this Agreement. Such actions may be grounds for suspension or termination of your Antigravity and/or Gemini CLI accounts."*
+> - The [FAQ entry that names Claude Code](https://antigravity.google/docs/faq#why-cant-i-use-third-party-software-such-as-claude-code-openclaw-or-opencode-with-my-antigravity-login) recommends a Gemini Enterprise or Google AI Studio API key for third-party coding agents.
+>
+> Running the Gemini commands on a consumer plan may therefore get your Antigravity account suspended or terminated. The interactive Gemini commands currently support only `agy` sign-in; `ci-review.sh` is the only path that calls the Gemini API with `GEMINI_API_KEY`. If you'd rather not take the risk, don't install `agy`: `/pi-ask-codex` and `/pi-code-review` run on Codex alone.
 
 ### Install
 
@@ -174,13 +186,14 @@ npx claud-prism-aireview --uninstall
 | `/pi-ask-gemini` | Gemini | Direct Q&A — get Google's perspective |
 | `/pi-askall` | Codex + Gemini + Claude | Ask all providers the same question — three perspectives with synthesis |
 | `/pi-code-review` | Codex | Adversarial code review — break confidence in changes, not validate them (with confidence scoring) |
-| `/pi-fact-check` | Gemini + WebSearch + Claude | Fact-check content — dual-track search (Gemini + WebSearch), Claude validates with convergence scoring |
 | `/pi-ui-design` | Gemini | HTML mockup from design spec |
 | `/pi-research` | Gemini + WebSearch + Claude | Structured technical research — dual-track search (Gemini + WebSearch parallel) |
 | `/pi-multi-review` | Codex + Gemini + Claude | Triple-provider adversarial review with divided attack surfaces (smart routing + confidence scoring) |
 | `/pi-plan` | Codex + Gemini + Claude | Multi-provider implementation planning for architectural decisions |
 
 > `/pi-ui-review` was removed in v0.17.0: ask Claude Code directly for UI/UX review; for a cross-provider second opinion, use `/pi-multi-review <file>` — its Gemini track focuses on design, UX, and accessibility.
+>
+> `/pi-fact-check` was removed in v0.18.0: ask Claude Code directly to fact-check with web search. Its Gemini track only added a second search engine, and under agy's headless mode it came back empty whenever Gemini tried to open a page.
 
 All commands include **graceful degradation** — if a provider is unavailable, Claude continues with the remaining providers instead of failing. Every failure includes a **structured error diagnostic** (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, SANDBOX, NETWORK, EMPTY_OUTPUT, CLI_ERROR, or CLI_NOT_FOUND) and suggests an alternative command.
 
@@ -209,16 +222,6 @@ Ask Codex and Gemini the same question in parallel and read the answers side by 
 /pi-askall What's the best approach for real-time sync in a collaborative editor?
 ```
 
-### `/pi-fact-check` — Cross-Provider Fact Verification
-
-Dual-track search: Gemini (search grounding) and WebSearch run simultaneously — no dead-wait time. Claude cross-verifies with independent judgment, validates URLs, and scores confidence using source convergence (how many independent sources agree). Includes source tier ranking (L1 official records through L6 community), editorial chain deduplication, and adversarial evidence checking.
-
-```
-/pi-fact-check article.md
-/pi-fact-check https://example.com/blog-post
-/pi-fact-check "Tesla delivered 1.8M vehicles in 2024 and holds over 50% market share"
-```
-
 ### `/pi-code-review` — Adversarial Code Review
 
 Codex reviews code that Claude wrote with an **adversarial stance** — the reviewer's job is to break confidence in the change, not validate it. The core use case is still **different AI, different blind spots**, but the prompt has been upgraded from a neutral "Senior Reviewer" to an adversarial role with 9 attack surface categories (auth, data loss, race conditions, rollback safety, etc.), a finding bar (every finding must answer: what can go wrong, why vulnerable, likely impact, concrete fix), and calibration rules ("prefer one strong finding over several weak ones").
@@ -243,7 +246,7 @@ Gemini reads a design specification and generates a self-contained HTML mockup (
 
 ### `/pi-research` — Technical Research
 
-Dual-track search: Gemini (search grounding) and WebSearch run in parallel for structured technical research with comparison tables, recommendations, and source URLs. If one track fails, the other covers the gap — same resilience architecture as `/pi-fact-check`. If the topic relates to the current project, relevant context (dependencies, existing patterns) is automatically included. Results can optionally be saved to `.claude/pi-research/` for future reference.
+Dual-track search: Gemini (search grounding) and WebSearch run in parallel for structured technical research with comparison tables, recommendations, and source URLs. If one track fails, the other covers the gap. Gemini works from its search results only (headless agy ends its answer if it tries to open a page or a file), and its citations, which arrive as Google grounding redirect links, are resolved to the real URLs before they're checked. If the topic relates to the current project, relevant context (dependencies, existing patterns) is automatically included. Results can optionally be saved to `.claude/pi-research/` for future reference.
 
 ```
 /pi-research Best authentication libraries for Next.js App Router
@@ -289,7 +292,7 @@ Best for complex decisions; for simple task breakdown, use Claude Code's built-i
 flowchart LR
     User["👤 You"] <--> Claude["🟣 Claude Code\n(Orchestrator)"]
     Claude -->|"/pi-ask-codex\n/pi-askall\n/pi-code-review\n/pi-multi-review\n/pi-plan"| Codex["🟢 Codex CLI"]
-    Claude -->|"/pi-ask-gemini\n/pi-askall\n/pi-fact-check\n/pi-ui-design\n/pi-research\n/pi-multi-review\n/pi-plan"| Gemini["🔵 agy (Antigravity CLI)"]
+    Claude -->|"/pi-ask-gemini\n/pi-askall\n/pi-ui-design\n/pi-research\n/pi-multi-review\n/pi-plan"| Gemini["🔵 agy (Antigravity CLI)"]
     CI["⚙️ GitHub Actions"] -->|"ci-review.sh"| GeminiAPI["🔵 Gemini API"]
     CI -->|"ci-review.sh"| OpenAIAPI["🟢 OpenAI API"]
     CI -->|"synthesis"| ClaudeAPI["🟣 Claude API"]
@@ -366,7 +369,7 @@ sequenceDiagram
 
 ### Why this matters
 
-`pi-askall`, `pi-plan`, `pi-multi-review`, `pi-fact-check` — every command that calls 2+ providers — uses **sub-agent fan-out**, not direct parallel Bash. That's not an architectural preference. It's the only layer that delivers real concurrency under Claude Code's structural FIFO.
+`pi-askall`, `pi-plan`, `pi-multi-review` — every command that calls 2+ providers — uses **sub-agent fan-out**, not direct parallel Bash. That's not an architectural preference. It's the only layer that delivers real concurrency under Claude Code's structural FIFO.
 
 Summary, per-layer data, and product decision trace: [docs/research/bash-tool-parallelism.md](docs/research/bash-tool-parallelism.md).
 
@@ -503,7 +506,7 @@ With logging enabled (default), check `~/.claude/logs/multi-ai.log` to verify. E
 
 **Q: What if I only have one provider CLI installed?**
 
-That's fine. All commands include graceful degradation with **structured error diagnostics** — if a provider is unavailable, the failure message includes the specific reason (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, SANDBOX, NETWORK, EMPTY_OUTPUT, CLI_ERROR, or CLI_NOT_FOUND) and suggests an alternative command. `/pi-multi-review` and `/pi-askall` will use Claude + the available provider (two perspectives instead of three). `/pi-code-review` will fall back to a Claude-only review with a caveat note and suggest `/pi-multi-review`. `/pi-fact-check` and `/pi-research` both use dual-track (Gemini + WebSearch simultaneously); if both fail, falls back to Claude's training data.
+That's fine. All commands include graceful degradation with **structured error diagnostics** — if a provider is unavailable, the failure message includes the specific reason (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, SANDBOX, NETWORK, EMPTY_OUTPUT, CLI_ERROR, or CLI_NOT_FOUND) and suggests an alternative command. `/pi-multi-review` and `/pi-askall` will use Claude + the available provider (two perspectives instead of three). `/pi-code-review` will fall back to a Claude-only review with a caveat note and suggest `/pi-multi-review`. `/pi-research` uses dual-track search (Gemini + WebSearch simultaneously); if both fail, it falls back to Claude's training data.
 
 **Q: What if a provider returns an unexpected format?**
 
@@ -548,7 +551,7 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 
 ## Acknowledgments
 
-`/pi-fact-check` started by referencing the `super-fact-checker` methodology from [newtype-os](https://github.com/newtype-01/newtype-os) (whose author is a YouTuber I really enjoy). We later realized borrowing someone else's framework didn't feel right, so we rewrote the whole thing from scratch with our own approach: cross-provider verification, adversarial evidence, and a simplified verdict system. Huge thanks for the starting point.
+`/pi-fact-check` (retired in v0.18.0) started by referencing the `super-fact-checker` methodology from [newtype-os](https://github.com/newtype-01/newtype-os) (whose author is a YouTuber I really enjoy). We later realized borrowing someone else's framework didn't feel right, so we rewrote the whole thing from scratch with our own approach: cross-provider verification, adversarial evidence, and a simplified verdict system. Huge thanks for the starting point.
 
 ---
 

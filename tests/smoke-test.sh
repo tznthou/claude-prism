@@ -1080,11 +1080,12 @@ else
     skip "T19.5 npm/node not available — command-script shipping check not exercised"
 fi
 
-# ─── Test 20: retired commands removed on upgrade (v0.17.0) ───
+# ─── Test 20: retired commands removed on upgrade (v0.17.0, v0.18.0) ───
 # install.sh copies only what commands/ ships, so a command dropped from the
 # repo would otherwise stay installed — unmaintained but still callable.
-# /pi-ui-review was retired in v0.17.0. Runs the real install.sh with HOME in
-# a temp dir; nothing under the real ~/.claude is touched.
+# /pi-ui-review was retired in v0.17.0, /pi-fact-check in v0.18.0. Runs the
+# real install.sh with HOME in a temp dir; nothing under the real ~/.claude is
+# touched.
 echo ""
 echo "20. Retired command cleanup on upgrade..."
 
@@ -1110,10 +1111,26 @@ set +e
 HOME="$T20_HOME2" bash "$SCRIPT_DIR/install.sh" > "$T20_HOME2/install.out" 2>&1
 T20_RC2=$?
 set -e
-if [[ $T20_RC2 -eq 0 ]] && ! grep -q "pi-ui-review" "$T20_HOME2/install.out"; then
-    pass "T20.2 fresh install prints nothing about /pi-ui-review"
+if [[ $T20_RC2 -eq 0 ]] && ! grep -q -E "pi-ui-review|pi-fact-check" "$T20_HOME2/install.out"; then
+    pass "T20.2 fresh install prints nothing about /pi-ui-review or /pi-fact-check"
 else
-    fail "T20.2 fresh install: rc=$T20_RC2; $(grep 'pi-ui-review' "$T20_HOME2/install.out" | head -2 | tr '\n' ' ')"
+    fail "T20.2 fresh install: rc=$T20_RC2; $(grep -E 'pi-ui-review|pi-fact-check' "$T20_HOME2/install.out" | head -2 | tr '\n' ' ')"
+fi
+
+# T20.3 an earlier install left pi-fact-check.md behind → removed, with a reason
+T20_HOME3=$(mktemp -d); T13_LOGDIRS+=("$T20_HOME3")
+mkdir -p "$T20_HOME3/.claude/commands"
+echo "# copy installed by an earlier version" > "$T20_HOME3/.claude/commands/pi-fact-check.md"
+set +e
+HOME="$T20_HOME3" bash "$SCRIPT_DIR/install.sh" > "$T20_HOME3/install.out" 2>&1
+T20_RC3=$?
+set -e
+if [[ $T20_RC3 -eq 0 ]] && [[ ! -e "$T20_HOME3/.claude/commands/pi-fact-check.md" ]] && \
+   grep -q "Removed /pi-fact-check" "$T20_HOME3/install.out" && \
+   [[ -f "$T20_HOME3/.claude/commands/pi-research.md" ]]; then
+    pass "T20.3 upgrade removes the retired /pi-fact-check and says why (other commands installed)"
+else
+    fail "T20.3 retired-command cleanup: rc=$T20_RC3 still_installed=$([[ -e "$T20_HOME3/.claude/commands/pi-fact-check.md" ]] && echo yes || echo no) message=$(grep -c 'Removed /pi-fact-check' "$T20_HOME3/install.out")"
 fi
 
 # ─── Test 21: fan-out sub-agents pin the working directory (v0.17.0) ───

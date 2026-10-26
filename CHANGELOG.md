@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.18.0 (unreleased) — `/pi-fact-check` retired; `/pi-research` keeps Gemini on its search results
+
+#### Removed
+
+- **BREAKING: `/pi-fact-check`** — ask Claude Code directly to fact-check with web search. The command's Gemini track only added a second search engine, one whose links the command itself treated as the less trustworthy, and under agy's headless mode it came back empty whenever Gemini tried to open a page (`ReadUrlContent` is auto-denied). What was left, WebSearch plus Claude's own judgment, is something Claude Code does without a wrapper. On upgrade, `install.sh` removes the installed copy, as it did for `/pi-ui-review`.
+
+#### Fixed (`/pi-research`)
+
+- **Gemini stays on its search results** — agy's headless print mode auto-denies any tool that needs approval (opening a page, reading a file, running a command), and a single denial ends the turn with no output. The Gemini prompt now says to work only from search results, and the rule that asks for an exact quote behind version numbers, release dates and breaking changes now quotes from the search results instead of sending Gemini to the page. One verification run on agy 1.4.6: a search-grounded answer, no tool denials.
+- **Waits up to 540s for Gemini** (was 300s) — that verification run took 319s, so the old ceiling would have cut it off. The wrapper returns as soon as Gemini does, so a higher ceiling costs nothing on normal runs and only bounds a stalled call. `calibrate-timeout.sh` now counts `pi-research` in the heavy class, in the slot `pi-fact-check` held.
+- **Gemini's citation links are resolved** — Gemini cites through Google grounding redirect links (`vertexaisearch.cloud.google.com/grounding-api-redirect/…`), which hide the source's domain. Source validation now resolves them to the real URLs first, and the Sources table shows the resolved URL.
+- **WebFetch isn't shown the quote it is checking** — WebFetch answers through a small model that tends to agree with what it is shown. Source validation now asks for the page's own sentences on the topic and compares them itself; a "not on the page" answer marks the source unverified and is never treated as evidence that the claim is false.
+
+#### Changed (tests and docs)
+
+- Smoke T20.3: an earlier install's `pi-fact-check.md` is removed on upgrade, with the reason printed; T20.2 also checks that a fresh install says nothing about it.
+- **README.md + README.zh-TW.md** — `/pi-fact-check` removed from the command list, the architecture diagram and the fan-out note; the acknowledgment keeps its credit in the past tense; `/pi-research` now says how it keeps Gemini on search results and resolves its citations.
+- **docs/cost{,.zh-TW}.md** — `/pi-fact-check` row removed.
+- **Antigravity terms risk and per-provider data use** (README.md + README.zh-TW.md, docs/privacy{,.zh-TW}.md) — Google's Antigravity FAQ says wrapping `agy` inside third-party coding agents "is not supported under consumer plans", and section 6 of its Additional Terms treats using the Service "in connection with products not provided by us" as abuse that may lead to suspension or termination. The README drops the near-zero-cost and unlimited claims and adds a "Gemini on Google consumer plans" section before Install; docs/privacy links each provider's terms by sign-in method (the Anthropic link was a 404) and quotes what a personal Google or ChatGPT plan collects for training and how to opt out (`4d79211`)
+- **checksums.sha256** — regenerated; 18 entries after the removal.
+
 ## v0.17.0 (2026-10-10) — trustworthy results: hollow verdicts flagged, padded waits removed, Gemini failures explained; `/pi-ui-review` retired
 
 **Most of this release is about whether what the commands report can be believed.** A provider that replied with a bare `VERDICT: safe` was shown as a clean review; `/pi-askall`, `/pi-multi-review` and `/pi-plan` waited out the full timeout after the providers had already answered, then reported that wait as provider runtime; and when Gemini came back empty, the wrapper blamed the network while agy had in fact refused a tool call. All three are fixed. The one breaking change is the removal of `/pi-ui-review`.

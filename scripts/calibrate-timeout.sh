@@ -108,7 +108,7 @@ BEGIN {
     min_n = ENVIRON["MIN_N"] + 0
     suggest_file = ENVIRON["SUGGEST_FILE"]
     # Heavy class (frozen 5 skills)
-    heavy["pi-askall"] = 1; heavy["pi-fact-check"] = 1; heavy["pi-plan"] = 1
+    heavy["pi-askall"] = 1; heavy["pi-research"] = 1; heavy["pi-plan"] = 1
     heavy["pi-multi-review"] = 1; heavy["pi-code-review"] = 1
     FLOOR_HEAVY = 480; CEILING_HEAVY = 540
     FLOOR_SMALL = 240; CEILING_SMALL = 300
