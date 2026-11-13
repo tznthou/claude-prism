@@ -467,6 +467,7 @@ export CODEX_MODEL="o3"
 | **`--dry-run`** | 測試模式，不呼叫 API（不消耗 token） |
 | **Stdin 管線** | `echo "code" \| call-gemini.sh "prompt"` 處理長輸入。注意：Gemini prompt（含附加的 stdin）受 agy 命令列傳遞限制，依 bytes 計算上限：Linux 120,000 bytes、macOS 480,000 bytes；Codex 無此限制（stdin pipe） |
 | **Model 切換** | `-m model-name` 指定不同模型 |
+| **`--no-tools`**（僅 Gemini） | 在 prompt 開頭加一句，要 Gemini 只根據 prompt 回答。agy 在 headless 模式下，需要核准的工具呼叫會被自動拒絕，回答變成空的（`EMPTY_OUTPUT`）。prompt 已經附齊內容時使用，例如附完整 diff 的審查；`/pi-multi-review` 會帶這個旗標 |
 | **Soft-timeout**（v0.14.0+） | Provider CLI 呼叫被 `CLAUDE_PRISM_TIMEOUT` 掛鐘限制（預設 110 秒，範圍 1..3600）。超時時結構化退出：rc=124、stderr sentinel、`soft_timeout` log event 讓 `analyze-log.sh` 歸類為 SOFT_TIMEOUT——比 Claude Code ~130 秒的 harness watchdog 更早觸發 |
 
 ### 自訂
