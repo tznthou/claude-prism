@@ -269,12 +269,24 @@ HBPID=$!
 # The marker/log writes end in `|| true`: under `set -e` a failed write (full
 # disk, unwritable log) would exit this subshell before pkill and silently
 # disable the timeout.
+# KILL escalation: `wait "$LAST"` below returns only once every process of the
+# pipeline job has exited, so a CLI that ignores TERM keeps this wrapper blocked
+# until it exits by itself, long after the soft-timeout fired. KILL_GRACE_S
+# after TERM the watcher sends KILL to whatever is left. It ignores TERM first:
+# it is a child of $$ too, and its own pkill would otherwise end it before the
+# escalation. When TERM is enough, the main shell exits and its EXIT trap kills
+# the watcher during the grace sleep, so the escalation never runs.
+KILL_GRACE_S=5
 (
     sleep "$TIMEOUT_S"
     if kill -0 "$LAST" 2>/dev/null; then
         echo "$TIMEOUT_S" > "$TIMEOUT_MARKER" || true
         echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [codex] [WARN] [pid=$$] soft_timeout stage=exec elapsed_s=$TIMEOUT_S" >> "$LOG_FILE" || true
+        trap '' TERM
         pkill -TERM -P $$ 2>/dev/null || true
+        sleep "$KILL_GRACE_S" || true
+        echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [codex] [WARN] [pid=$$] soft_timeout kill_escalation grace_s=$KILL_GRACE_S" >> "$LOG_FILE" || true
+        pkill -KILL -P $$ 2>/dev/null || true
     fi
 ) >/dev/null 2>&1 &
 WPID=$!
@@ -387,6 +399,18 @@ if [[ $rc -ne 0 ]]; then
     echo "Error: $diag" >&2
     [[ -n "$err_text" ]] && echo "Details: $err_text" >&2
     exit $rc
+fi
+
+# --- rc=0 content classification ---
+# A zero exit with no usable output is a failed call, not a clean result: a
+# review that returned nothing must not read as "no findings". Whitespace-only
+# output counts as empty. LC_ALL=C: bytes that are invalid in the current
+# locale must count as output instead of making grep fail.
+# Keep in sync with scripts/call-gemini.sh.
+if [[ ! -f "$OUT_TMP" ]] || ! LC_ALL=C grep -q '[^[:space:]]' "$OUT_TMP" 2>/dev/null; then
+    _log ERROR "codex call failed (EMPTY_OUTPUT: rc=0 with no output) elapsed_s=$(($(date +%s) - START_TS))"
+    echo "Error: EMPTY_OUTPUT: codex exited 0 but produced no output." >&2
+    exit 1
 fi
 
 STAGE="done"

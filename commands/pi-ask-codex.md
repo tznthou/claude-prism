@@ -39,7 +39,7 @@ $ARGUMENTS"
 
 If Codex fails (script exits non-zero or CLI not found):
 - Claude answers the question directly.
-- Include the specific failure reason from stderr (the script classifies errors as TIMEOUT, RATE_LIMIT, AUTH_ERROR, SANDBOX, NETWORK, CLI_ERROR, or CLI_NOT_FOUND).
+- Include the specific failure reason from stderr (the script classifies errors as TIMEOUT, RATE_LIMIT, AUTH_ERROR, SANDBOX, NETWORK, EMPTY_OUTPUT, CLI_ERROR, or CLI_NOT_FOUND).
 - Note in output: "⚠️ Codex unavailable ([reason]) — answering with Claude only. For multi-provider perspectives, try `/pi-askall`."
 
 If the Bash tool was backgrounded or returned empty output, read the result from `~/.claude/logs/pi-codex-last.out` (persisted by the script's `tee` safety net).

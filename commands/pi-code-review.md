@@ -150,7 +150,7 @@ The CLI argument is a short label — the actual prompt travels via stdin.
 
 **If Codex fails** (script exits non-zero or CLI not found):
 - Do NOT abort. Claude performs the review independently instead.
-- Include the specific failure reason from stderr (TIMEOUT, RATE_LIMIT, AUTH_ERROR, SANDBOX, NETWORK, CLI_ERROR, or CLI_NOT_FOUND).
+- Include the specific failure reason from stderr (TIMEOUT, RATE_LIMIT, AUTH_ERROR, SANDBOX, NETWORK, EMPTY_OUTPUT, CLI_ERROR, or CLI_NOT_FOUND).
 - Note in output: "⚠️ Codex unavailable ([reason]) — review conducted by Claude only (same-source blind spot caveat applies). For cross-provider review with Gemini, try `/pi-multi-review`."
 
 **If Codex returns a hollow response** — check this before the format handling below. Codex exited 0 and the reply may even be well-formed, but it carries no review of the code under review: no finding that points at a location, and no `Checked:` entry or sentence naming a file or function under review (e.g. a lone `VERDICT: safe`, or just "No issues found."):

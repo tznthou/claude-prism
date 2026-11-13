@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+#### Fixed (wrappers)
+
+- **An empty Codex reply is a failure, not a clean result** — `call-codex.sh` had no content check, so Codex exiting 0 with empty or whitespace-only output was logged as `success` and a review that examined nothing read as "no findings". `call-gemini.sh` tested `-s`, so a reply that was a single newline passed. Both wrappers now report `EMPTY_OUTPUT` and exit 1 when the output has no non-whitespace byte; the commands' Codex failure lists include `EMPTY_OUTPUT` accordingly
+- **The soft-timeout holds when the CLI ignores TERM** — on timeout the watcher only sent TERM, and the wrapper's `wait` returns only once every process of the pipeline has exited, so a CLI that ignored TERM kept the wrapper running until the CLI exited by itself. The watcher now sends KILL `KILL_GRACE_S` (5 s) after TERM and logs `soft_timeout kill_escalation`. A CLI that exits on TERM is unaffected: the escalation never runs
+
 ## v0.17.0 (2026-10-10) — trustworthy results: hollow verdicts flagged, padded waits removed, Gemini failures explained; `/pi-ui-review` retired
 
 **Most of this release is about whether what the commands report can be believed.** A provider that replied with a bare `VERDICT: safe` was shown as a clean review; `/pi-askall`, `/pi-multi-review` and `/pi-plan` waited out the full timeout after the providers had already answered, then reported that wait as provider runtime; and when Gemini came back empty, the wrapper blamed the network while agy had in fact refused a tool call. All three are fixed. The one breaking change is the removal of `/pi-ui-review`.
