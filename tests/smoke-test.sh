@@ -1162,9 +1162,10 @@ done
 # Each of these used to end as a success, or outlive the soft-timeout:
 #   codex rc=0 with empty or whitespace-only output was logged as success;
 #   gemini whitespace-only output passed the EMPTY_OUTPUT check (it tested -s);
+#   gemini's ARG_MAX guard counted characters, so a CJK prompt passed at ~3x;
 #   a CLI ignoring TERM kept `wait "$LAST"` blocked until it exited by itself.
 echo ""
-echo "22. Empty output on rc=0, KILL escalation..."
+echo "22. Empty output on rc=0, prompt size in bytes, KILL escalation..."
 
 T22_DIR=$(mktemp -d); T13_LOGDIRS+=("$T22_DIR")
 T22_FAKE_EMPTY="$T22_DIR/fake-empty-cli"
@@ -1219,6 +1220,51 @@ _t22_expect_empty "T22.2 codex whitespace-only output classified EMPTY_OUTPUT" \
     call-codex.sh "CODEX_BIN=$T22_FAKE_BLANK"
 _t22_expect_empty "T22.3 gemini whitespace-only output classified EMPTY_OUTPUT (mirror)" \
     call-gemini.sh "AGY_BIN=$T22_FAKE_BLANK"
+
+# T22.4 / T22.5 ARG_MAX guard measures bytes, with a per-OS limit mirroring
+# call-gemini.sh (Darwin 480000, else 120000). The payload goes in on stdin
+# from a file: as an argument it would hit Linux's per-arg cap before the guard.
+# The wrapper prompt is "q" + "\n\n" + payload, so it is payload + 3 bytes.
+case "$(uname -s)" in
+    Darwin) T22_LIMIT=480000; T22_ALLOW=130000 ;;
+    *)      T22_LIMIT=120000; T22_ALLOW=100000 ;;
+esac
+
+# T22.4 three-byte CJK characters, just over the limit in bytes but a third of
+# it in characters. The UTF-8 locale is what makes ${#var} count characters;
+# where that locale is missing the shell counts bytes either way and this test
+# cannot fail on the old guard.
+T22_LD4=$(mktemp -d); T13_LOGDIRS+=("$T22_LD4")
+T22_CJK_N=$(( T22_LIMIT / 3 + 1000 ))
+perl -e 'print "測" x $ARGV[0]' "$T22_CJK_N" > "$T22_LD4/in"
+T22_BYTES4=$(( T22_CJK_N * 3 + 3 ))
+set +e
+LC_ALL=en_US.UTF-8 MULTI_AI_LOG_DIR="$T22_LD4" \
+    "$SCRIPT_DIR/scripts/call-gemini.sh" --dry-run "q" < "$T22_LD4/in" > "$T22_LD4/out" 2> "$T22_LD4/err"
+T22_RC4=$?
+set -e
+if [[ $T22_RC4 -eq 1 ]] && \
+   grep -q "PROMPT_TOO_LARGE: prompt is $T22_BYTES4 bytes, exceeds ${T22_LIMIT}-byte limit" "$T22_LD4/err" && \
+   grep -q "prompt_too_large prompt_bytes=$T22_BYTES4 limit=$T22_LIMIT" "$T22_LD4/multi-ai.log"; then
+    pass "T22.4 gemini ARG_MAX guard counts bytes ($T22_CJK_N CJK chars = $T22_BYTES4 bytes > $T22_LIMIT rejected)"
+else
+    fail "T22.4 gemini byte guard: expected rc=1 + PROMPT_TOO_LARGE at $T22_BYTES4 bytes / limit $T22_LIMIT, got rc=$T22_RC4; err=$(head -c 300 "$T22_LD4/err")"
+fi
+
+# T22.5 an ASCII prompt under this OS's limit still passes (no false positive).
+# On Darwin it is above the Linux limit, so a hard-coded 120000 fails here.
+T22_LD5=$(mktemp -d); T13_LOGDIRS+=("$T22_LD5")
+perl -e 'print "a" x $ARGV[0]' "$T22_ALLOW" > "$T22_LD5/in"
+set +e
+MULTI_AI_LOG_DIR="$T22_LD5" \
+    "$SCRIPT_DIR/scripts/call-gemini.sh" --dry-run "q" < "$T22_LD5/in" > "$T22_LD5/out" 2> "$T22_LD5/err"
+T22_RC5=$?
+set -e
+if [[ $T22_RC5 -eq 0 ]] && grep -q "DRY RUN" "$T22_LD5/out"; then
+    pass "T22.5 gemini $T22_ALLOW-byte ASCII prompt passes the guard (limit $T22_LIMIT)"
+else
+    fail "T22.5 gemini byte guard false positive at $T22_ALLOW bytes: rc=$T22_RC5; err=$(head -c 300 "$T22_LD5/err")"
+fi
 
 # T22.6 / T22.7 a CLI that ignores TERM is KILLed after the grace period:
 # TIMEOUT=2 + KILL_GRACE_S=5 → the wrapper returns at ~7s, not when the CLI's

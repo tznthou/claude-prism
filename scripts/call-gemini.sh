@@ -100,11 +100,20 @@ fi
 # Gemini-only: agy does not support stdin or --prompt-file; prompt is passed
 # as -p arg, subject to OS execve limits (macOS ~1MB, Linux ~128KB per-arg).
 # call-codex.sh pipes via stdin and is not subject to this limit.
-# Guard at 120000 bytes (~117KB) to stay under Linux's per-arg ceiling.
-PROMPT_BYTES=${#PROMPT}
-if (( PROMPT_BYTES > 120000 )); then
-    _log ERROR "prompt_too_large prompt_bytes=$PROMPT_BYTES limit=120000"
-    echo "Error: PROMPT_TOO_LARGE: prompt is ${PROMPT_BYTES} bytes, exceeds 120KB limit for agy command-line delivery. Reduce input size or split into smaller calls." >&2
+# Linux caps a single argument at ~128KB (MAX_ARG_STRLEN), so the guard there
+# is 120000 bytes. macOS has no per-arg cap, only ARG_MAX (~1MB) for args plus
+# environment; 480000 bytes still admits every prompt the old character-count
+# guard let through (120000 chars x at most 4 bytes per UTF-8 char).
+# `${#PROMPT}` counts characters in a UTF-8 locale; a mostly-CJK prompt is
+# ~3 bytes per character, so measure bytes explicitly.
+case "$(uname -s)" in
+    Darwin) PROMPT_LIMIT=480000 ;;
+    *)      PROMPT_LIMIT=120000 ;;
+esac
+PROMPT_BYTES=$(printf '%s' "$PROMPT" | LC_ALL=C wc -c | tr -d ' \n')
+if (( PROMPT_BYTES > PROMPT_LIMIT )); then
+    _log ERROR "prompt_too_large prompt_bytes=$PROMPT_BYTES limit=$PROMPT_LIMIT"
+    echo "Error: PROMPT_TOO_LARGE: prompt is ${PROMPT_BYTES} bytes, exceeds ${PROMPT_LIMIT}-byte limit for agy command-line delivery. Reduce input size or split into smaller calls." >&2
     exit 1
 fi
 
