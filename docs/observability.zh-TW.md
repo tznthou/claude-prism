@@ -21,7 +21,7 @@ claude-prism 在本地留下的紀錄與診斷——使用量、review 趨勢、
 
 ## Review 趨勢分析
 
-每次 `/pi-code-review` 或 `/pi-multi-review` 結束時，Claude 會解讀 provider 的輸出——把 emoji 嚴重度對應為字串、推斷發現來源、依信心門檻過濾——再把結構化結果寫入 `~/.claude/logs/review-insights.jsonl`。底下的腳本用 `jq` 讀這個檔案產出純粹的計數，趨勢解讀則可請 Claude 接手：
+每次 `/pi-code-review` 結束時，Claude 會解讀 provider 的輸出——把 emoji 嚴重度對應為字串、推斷發現來源、依信心門檻過濾——再把結構化結果寫入 `~/.claude/logs/review-insights.jsonl`。底下的腳本用 `jq` 讀這個檔案產出純粹的計數，趨勢解讀則可請 Claude 接手：
 
 ```bash
 ~/.claude/scripts/review-insights.sh              # 計數統計（不含 AI 解讀）
