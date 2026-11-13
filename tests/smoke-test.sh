@@ -1377,6 +1377,19 @@ else
     fail "T23.4 pi-multi-review: expected 'call-gemini.sh --no-tools' and no inline no-tools line"
 fi
 
+# ─── Test 24: /pi-multi-review no longer writes review insights ───
+# The step that appended a record to review-insights.jsonl after every
+# multi-provider review was removed; /pi-code-review still writes it.
+echo ""
+echo "24. pi-multi-review insights step removed..."
+
+T24_SKILL="$SCRIPT_DIR/commands/pi-multi-review.md"
+if ! grep -q 'review-insights' "$T24_SKILL" && ! grep -q '^### 8\. ' "$T24_SKILL"; then
+    pass "T24.1 pi-multi-review has no review-insights step"
+else
+    fail "T24.1 pi-multi-review still mentions review-insights or has a '### 8.' step"
+fi
+
 # ─── Summary ───
 echo ""
 echo "─────────────────────────────────────────"

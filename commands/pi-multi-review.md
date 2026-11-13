@@ -466,34 +466,3 @@ A verdict split between providers is a real signal — call it out explicitly an
 1. ...
 2. ...
 ```
-
-### 8. Record review insights
-
-**MUST do this as part of presenting results** — not as an optional follow-up.
-
-After outputting the review, use the Bash tool to append a single-line JSON to the insights log:
-
-```bash
-echo '{"date":"<ISO 8601 UTC>","project":"<repo or directory name>","scope":"<staged|file:path|diff|pr>","domain":"<frontend|backend|fullstack>","providers":["<list of providers that returned a real review>"],"issues":[<issue objects>]}' >> ~/.claude/logs/review-insights.jsonl
-```
-
-Each issue object in the `issues` array:
-```json
-{
-  "category": "security|performance|design|logic|maintainability|guideline|accessibility|other",
-  "severity": "critical|medium|suggestion",
-  "confidence": 85,
-  "title": "Brief one-line description of the issue",
-  "source": "consensus|codex-only|gemini-only|claude-only"
-}
-```
-
-Rules:
-- Only record issues that **passed the confidence filter** (≥ 80)
-- Leave a DEGRADED (hollow) provider out of `providers` — it responded but did not review (Step 5)
-- Severity maps directly from the provider's text tags: CRITICAL→critical, MEDIUM→medium, SUGGESTION→suggestion
-- If a provider didn't give structured severity, infer from context (e.g., "security vulnerability" → critical)
-- Use `"guideline"` category for project guideline violations (`CLAUDE.md` / `Agents.md`)
-- `source` reflects which providers flagged it: consensus (2+), or single-provider
-- Keep `title` under 80 chars — enough to identify the pattern, not a full description
-- Create the directory if it doesn't exist: `mkdir -p ~/.claude/logs`
