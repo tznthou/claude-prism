@@ -1303,6 +1303,80 @@ else
     fail "T22.8 T13.2's log is missing or shows a KILL escalation for a CLI that honours TERM"
 fi
 
+# ─── Test 23: call-gemini.sh --no-tools prefix ───
+# agy headless auto-denies tool calls and the turn ends with no output, so
+# --no-tools prepends a line telling Gemini not to use tools. Opt-in only:
+# without the flag agy must receive the prompt unchanged.
+echo ""
+echo "23. Gemini --no-tools prefix..."
+
+T23_DIR=$(mktemp -d); T13_LOGDIRS+=("$T23_DIR")
+T23_FAKE="$T23_DIR/fake-capture-agy"
+T23_PREFIX="Everything you need is in this prompt: do not run commands, use tools, or read files."
+# Writes the -p value to $T23_CAPTURE byte for byte, then answers.
+cat > "$T23_FAKE" <<'FAKECAPTURE'
+#!/bin/bash
+while [[ $# -gt 0 ]]; do
+    if [[ "$1" == "-p" ]]; then printf '%s' "$2" > "$T23_CAPTURE"; shift 2; else shift; fi
+done
+echo "ok"
+FAKECAPTURE
+chmod +x "$T23_FAKE"
+
+_t23_capture() {  # $1 = dir; remaining args go to call-gemini.sh
+    local ld="$1"; shift
+    env HOME="$ld" MULTI_AI_LOG_DIR="$ld" AGY_BIN="$T23_FAKE" T23_CAPTURE="$ld/prompt" \
+        "$SCRIPT_DIR/scripts/call-gemini.sh" "$@" > "$ld/out" 2> "$ld/err" < /dev/null
+}
+
+# T23.1 with the flag, agy's prompt is the prefix, a blank line, then the prompt.
+T23_LD1=$(mktemp -d); T13_LOGDIRS+=("$T23_LD1")
+set +e; _t23_capture "$T23_LD1" --no-tools "review this"; T23_RC1=$?; set -e
+if [[ $T23_RC1 -eq 0 ]] && [[ "$(cat "$T23_LD1/prompt" 2>/dev/null)" == "${T23_PREFIX}
+
+review this" ]] && grep -q "no_tools=true" "$T23_LD1/multi-ai.log"; then
+    pass "T23.1 --no-tools: agy prompt starts with the no-tools line"
+else
+    fail "T23.1 --no-tools: rc=$T23_RC1; prompt=$(head -c 200 "$T23_LD1/prompt" 2>/dev/null); err=$(head -c 300 "$T23_LD1/err")"
+fi
+
+# T23.2 without the flag, agy receives the prompt unchanged.
+T23_LD2=$(mktemp -d); T13_LOGDIRS+=("$T23_LD2")
+set +e; _t23_capture "$T23_LD2" "review this"; T23_RC2=$?; set -e
+if [[ $T23_RC2 -eq 0 ]] && [[ "$(cat "$T23_LD2/prompt" 2>/dev/null)" == "review this" ]] && \
+   grep -q "no_tools=false" "$T23_LD2/multi-ai.log"; then
+    pass "T23.2 no flag: agy prompt unchanged"
+else
+    fail "T23.2 no flag: rc=$T23_RC2; prompt=$(head -c 200 "$T23_LD2/prompt" 2>/dev/null); err=$(head -c 300 "$T23_LD2/err")"
+fi
+
+# T23.3 the prefix counts toward the size guard: a prompt exactly at the limit
+# passes alone (T22_LIMIT, set in Test 22) and is rejected with the prefix.
+T23_LD3=$(mktemp -d); T13_LOGDIRS+=("$T23_LD3")
+perl -e 'print "a" x ($ARGV[0] - 3)' "$T22_LIMIT" > "$T23_LD3/in"
+set +e
+MULTI_AI_LOG_DIR="$T23_LD3" "$SCRIPT_DIR/scripts/call-gemini.sh" --dry-run "q" \
+    < "$T23_LD3/in" > /dev/null 2>&1
+T23_RC3A=$?
+MULTI_AI_LOG_DIR="$T23_LD3" "$SCRIPT_DIR/scripts/call-gemini.sh" --dry-run --no-tools "q" \
+    < "$T23_LD3/in" > /dev/null 2> "$T23_LD3/err"
+T23_RC3B=$?
+set -e
+if [[ $T23_RC3A -eq 0 && $T23_RC3B -eq 1 ]] && grep -q "PROMPT_TOO_LARGE" "$T23_LD3/err"; then
+    pass "T23.3 --no-tools prefix counts toward the $T22_LIMIT-byte guard"
+else
+    fail "T23.3 prefix vs guard: without flag rc=$T23_RC3A (want 0), with flag rc=$T23_RC3B (want 1)"
+fi
+
+# T23.4 /pi-multi-review passes --no-tools to call-gemini.sh instead of writing
+# the line into its prompt, so the wording lives in the wrapper only.
+T23_SKILL="$SCRIPT_DIR/commands/pi-multi-review.md"
+if grep -q 'call-gemini.sh --no-tools' "$T23_SKILL" && ! grep -qF "$T23_PREFIX" "$T23_SKILL"; then
+    pass "T23.4 pi-multi-review uses --no-tools, no inline copy of the line"
+else
+    fail "T23.4 pi-multi-review: expected 'call-gemini.sh --no-tools' and no inline no-tools line"
+fi
+
 # ─── Summary ───
 echo ""
 echo "─────────────────────────────────────────"

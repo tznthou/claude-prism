@@ -176,9 +176,7 @@ $(code)
   7. Inline annotation violations (IMPORTANT/WARNING/FIXME/TODO/NOTE comments)
   ```
 - **Domain-aware surface trim**: if the domain detected in Step 2.5 is `backend`, omit item 2 (accessibility/responsive/UI states — inapplicable to backend-only diffs) and renumber the remaining items. For `frontend` and `fullstack`, keep the full list.
-- **No tools**: right after the line `If context is missing, state your assumptions and answer anyway.`, add this line to the Gemini prompt only:
-  `Everything you need is in this prompt: do not run commands, use tools, or read files.`
-  Gemini runs through agy in headless mode, where a tool call that needs permission is auto-denied and the turn ends with no output (EMPTY_OUTPUT). Do not add this line to the Codex prompt — Codex keeps its repository access.
+- **No tools**: do not write a no-tools instruction into the Gemini prompt. The Gemini agent's Bash command passes `--no-tools` (see the Gemini agent substitutions below), and `call-gemini.sh` prepends the line itself. Gemini runs through agy in headless mode, where a tool call that needs permission is auto-denied and the turn ends with no output (EMPTY_OUTPUT). Codex gets no such flag — it keeps its repository access.
 
 **Step 3b — Persist each prompt to its own temp file**:
 
@@ -230,7 +228,7 @@ Only use Bash and Read tools.
 
 Same template as the Codex agent, with these substitutions:
 - Replace `<CODEX_PROMPT>` → `<GEMINI_PROMPT>`
-- Replace `~/.claude/scripts/call-codex.sh` → `~/.claude/scripts/call-gemini.sh`
+- Replace `~/.claude/scripts/call-codex.sh` → `~/.claude/scripts/call-gemini.sh --no-tools` (the wrapper prepends the no-tools line; the diff is already in the prompt)
 - Replace `prism-codex-out` → `prism-gemini-out` (in the `mktemp` template)
 - Do NOT set or override `GEMINI_MODEL` in the Bash command — the user's environment passes through to the sub-agent, then to `call-gemini.sh`, then to the CLI. Skills do not pin model tiers on the user's behalf.
 - Classifier list adds PERMISSION (Gemini-specific) and has no SANDBOX.

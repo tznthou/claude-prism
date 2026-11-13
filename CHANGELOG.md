@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+#### Added (wrappers)
+
+- **`call-gemini.sh --no-tools`** — prepends `Everything you need is in this prompt: do not run commands, use tools, or read files.` to the prompt, before the size guard, so the line counts toward the limit. agy runs headless, where a tool call that needs permission is auto-denied and the turn ends with no output (`EMPTY_OUTPUT`), even after earlier steps succeeded. Opt-in: without the flag the prompt is unchanged, since `/pi-research` relies on search and the Q&A commands read the repo through `--add-dir`. `/pi-multi-review` now passes the flag instead of writing the line into its Gemini prompt
+
 #### Fixed (wrappers)
 
 - **An empty Codex reply is a failure, not a clean result** — `call-codex.sh` had no content check, so Codex exiting 0 with empty or whitespace-only output was logged as `success` and a review that examined nothing read as "no findings". `call-gemini.sh` tested `-s`, so a reply that was a single newline passed. Both wrappers now report `EMPTY_OUTPUT` and exit 1 when the output has no non-whitespace byte; the commands' Codex failure lists include `EMPTY_OUTPUT` accordingly

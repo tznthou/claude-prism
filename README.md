@@ -467,6 +467,7 @@ Both wrapper scripts support:
 | **`--dry-run`** | Test without calling the API (no tokens consumed) |
 | **Stdin piping** | `echo "code" \| call-gemini.sh "prompt"` for long inputs. Note: Gemini prompts (including appended stdin) are capped by size in bytes due to agy's command-line delivery: 120,000 bytes on Linux, 480,000 on macOS; Codex has no such limit (stdin pipe) |
 | **Model override** | `-m model-name` to use a different model |
+| **`--no-tools`** (Gemini only) | Prepends a line telling Gemini to work only from the prompt. agy runs headless, where a tool call that needs permission is auto-denied and the reply comes back empty (`EMPTY_OUTPUT`). Use it when the prompt already holds everything, e.g. a review with the full diff; `/pi-multi-review` passes it |
 | **Soft-timeout** (v0.14.0+) | Provider CLI calls capped at `CLAUDE_PRISM_TIMEOUT` seconds (default 110, range 1..3600). On exceed: rc=124, stderr sentinel, `soft_timeout` log event classified as SOFT_TIMEOUT by `analyze-log.sh` — fires *before* Claude Code's ~130s harness watchdog |
 
 ### Customization

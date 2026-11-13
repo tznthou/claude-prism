@@ -7,11 +7,19 @@
 #   echo "code" | call-gemini.sh "review this"
 #   call-gemini.sh -m model-name "your prompt"
 #   call-gemini.sh --dry-run "your prompt"   # test without calling API
+#   call-gemini.sh --no-tools "your prompt"  # tell Gemini not to use tools
 
 set -euo pipefail
 
 MODEL="${GEMINI_MODEL:-}"
 DRY_RUN=false
+NO_TOOLS=false
+# Prepended by --no-tools. In agy headless mode a tool call that needs
+# permission (run a command, read a file, open a URL) is auto-denied and the
+# turn ends with no output (EMPTY_OUTPUT), even after earlier steps succeeded.
+# Opt-in: /pi-research relies on search, and Q&A callers read the repo via
+# --add-dir.
+NO_TOOLS_PREFIX="Everything you need is in this prompt: do not run commands, use tools, or read files."
 LOG_DIR="${MULTI_AI_LOG_DIR:-$HOME/.claude/logs}"
 mkdir -p "$LOG_DIR"
 
@@ -71,6 +79,7 @@ while [[ $# -gt 0 ]]; do
             [[ $# -ge 2 ]] || { echo "Error: -m requires a model name" >&2; exit 1; }
             MODEL="$2"; shift 2 ;;
         --dry-run)  DRY_RUN=true; shift ;;
+        --no-tools) NO_TOOLS=true; shift ;;
         *) break ;;
     esac
 done
@@ -78,7 +87,7 @@ done
 PROMPT="${1:-}"
 
 if [[ -z "$PROMPT" ]]; then
-    echo "Usage: call-gemini.sh [-m model] [--dry-run] \"prompt\"" >&2
+    echo "Usage: call-gemini.sh [-m model] [--dry-run] [--no-tools] \"prompt\"" >&2
     exit 1
 fi
 
@@ -94,6 +103,13 @@ if [[ ! -t 0 && ( -p /dev/stdin || -f /dev/stdin ) ]]; then
     PROMPT="${PROMPT}
 
 ${STDIN_DATA}"
+fi
+
+# Prefix before the size guard so it counts toward the limit.
+if [[ "$NO_TOOLS" == true ]]; then
+    PROMPT="${NO_TOOLS_PREFIX}
+
+${PROMPT}"
 fi
 
 # --- ARG_MAX guard (agy 1.1.2+ prompt-via-arg limitation) ---
@@ -117,7 +133,7 @@ if (( PROMPT_BYTES > PROMPT_LIMIT )); then
     exit 1
 fi
 
-_log INFO "model=${MODEL:-(default)} prompt_len=${#PROMPT} dry_run=$DRY_RUN"
+_log INFO "model=${MODEL:-(default)} prompt_len=${#PROMPT} dry_run=$DRY_RUN no_tools=$NO_TOOLS"
 
 # --- Dry run mode (no binary needed) ---
 STAGE="dry_run"
