@@ -465,7 +465,7 @@ export CODEX_MODEL="o3"
 | **Binary 偵測** | 自動搜尋多個路徑找 CLI 執行檔 |
 | **Logging** | 每次呼叫記錄到 `~/.claude/logs/multi-ai.log`（含時間戳） |
 | **`--dry-run`** | 測試模式，不呼叫 API（不消耗 token） |
-| **Stdin 管線** | `echo "code" \| call-gemini.sh "prompt"` 處理長輸入。注意：Gemini prompt（含附加的 stdin）受 agy 命令列傳遞限制，上限約 120 KB；Codex 無此限制（stdin pipe） |
+| **Stdin 管線** | `echo "code" \| call-gemini.sh "prompt"` 處理長輸入。注意：Gemini prompt（含附加的 stdin）受 agy 命令列傳遞限制，依 bytes 計算上限：Linux 120,000 bytes、macOS 480,000 bytes；Codex 無此限制（stdin pipe） |
 | **Model 切換** | `-m model-name` 指定不同模型 |
 | **Soft-timeout**（v0.14.0+） | Provider CLI 呼叫被 `CLAUDE_PRISM_TIMEOUT` 掛鐘限制（預設 110 秒，範圍 1..3600）。超時時結構化退出：rc=124、stderr sentinel、`soft_timeout` log event 讓 `analyze-log.sh` 歸類為 SOFT_TIMEOUT——比 Claude Code ~130 秒的 harness watchdog 更早觸發 |
 
