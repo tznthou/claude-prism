@@ -25,6 +25,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # T22.4 only catches a character-counting size guard when bash counts
+      # characters, i.e. when en_US.UTF-8 exists; without it ${#x} counts bytes
+      # and the old guard passes too. Show what the runner has.
+      - name: Show locales (T22.4 needs en_US.UTF-8)
+        run: |
+          locale -a
+          chars=$(LC_ALL=en_US.UTF-8 bash -c 'x="測"; echo "${#x}"' 2>&1)
+          echo "\${#x} of one CJK character under LC_ALL=en_US.UTF-8: $chars"
+          if [ "$chars" != "1" ]; then
+            echo "::warning::en_US.UTF-8 unavailable: T22.4 cannot detect a character-counting guard on this runner"
+          fi
+
       - name: Run smoke tests
         env:
           MULTI_AI_LOG_DIR: ${{ runner.temp }}/prism-logs
