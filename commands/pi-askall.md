@@ -89,7 +89,7 @@ Step 1. Run this exact Bash command (timeout 600000 ms; no `&`, `nohup`, or `run
     echo "runtime=$((end_ts - start_ts))s"
     echo "response_bytes=$(wc -c < "$OUT_PATH" 2>/dev/null || echo NA)"
 
-Step 2. Return to me: the complete printed output verbatim (do NOT summarize, paraphrase, or reformat the Codex response), including the META block. If the Bash command printed a `[FALLBACK: ...]` line, relay that too — it signals the wrapper was silently killed and the response came from the tee safety net. If rc != 0, include any stderr — the wrapper classifies failures as TIMEOUT / RATE_LIMIT / AUTH_ERROR / SANDBOX / NETWORK / CLI_ERROR / CLI_NOT_FOUND. If the `cd` on the first line fails, return its error as is — do not change the path or re-run the command without the `cd`.
+Step 2. Return to me: the complete printed output verbatim (do NOT summarize, paraphrase, or reformat the Codex response), including the META block. If the Bash command printed a `[FALLBACK: ...]` line, relay that too — it signals the wrapper was silently killed and the response came from the tee safety net. If rc != 0, include any stderr — the wrapper classifies failures as TIMEOUT / RATE_LIMIT / AUTH_ERROR / SANDBOX / NETWORK / EMPTY_OUTPUT / CLI_ERROR / CLI_NOT_FOUND. If the `cd` on the first line fails, return its error as is — do not change the path or re-run the command without the `cd`.
 
 Only use Bash and Read tools.
 ```
@@ -100,7 +100,7 @@ Same template as the Codex agent, with these substitutions:
 - Replace `~/.claude/scripts/call-codex.sh` → `~/.claude/scripts/call-gemini.sh`
 - Replace `prism-codex-out` → `prism-gemini-out` (in the `mktemp` template)
 - Do NOT set or override `GEMINI_MODEL` — the user's environment passes through to the sub-agent's Bash, then to `call-gemini.sh`, then to the CLI. Skills do not pin model tiers on the user's behalf. If a call fails with RATE_LIMIT or capacity, surface the error and let the user decide whether to switch models.
-- Classifier list adds PERMISSION and EMPTY_OUTPUT (both Gemini-specific; EMPTY_OUTPUT = agy exits 0 with no output) and has no SANDBOX.
+- Classifier list adds PERMISSION (Gemini-specific) and has no SANDBOX.
 
 Both agents dispatch in parallel because they share a single main-conversation response. When both sub-agents return, proceed to Step 3. The CLI argument (`"perspective request"`) is a short label for the call — the actual question is passed via stdin from the temp file.
 
