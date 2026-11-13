@@ -1161,13 +1161,15 @@ done
 # ─── Test 22: rc=0 failures and a CLI that ignores TERM ───
 # Each of these used to end as a success, or outlive the soft-timeout:
 #   codex rc=0 with empty or whitespace-only output was logged as success;
-#   gemini whitespace-only output passed the EMPTY_OUTPUT check (it tested -s).
+#   gemini whitespace-only output passed the EMPTY_OUTPUT check (it tested -s);
+#   a CLI ignoring TERM kept `wait "$LAST"` blocked until it exited by itself.
 echo ""
-echo "22. Empty output on rc=0..."
+echo "22. Empty output on rc=0, KILL escalation..."
 
 T22_DIR=$(mktemp -d); T13_LOGDIRS+=("$T22_DIR")
 T22_FAKE_EMPTY="$T22_DIR/fake-empty-cli"
 T22_FAKE_BLANK="$T22_DIR/fake-blank-cli"
+T22_FAKE_DEAF="$T22_DIR/fake-deaf-cli"
 
 cat > "$T22_FAKE_EMPTY" <<'FAKEEMPTY'
 #!/bin/bash
@@ -1180,7 +1182,17 @@ cat > "$T22_FAKE_BLANK" <<'FAKEBLANK'
 cat > /dev/null 2>&1 || true
 printf '\n \t\n'
 FAKEBLANK
-chmod +x "$T22_FAKE_EMPTY" "$T22_FAKE_BLANK"
+
+# Ignores TERM. `exec` keeps it one process, a direct child of the wrapper,
+# so the pid it wrote to $T22_PIDFILE is the pid the wrapper has to kill.
+cat > "$T22_FAKE_DEAF" <<'FAKEDEAF'
+#!/bin/bash
+trap '' TERM
+cat > /dev/null 2>&1 || true
+echo $$ > "$T22_PIDFILE"
+exec sleep 30
+FAKEDEAF
+chmod +x "$T22_FAKE_EMPTY" "$T22_FAKE_BLANK" "$T22_FAKE_DEAF"
 
 # T22.1-T22.3 rc=0 with no usable output → EMPTY_OUTPUT, exit 1, no success line.
 # HOME → temp dir: call-gemini.sh lists agy's log dir, never read the real one.
@@ -1207,6 +1219,43 @@ _t22_expect_empty "T22.2 codex whitespace-only output classified EMPTY_OUTPUT" \
     call-codex.sh "CODEX_BIN=$T22_FAKE_BLANK"
 _t22_expect_empty "T22.3 gemini whitespace-only output classified EMPTY_OUTPUT (mirror)" \
     call-gemini.sh "AGY_BIN=$T22_FAKE_BLANK"
+
+# T22.6 / T22.7 a CLI that ignores TERM is KILLed after the grace period:
+# TIMEOUT=2 + KILL_GRACE_S=5 → the wrapper returns at ~7s, not when the CLI's
+# own 30s run ends, and the CLI process is gone.
+_t22_expect_kill() {  # $1 = test name, $2 = wrapper script, $3 = BIN=path assignment
+    local ld rc start el pid
+    ld=$(mktemp -d); T13_LOGDIRS+=("$ld")
+    start=$(date +%s)
+    set +e
+    env HOME="$ld" T22_PIDFILE="$ld/pid" MULTI_AI_LOG_DIR="$ld" CLAUDE_PRISM_TIMEOUT=2 "$3" \
+        "$SCRIPT_DIR/scripts/$2" "q" > "$ld/out" 2> "$ld/err" < /dev/null
+    rc=$?
+    set -e
+    el=$(( $(date +%s) - start ))
+    pid=$(cat "$ld/pid" 2>/dev/null || true)
+    if [[ $rc -eq 124 ]] && (( el >= 6 && el <= 12 )) && \
+       grep -q "soft_timeout kill_escalation" "$ld/multi-ai.log" && \
+       [[ "$pid" =~ ^[0-9]+$ ]] && ! kill -0 "$pid" 2>/dev/null; then
+        pass "$1 (rc=124, elapsed=${el}s, CLI pid gone)"
+    else
+        fail "$1: expected rc=124 + 6-12s + kill_escalation log + CLI gone, got rc=$rc elapsed=${el}s pid=${pid:-none}"
+        [[ "$pid" =~ ^[0-9]+$ ]] && kill -KILL "$pid" 2>/dev/null || true
+    fi
+}
+_t22_expect_kill "T22.6 codex CLI ignoring TERM is KILLed after the grace period" \
+    call-codex.sh "CODEX_BIN=$T22_FAKE_DEAF"
+_t22_expect_kill "T22.7 gemini CLI ignoring TERM is KILLed after the grace period (mirror)" \
+    call-gemini.sh "AGY_BIN=$T22_FAKE_DEAF"
+
+# T22.8 a CLI that honours TERM never reaches the escalation: T13.2's run
+# finished more than KILL_GRACE_S ago, so a watcher that outlived its wrapper
+# would have logged the escalation by now.
+if [[ -f "$T13_LD2/multi-ai.log" ]] && ! grep -q "kill_escalation" "$T13_LD2/multi-ai.log"; then
+    pass "T22.8 ordinary soft-timeout (T13.2) did not escalate to KILL"
+else
+    fail "T22.8 T13.2's log is missing or shows a KILL escalation for a CLI that honours TERM"
+fi
 
 # ─── Summary ───
 echo ""
