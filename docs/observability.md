@@ -21,7 +21,7 @@ Output includes per-provider call counts, success/error/dry-run breakdown, and a
 
 ## Review Insights
 
-After each `/pi-code-review` or `/pi-multi-review`, Claude interprets the providers' output — mapping emoji severity to strings, inferring discovery source, filtering by the confidence threshold — and appends a structured record to `~/.claude/logs/review-insights.jsonl`. The script below reads that file with `jq` for raw counts; ask Claude to layer interpretation on top of the numbers:
+After each `/pi-code-review`, Claude interprets the provider's output — mapping emoji severity to strings, inferring discovery source, filtering by the confidence threshold — and appends a structured record to `~/.claude/logs/review-insights.jsonl`. The script below reads that file with `jq` for raw counts; ask Claude to layer interpretation on top of the numbers:
 
 ```bash
 ~/.claude/scripts/review-insights.sh              # raw counts (no AI interpretation)

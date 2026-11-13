@@ -304,7 +304,7 @@ flowchart LR
 5. Each sub-agent calls its shell script via Bash tool → script invokes the external CLI
 6. External AIs process requests in parallel, return results
 7. Claude presents the synthesis, adding its own perspective where relevant
-8. For review commands, Claude interprets providers' output (severity, category, source) and appends a structured record to `review-insights.jsonl` for trend analysis
+8. For `/pi-code-review`, Claude interprets the provider's output (severity, category, source) and appends a structured record to `review-insights.jsonl` for trend analysis
 
 ---
 
@@ -423,7 +423,7 @@ Installed to:
 └── logs/
     ├── multi-ai-YYYY-MM.log    # Call logs, monthly rotation (v0.14.4+)
     ├── multi-ai.log            # Symlink → current month's log file
-    └── review-insights.jsonl   # Structured review history (auto-recorded)
+    └── review-insights.jsonl   # Structured review history (written by /pi-code-review)
 ```
 
 ---

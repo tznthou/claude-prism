@@ -304,7 +304,7 @@ flowchart LR
 5. 各 sub-agent 透過 Bash tool 呼叫 shell script → script 調用外部 CLI
 6. 外部 AI 並行處理請求並回傳結果
 7. Claude 呈現綜合結果，適時加入自己的觀點
-8. Review 指令完成後，Claude 會解讀各 provider 的輸出（嚴重度、分類、來源），把結構化結果寫入 `review-insights.jsonl` 供日後趨勢分析
+8. `/pi-code-review` 完成後，Claude 會解讀 provider 的輸出（嚴重度、分類、來源），把結構化結果寫入 `review-insights.jsonl` 供日後趨勢分析
 
 ---
 
@@ -423,7 +423,7 @@ claude-prism/
 └── logs/
     ├── multi-ai-YYYY-MM.log    # 呼叫紀錄，月度輪替（v0.14.4+）
     ├── multi-ai.log            # Symlink → 當月 log 檔
-    └── review-insights.jsonl   # 結構化 review 歷史（自動記錄）
+    └── review-insights.jsonl   # 結構化 review 歷史（由 /pi-code-review 寫入）
 ```
 
 ---
