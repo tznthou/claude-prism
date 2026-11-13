@@ -389,5 +389,17 @@ if [[ $rc -ne 0 ]]; then
     exit $rc
 fi
 
+# --- rc=0 content classification ---
+# A zero exit with no usable output is a failed call, not a clean result: a
+# review that returned nothing must not read as "no findings". Whitespace-only
+# output counts as empty. LC_ALL=C: bytes that are invalid in the current
+# locale must count as output instead of making grep fail.
+# Keep in sync with scripts/call-gemini.sh.
+if [[ ! -f "$OUT_TMP" ]] || ! LC_ALL=C grep -q '[^[:space:]]' "$OUT_TMP" 2>/dev/null; then
+    _log ERROR "codex call failed (EMPTY_OUTPUT: rc=0 with no output) elapsed_s=$(($(date +%s) - START_TS))"
+    echo "Error: EMPTY_OUTPUT: codex exited 0 but produced no output." >&2
+    exit 1
+fi
+
 STAGE="done"
 _log INFO "success response_len=$(wc -c < "$OUT_TMP" | tr -d ' ') elapsed_s=$(($(date +%s) - START_TS)) first_byte_ms=$FIRST_BYTE_MS first_byte_method=$FIRST_BYTE_METHOD"

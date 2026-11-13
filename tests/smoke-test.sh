@@ -1158,6 +1158,56 @@ for t21_cmd in pi-multi-review pi-askall pi-plan; do
     fi
 done
 
+# ─── Test 22: rc=0 failures and a CLI that ignores TERM ───
+# Each of these used to end as a success, or outlive the soft-timeout:
+#   codex rc=0 with empty or whitespace-only output was logged as success;
+#   gemini whitespace-only output passed the EMPTY_OUTPUT check (it tested -s).
+echo ""
+echo "22. Empty output on rc=0..."
+
+T22_DIR=$(mktemp -d); T13_LOGDIRS+=("$T22_DIR")
+T22_FAKE_EMPTY="$T22_DIR/fake-empty-cli"
+T22_FAKE_BLANK="$T22_DIR/fake-blank-cli"
+
+cat > "$T22_FAKE_EMPTY" <<'FAKEEMPTY'
+#!/bin/bash
+cat > /dev/null 2>&1 || true
+exit 0
+FAKEEMPTY
+
+cat > "$T22_FAKE_BLANK" <<'FAKEBLANK'
+#!/bin/bash
+cat > /dev/null 2>&1 || true
+printf '\n \t\n'
+FAKEBLANK
+chmod +x "$T22_FAKE_EMPTY" "$T22_FAKE_BLANK"
+
+# T22.1-T22.3 rc=0 with no usable output → EMPTY_OUTPUT, exit 1, no success line.
+# HOME → temp dir: call-gemini.sh lists agy's log dir, never read the real one.
+_t22_expect_empty() {  # $1 = test name, $2 = wrapper script, $3 = BIN=path assignment
+    local ld rc
+    ld=$(mktemp -d); T13_LOGDIRS+=("$ld")
+    set +e
+    env HOME="$ld" MULTI_AI_LOG_DIR="$ld" "$3" \
+        "$SCRIPT_DIR/scripts/$2" "q" > "$ld/out" 2> "$ld/err" < /dev/null
+    rc=$?
+    set -e
+    if [[ $rc -eq 1 ]] && \
+       grep -q "EMPTY_OUTPUT" "$ld/err" && \
+       grep -q "EMPTY_OUTPUT" "$ld/multi-ai.log" && \
+       ! grep -q "\] success " "$ld/multi-ai.log"; then
+        pass "$1"
+    else
+        fail "$1: expected rc=1 + EMPTY_OUTPUT in stderr and log, got rc=$rc; err=$(cat "$ld/err")"
+    fi
+}
+_t22_expect_empty "T22.1 codex rc=0 + empty output classified EMPTY_OUTPUT (rc=1, no success line)" \
+    call-codex.sh "CODEX_BIN=$T22_FAKE_EMPTY"
+_t22_expect_empty "T22.2 codex whitespace-only output classified EMPTY_OUTPUT" \
+    call-codex.sh "CODEX_BIN=$T22_FAKE_BLANK"
+_t22_expect_empty "T22.3 gemini whitespace-only output classified EMPTY_OUTPUT (mirror)" \
+    call-gemini.sh "AGY_BIN=$T22_FAKE_BLANK"
+
 # ─── Summary ───
 echo ""
 echo "─────────────────────────────────────────"

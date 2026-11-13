@@ -500,7 +500,10 @@ fi
 # no cause (GH #20): the old "likely network" text was wrong for all 4
 # EMPTY_OUTPUTs of 2026-10-04..09 whose agy log survives — each one had a
 # soft-deny line, and none of the 6 successes in that window did.
-if [[ ! -f "$OUT_TMP" || ! -s "$OUT_TMP" ]]; then
+# Whitespace-only output counts as empty. LC_ALL=C: bytes that are invalid in
+# the current locale must count as output instead of making grep fail.
+# Keep in sync with scripts/call-codex.sh.
+if [[ ! -f "$OUT_TMP" ]] || ! LC_ALL=C grep -q '[^[:space:]]' "$OUT_TMP" 2>/dev/null; then
     err_text=$(cat "$ERR_TMP" 2>/dev/null || true)
     if [[ -n "$err_text" ]]; then
         # Same newline strip as the CLI-error path below (OWASP A09).
