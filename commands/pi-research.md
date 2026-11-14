@@ -42,6 +42,7 @@ Persist the full prompt (framing + project context) to a temp file, then call wi
 ```
 You get exactly one turn: do not ask clarifying questions.
 If the topic is underspecified, state your interpretation and proceed.
+Work only from your search results: do not open web pages, fetch URLs, read files, or run commands.
 
 Today is $(date -u +%Y-%m-%d). You are a technical researcher. Conduct in-depth research on the topic below. Search from multiple angles: the core topic, practical/production experience, and community sentiment — not just the obvious query.
 
@@ -58,7 +59,7 @@ Provide:
 Anti-hallucination rules (strict):
 - Only cite URLs that actually appeared in your search results — never construct, complete, or guess a URL.
 - If a claim comes from your training data rather than your search results, mark it [KNOWLEDGE] — never present memory as a search finding.
-- For version numbers, release dates, and breaking-change claims: quote the exact sentence from the source you derived it from, with its URL. If you cannot quote a source sentence, mark the claim [LOW-CONFIDENCE].
+- For version numbers, release dates, and breaking-change claims: quote the exact sentence as it appears in your search results, with its URL. If your search results contain no such sentence, mark the claim [LOW-CONFIDENCE] — do not open the page to find one.
 
 If this involves tech selection, compare the leading options — typically 3, fewer if the field genuinely has fewer — across:
 - Learning curve
@@ -78,7 +79,7 @@ $(end if)
 3. Call Gemini (Bash tool with timeout: 600000 — Bash tool's 10-minute ceiling, matches line 12 rule):
 
 ```bash
-CLAUDE_PRISM_TIMEOUT=300 CLAUDE_PRISM_CALLER=pi-research ~/.claude/scripts/call-gemini.sh "technical research" < "$PROMPT_FILE"
+CLAUDE_PRISM_TIMEOUT=540 CLAUDE_PRISM_CALLER=pi-research ~/.claude/scripts/call-gemini.sh "technical research" < "$PROMPT_FILE"
 ```
 
 #### Track B — WebSearch
@@ -117,12 +118,20 @@ When a track fails, include the specific reason in the status note:
 
 Sample Gemini-provided URLs for existence and content verification before synthesis. WebSearch URLs from recognized outlets can be trusted without verification.
 
+**Resolve redirect links first.** Gemini usually cites through Google grounding redirect links (`https://vertexaisearch.cloud.google.com/grounding-api-redirect/…`), which hide the source's domain: until a link is resolved it can't be ranked, recognized as an official source, or matched against WebSearch's URLs. Create a temp file (`mktemp -t prism-research-urls-XXXXXX`, as in Step 3), write Gemini's redirect URLs into it with the Write tool (one per line), then resolve them in one Bash call — reading them from the file keeps model-written URLs off the shell command line:
+
+```bash
+while IFS= read -r u; do printf '%s\t%s\n' "$u" "$(curl -s -o /dev/null --max-time 10 -w '%{redirect_url}' "$u")"; done < "<URL_FILE>"
+```
+
+An empty target means the link no longer resolves: treat that source as `(unverified)`. From here on — sampling, synthesis, the Sources table — use the resolved URL, never the redirect.
+
 **Sampling rules (cap: 5 URLs per run):**
 - Priority 1: URLs backing the claims that feed the **Recommended approach** — these drive the report's conclusion
 - Priority 2: URLs backing version numbers, release dates, or breaking-change claims
 - Skip: URLs already marked [KNOWLEDGE] or [LOW-CONFIDENCE] by Gemini (already flagged), WebSearch-corroborated URLs
 
-**For each sampled URL:** WebFetch it. If Gemini quoted a source sentence, check the quote appears in the page. Any failure (unreachable/4xx/5xx, content mismatch, quote not found, obviously fabricated) → mark the source `(unverified)`, do NOT use it as evidence, and note the reason.
+**For each sampled URL:** WebFetch it. WebFetch answers with a small model's reading of the page, not the page text, so ask what the page says about the claim's topic and have it quote the relevant sentences verbatim — leave Gemini's quote and claim out of the prompt (the reader tends to agree with whatever it is shown) — then compare those sentences with Gemini's quote yourself. A "not on the page" answer only means this reading missed it: the source becomes `(unverified)`, never evidence that the claim is false. Any failure (unreachable/4xx/5xx, content mismatch, quote not found, obviously fabricated) → mark the source `(unverified)`, do NOT use it as evidence, and note the reason.
 
 If >50% of sampled URLs fail, mark **all** unsampled Gemini-sourced URLs `(unverified)` as well and note in the report: `⚠️ Gemini source validation: X/Y URLs failed — treat Gemini-only claims with caution.`
 
@@ -182,6 +191,6 @@ Create the directory if it doesn't exist.
 
 ### Notes
 
-- Gemini call uses `CLAUDE_PRISM_TIMEOUT=300` (small-class wrapper soft-timeout) inside 600s Bash ceiling — pi-fact-check uses 540 (heavy-class) for the same rationale: search grounding can be slow, 60s+ buffer lets wrapper soft-timeout fire first
+- Gemini call uses `CLAUDE_PRISM_TIMEOUT=540` (heavy-class wrapper soft-timeout) inside the 600s Bash ceiling: a search-grounded answer took 319s on agy 1.4.6, past the old 300s. The wrapper returns as soon as Gemini does, so the ceiling only bounds a stalled call; the 60s buffer lets the wrapper's soft-timeout fire before the Bash ceiling
 - WebSearch provides reliable URLs; Gemini provides deeper analysis but URLs may be hallucinated
-- For fact-checking specific claims (not exploratory research), use `/pi-fact-check` instead
+- The Gemini prompt keeps Gemini on its search results: agy's headless print mode auto-denies any tool that needs approval (opening a page, reading a file, running a command), and a single denial empties the whole answer (EMPTY_OUTPUT)
