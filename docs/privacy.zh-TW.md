@@ -41,15 +41,32 @@ sequenceDiagram
 
 ## 我們無法控制的部分
 
-每個 provider 的資料處理方式由其自身的 API/商業條款規範，不受 claude-prism 控制：
+每個 provider 的資料處理方式，由你登入時所用方案的條款規範，不受 claude-prism 控制：
 
 - **資料保留** — provider 是否及保留你的 prompt/回應多久
-- **模型訓練** — 你的資料是否被用於改善模型（API 條款通常排除此項，但請確認你的具體方案）
+- **模型訓練與人工審閱** — 你的資料是否被用於改善模型，或被人看到。這取決於方案，不只取決於 provider：API 與商業條款通常排除訓練，個人方案則可能在你沒有關閉時使用你的資料。用個人 Google 帳號登入 `agy`，或用個人 ChatGPT 帳號登入 Codex CLI 時，這些指令跑的就是個人方案，見下方說明
 - **子處理者** — provider 使用的雲端基礎設施（AWS、Google Cloud、Azure）
 
-Provider 條款：
-- [Anthropic 商業條款](https://www.anthropic.com/policies/commercial-terms)
-- [OpenAI API 條款](https://openai.com/policies/row-terms-of-use/)
-- [Google AI 條款](https://ai.google.dev/gemini-api/terms)
+**Gemini 指令（`agy` 以個人 Google 帳號登入）**：適用 [Google Antigravity 附加服務條款](https://antigravity.google/terms)，以及 [Google 服務條款](https://policies.google.com/terms)與[隱私權政策](https://policies.google.com/privacy)，不是 Gemini API 條款（2026-10-26 查證）。
 
-> **合規或機密專案注意**：若你的程式碼受 HIPAA、SOC 2、NDA 或類似合規要求約束，請在將程式碼送至外部 API 前，確認完整鏈結——Claude Code 條款、provider API 條款、資料保留設定，以及你所屬組織的內部核准流程。
+- **收集什麼** — 第 3 條稱為「Interactions」：*"your user data, interaction data pertaining to your usage of the Service, related metadata connected to the Service, and any feedback you provide"*。claude-prism 送出的 prompt，連同其中的程式碼與 diff，都在這個範圍內
+- **怎麼使用** — 第 5 條：*"We use Interactions to evaluate, develop, and improve Google and Alphabet research, products, services and machine learning technologies. [...] Google employees and contractors may access, view, review and use Interactions. If you don't want your Interactions used in this way, navigate to settings to change your preference on how such data is used."*
+- **刪除** — 第 3 條：寄信到 antigravity-support@google.com 要求刪除你的 Interactions；在你提出之前，它們會照上述條款使用
+- **條款風險** — Google 不支援在個人方案上這樣使用，見[在 Google 個人方案上使用 Gemini](../README.zh-TW.md#在-google-個人方案上使用-gemini)
+
+**Codex 指令（Codex CLI 以個人 ChatGPT 帳號登入）**：適用 [OpenAI 使用條款](https://openai.com/policies/row-terms-of-use/)；你的資料會不會被拿去訓練 OpenAI 的模型，取決於 [ChatGPT 中的資料控管](https://help.openai.com/zh-hant/articles/7730893-data-controls-in-chatgpt) 說明的設定（2026-10-26 查證）。
+
+- **預設開啟** — *"On personal workspaces with ChatGPT Free, Plus, or Pro, data sharing is enabled by default."*、*"If you use Codex on a personal ChatGPT plan, Improve the model for everyone also applies to your Codex tasks."* claude-prism 送給 Codex 的 prompt，連同其中的程式碼與 diff，都在這個範圍內
+- **怎麼關** — 兩個方法擇一即可：在 ChatGPT 開啟帳戶選單 →「設定」→「資料控管」，關閉「為所有人改善模型」（Improve the model for everyone）；或在 [OpenAI 隱私權入口網站](https://privacy.openai.com/)選取「不要使用我的內容進行訓練」（Do not train on my content）。*"After you opt out, new conversations and tasks won't be used to train OpenAI models."* 只對選擇退出之後送出的內容有效
+- **Codex 另有一個設定** — *"Codex has a separate Include environments setting in Codex settings that controls whether additional context from your Codex environments can be used to train OpenAI models. Changing your ChatGPT setting or opting out through the Privacy Portal does not change that setting."* 中文介面稱為「包含環境」
+- **商業方案** — *"By default, OpenAI does not use content from ChatGPT Business, Enterprise, Edu, or ChatGPT for Healthcare workspaces to train its models."*
+
+Provider 條款：
+- [Anthropic 消費者服務條款](https://www.anthropic.com/legal/consumer-terms) — Claude Code 以 Free、Pro 或 Max 方案登入時
+- [Anthropic 商業服務條款](https://www.anthropic.com/legal/commercial-terms) — Claude Code 以 API key 或 Team／Enterprise 方案登入時，以及 `ci-review.sh`
+- [OpenAI 使用條款](https://openai.com/policies/row-terms-of-use/) — Codex CLI 以個人 ChatGPT 帳號登入時
+- [OpenAI 服務合約](https://openai.com/policies/services-agreement/) — Codex CLI 以 API key 或 ChatGPT Business／Enterprise 帳號登入時，以及 `ci-review.sh`
+- [Google Antigravity 附加服務條款](https://antigravity.google/terms) — Gemini 指令（`agy`）
+- [Gemini API 附加服務條款](https://ai.google.dev/gemini-api/terms) — 僅 `ci-review.sh`，它用 `GEMINI_API_KEY` 呼叫 Gemini API
+
+> **合規或機密專案注意**：若你的程式碼受 HIPAA、SOC 2、NDA 或類似合規要求約束，請在將程式碼送至外部 provider 前，確認完整鏈結——Claude Code 條款、你登入時所用各 provider 方案的條款、資料保留設定，以及你所屬組織的內部核准流程。
