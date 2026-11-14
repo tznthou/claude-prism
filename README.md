@@ -41,7 +41,7 @@ There's a deeper structural issue: when Claude Code writes your code **and** rev
 | **Provider diversity** | Codex + Gemini + Claude (3 independent models) | Multiple agents, same underlying model |
 | **Blind spot coverage** | Cross-training-data: each model catches what others miss | Same training data bias amplified across agents |
 | **Cost** | Near-zero (runs on existing Codex CLI / Antigravity CLI subscriptions) | $15–25 per PR (official tools, Team/Enterprise plans) |
-| **Speed** | 1–2 min with a single provider; `/pi-multi-review` waits on Gemini 3.8, usually 3–7 min | ~20 minutes |
+| **Speed** | 1–2 min with a single provider; `/pi-multi-review` reports when the first provider returns (usually Codex) and adds Gemini as an addendum | ~20 minutes |
 | **Availability** | Anyone with CLI access | Paid team plans only |
 | **Scoring method** | Evidence-based formula ([open spec](spec/confidence-scoring-v1.md)) — deterministic core, same evidence = same score | LLM self-assessment — AI grades its own confidence |
 | **Data path** | Local-first: direct to provider APIs, no intermediary server | Varies by service |

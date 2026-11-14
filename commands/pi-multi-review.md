@@ -30,6 +30,15 @@ Same as `/pi-code-review`, based on `$ARGUMENTS`:
 
 Use Bash / Read tool. **The same code goes to both providers.**
 
+Record a hash of the code as `<DIFF_HASH>`, using the same source as the code itself, so the provider that reports second can tell whether it reviewed what is in the tree now (Step 7.1):
+
+```bash
+git diff --cached | shasum      # no args (staged changes)
+shasum < "<filepath>"           # file review
+git diff | shasum               # --diff
+git diff main...HEAD | shasum   # --pr
+```
+
 ### 2.3 Gather project guidelines
 
 Search for project guideline files to use as compliance context:
@@ -233,16 +242,23 @@ Same template as the Codex agent, with these substitutions:
 - Do NOT set or override `GEMINI_MODEL` in the Bash command — the user's environment passes through to the sub-agent, then to `call-gemini.sh`, then to the CLI. Skills do not pin model tiers on the user's behalf.
 - Classifier list adds PERMISSION (Gemini-specific) and has no SANDBOX.
 
-Both agents dispatch in parallel because they share a single main-conversation response. When both return, proceed to Step 4.
+Both agents dispatch in parallel because they share a single main-conversation response. Sub-agents run in the background and each one notifies the main conversation when it finishes, so the two results arrive separately — Gemini usually several minutes after Codex.
+
+**Report on the first result; do not wait for the second.** As soon as the first provider returns (usually Codex), run Steps 4–7 with that provider plus Claude and present the full report, with the other provider marked `pending` in Provider Status and Verdict Comparison. When the second provider's notification arrives, append its results under Step 7.1. If Gemini returns first, the roles swap: the report uses Gemini plus Claude, and Codex is the one marked `pending` and added in the addendum.
+
+- If both results are already in when you start Step 4, write a single report with both and skip Step 7.1.
+- If the first provider to return failed or is hollow (Steps 4–5), wait for the second before reporting, so the report is not Claude alone while a provider is still running.
 
 ### 4. Handle partial failures (graceful degradation)
+
+Apply this step to the results that have returned so far. A provider that is still running is `pending`, not failed: it gets its own handling in Step 7.1 when it returns.
 
 If one provider fails (script exits non-zero or returns an error message):
 - **Do NOT abort the review.** Continue with the remaining providers.
 - Claude always participates, so at minimum you have Claude + one external provider.
 - Include the specific failure reason from stderr (TIMEOUT, RATE_LIMIT, AUTH_ERROR, SANDBOX, PERMISSION, NETWORK, EMPTY_OUTPUT, CLI_ERROR, or CLI_NOT_FOUND).
 - In the output, clearly note: "⚠️ [Provider] unavailable ([reason]) — continuing with [other provider] + Claude."
-- If **both** external providers fail, Claude performs a solo review and notes: "⚠️ Both external providers unavailable ([Codex reason] / [Gemini reason]) — single-perspective review. For a single-provider review, try `/pi-code-review` (Codex) when it recovers."
+- If **both** external providers fail (both have returned, neither usable), Claude performs a solo review and notes: "⚠️ Both external providers unavailable ([Codex reason] / [Gemini reason]) — single-perspective review. For a single-provider review, try `/pi-code-review` (Codex) when it recovers."
 
 A provider whose reply is hollow (see Step 5) counts as failed here: continue without it, and give it the Provider Status `unavailable — DEGRADED (hollow response)`.
 
@@ -262,7 +278,7 @@ External providers may not follow the requested format (no severity tags, no VER
 
 ### 6. Claude synthesis
 
-After receiving results (from however many providers succeeded), Claude performs integrated analysis using the domain detected in Step 2.5.
+After receiving results (from the providers that have returned and succeeded so far), Claude performs integrated analysis using the domain detected in Step 2.5.
 
 #### Confidence scoring & filtering
 
@@ -421,7 +437,7 @@ Render provider text severity tags as emoji in the final output: CRITICAL→🔴
 | Provider | Status |
 |----------|--------|
 | Codex | [available/unavailable — reason] |
-| Gemini | [available/unavailable — reason] |
+| Gemini | [available/unavailable — reason/pending] |
 | Claude | available (always) |
 
 ### Domain & Weighting
@@ -433,7 +449,7 @@ Render provider text severity tags as emoji in the final output: CRITICAL→🔴
 | Provider | Verdict | Focus Area |
 |----------|---------|------------|
 | Codex | safe / needs-fixes / do-not-merge / — | ... |
-| Gemini | safe / needs-fixes / do-not-merge / — | ... |
+| Gemini | safe / needs-fixes / do-not-merge / — / pending | ... |
 | Claude | safe / needs-fixes / do-not-merge | ... |
 
 A verdict split between providers is a real signal — call it out explicitly and explain which reading the synthesis favors and why.
@@ -465,4 +481,41 @@ A verdict split between providers is a real signal — call it out explicitly an
 ### Action Items
 1. ...
 2. ...
+```
+
+The template shows the usual order, Gemini `pending`; if Gemini returned first, Codex is the `pending` row. While a provider is `pending`, end the report with: "⏳ [Provider] is still reviewing — its findings will be added as an addendum."
+
+### 7.1 Gemini addendum (the provider that returns second)
+
+When the second provider's notification arrives after the report is out, do not rewrite the report. Append a section below it. This is usually Gemini; if Codex returned second, the same rules apply with the names swapped.
+
+**First, check whether it reviewed the current code.** Fixes often start as soon as the report appears, so the late provider may have reviewed a diff that has since changed. Recompute the hash the same way as in Step 2 and compare it with `<DIFF_HASH>`:
+- **Same hash** — add the findings as below.
+- **Different hash** — open the addendum with "⚠️ Gemini reviewed an earlier version of the diff (`<DIFF_HASH>` → `<current hash>`)." Re-check every finding against the current code and label each one **Fixed**, **Still present**, or **Moved — not re-verified** (the code it points at changed and it has not been checked again). Still-present findings go through the rules below; Fixed and Moved ones are listed with their label and not scored.
+
+**If it failed or is hollow** — timeout, empty output, or the DEGRADED test in Step 5 — add one line and stop: "⚠️ Gemini did not review this round ([reason])." Update its Provider Status row to the same reason.
+
+**Otherwise:**
+- Run its findings through Step 6 the same way as the first provider's, hallucination verification included.
+- A finding that matches one already in the report (semantic match, as in Step 5): mark the existing entry "Gemini also flagged this" and treat it as consensus. Do not list it again.
+- New findings that pass Step 6 go in this section, using the Step 7 severity format.
+- If it gave a VERDICT, add it to Verdict Comparison here, and call out a split with the earlier verdicts as Step 7 does.
+
+```
+### Gemini addendum
+| Provider | Status |
+|----------|--------|
+| Gemini | [available/unavailable — reason] |
+
+[⚠️ Gemini reviewed an earlier version of the diff (<old hash> → <current hash>).]
+
+**Also flagged by Gemini:** [titles of existing entries now marked consensus]
+
+**New findings**
+...
+
+**Verdict:** Gemini — safe / needs-fixes / do-not-merge / —
+
+**Action Items (added)**
+1. ...
 ```
