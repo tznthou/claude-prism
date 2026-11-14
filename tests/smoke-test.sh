@@ -1428,6 +1428,23 @@ else
     fail "T26.2 pi-multi-review: expected the previous-findings block in the Codex prompt, the three labels, Step 6.4a, and the Previous Findings table"
 fi
 
+# ─── Test 27: /pi-multi-review labels findings instead of scoring them ───
+# Confidence scores, --verbose and show scores are gone; each finding is
+# Confirmed / Refuted / Unconfirmed, and the addendum's fix labels match
+# --recheck (no "Moved").
+echo ""
+echo "27. pi-multi-review validity labels..."
+
+T27_SKILL="$SCRIPT_DIR/commands/pi-multi-review.md"
+if ! grep -q 'score = clamp' "$T27_SKILL" && ! grep -q -- '--verbose' "$T27_SKILL" && \
+   ! grep -q 'show scores' "$T27_SKILL" && ! grep -q 'Moved' "$T27_SKILL" && \
+   grep -q 'Confirmed / Refuted / Unconfirmed' "$T27_SKILL" && \
+   grep -q '^##### Hallucination verification' "$T27_SKILL" && grep -q '^#### 6\.5 Refuted findings' "$T27_SKILL"; then
+    pass "T27.1 pi-multi-review labels findings Confirmed/Refuted/Unconfirmed, no scores"
+else
+    fail "T27.1 pi-multi-review: expected no 'score = clamp', --verbose, show scores or Moved; the three labels, hallucination verification, and 6.5 Refuted findings"
+fi
+
 # ─── Summary ───
 echo ""
 echo "─────────────────────────────────────────"
