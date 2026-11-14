@@ -67,7 +67,7 @@ The two tools optimize for different scenarios. `/ultrareview` is a solid pre-me
 
 ### Compared to `codex-plugin-cc` (OpenAI official)
 
-Let's be direct about this one. OpenAI ships [`codex-plugin-cc`](https://github.com/openai/codex-plugin-cc) — an official Claude Code plugin (32,960★ as of 2026-09-10, Apache-2.0) that puts Codex review inside Claude Code for free. Its `adversarial-review` prompt and our `/pi-code-review` share the same core instruction, word for word: *"break confidence in the change, not to validate it."* On top of that, recent `codex-cli` builds ship `codex review` and `codex mcp-server` as built-in subcommands.
+Let's be direct about this one. OpenAI ships [`codex-plugin-cc`](https://github.com/openai/codex-plugin-cc) — an official Claude Code plugin (35,119★ as of 2026-11-14, Apache-2.0) that puts Codex review inside Claude Code for free. Its `adversarial-review` prompt and our `/pi-code-review` share the same core instruction, word for word: *"break confidence in the change, not to validate it."* On top of that, recent `codex-cli` builds ship `codex review` as a built-in subcommand.
 
 **If Codex is the only second opinion you want, use theirs.** It's official, better resourced, and architecturally ahead — it talks to the Codex app-server through a persistent broker instead of spawning a CLI per call, which sidesteps an entire class of timeout problems we spent six releases on.
 
@@ -83,8 +83,8 @@ What it won't do is call Gemini.
 | **Background jobs** | No | Yes (`status` / `result` / `cancel`) |
 | **Install** | `npm` / Homebrew / `./install.sh` | `/plugin marketplace add openai/codex-plugin-cc` |
 | **CI/CD** | `ci-review.sh` in GitHub Actions | Bound to the Claude Code session |
-| **Implementation** | ~810 lines of Bash | 5,349 lines of JS + full test suite |
-| **Maturity** | 10★, one maintainer | 32,960★, OpenAI |
+| **Implementation** | ~1,000 lines of Bash (the two wrappers) | 5,349 lines of JS + full test suite |
+| **Maturity** | 10★, one maintainer | 35,119★, OpenAI |
 
 The honest summary: on the Codex half, the official plugin is the better tool and we're not going to pretend otherwise. What it structurally cannot offer is a second provider — OpenAI has no incentive to route your review through Gemini. That gap is the only reason this project exists, and whether cross-provider review actually finds things a single provider misses is a claim we're currently testing rather than asserting.
 
@@ -261,11 +261,14 @@ The flagship command. Sends the same code to **both** Codex and Gemini for **adv
 
 **Confidence Scoring** ([spec](spec/confidence-scoring-v1.md)): Every issue from all providers is scored 0–100 based on evidence quality — not Claude's opinion. Only issues ≥ 80 make it to the output. Base score 40, with evidence-based factors: specific line numbers (+25), code introduced in this diff (+25), cited rules (+20), reproducible scenario (+15), multi-provider consensus (+20). Noise signals reduce the score: subjective style (-25), linter-catchable (-25), hallucinated references (-50). The framework is deterministic, model-agnostic, and [independently reusable](spec/confidence-scoring-v1.md).
 
-**Smart Routing** (v0.7.0): Automatically detects the domain of changes (frontend/backend/fullstack) from file extensions and paths. During synthesis, the domain-authoritative provider gets higher weight — Gemini for frontend (UI/UX expertise), Codex for backend (security/algorithm expertise). Both providers are always called; weighting only affects how Claude resolves disagreements.
+**Smart Routing** (v0.7.0): Automatically detects the domain of changes (frontend/backend/fullstack) from file extensions and paths. During synthesis, the domain-authoritative provider gets higher weight — Gemini for frontend (UI/UX expertise), Codex for backend (security/algorithm expertise). Both providers are called on every first-round review; weighting only affects how Claude resolves disagreements.
+
+**Report on the first result, recheck the fixes** (on `main`, not yet in the npm package): you don't wait for the slower provider. The report appears as soon as one returns — usually Codex — with the other shown as `pending`, and the late one is appended as an addendum. If you've already started fixing by then, the addendum says it reviewed an earlier version and marks each of its findings Fixed, Still present, or Moved. After fixing, run it once more with `--recheck`: only Codex is called, and Codex and Claude both go through every finding from the previous report, Gemini's included, marking each Fixed, Still present, or Not verified. That's the last round — whatever is left is marked Fix now or Defer, and no third pass is suggested.
 
 ```
 /pi-multi-review                   # review staged changes
 /pi-multi-review --pr              # review entire PR
+/pi-multi-review --recheck         # after fixing: Codex only, previous findings checked one by one
 ```
 
 ### `/pi-plan` — Multi-Provider Implementation Planning
@@ -380,7 +383,7 @@ Summary, per-layer data, and product decision trace: [docs/research/bash-tool-pa
 | Markdown | Slash command definitions | Claude Code reads these as instructions |
 | Claude Code | Orchestrator | Reads commands, dispatches via sub-agent fan-out |
 | Codex CLI | OpenAI access | Code review and Q&A (model configurable) |
-| agy (Antigravity CLI) | Google access | Research, UI review, Q&A (model configurable) |
+| agy (Antigravity CLI) | Google access | Research, UI mockups, Q&A (model configurable) |
 | GitHub Actions | CI/CD integration | Automated PR review via REST APIs |
 
 ## Project Structure
@@ -393,6 +396,7 @@ claude-prism/
 │       ├── ai-review.yml       # Label-triggered CI review
 │       ├── release.yml         # npm OIDC publish + GitHub Release
 │       ├── shellcheck.yml      # ShellCheck static analysis
+│       ├── smoke-test.yml      # Smoke tests on Linux
 │       └── traffic-stats.yml   # GitHub traffic data collection (weekly)
 ├── docs/                       # Deep-dive documentation (see Documentation below)
 ├── spec/                       # Standalone specifications

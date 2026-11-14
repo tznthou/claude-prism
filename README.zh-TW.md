@@ -67,7 +67,7 @@ Anthropic 在 2026-04-16 隨 Claude Opus 4.7 一起推出 [`/ultrareview`](https
 
 ### 與 `codex-plugin-cc`（OpenAI 官方）的比較
 
-這一段我們直說。OpenAI 自己出了 [`codex-plugin-cc`](https://github.com/openai/codex-plugin-cc)——官方的 Claude Code plugin（截至 2026-09-10 有 32,960★，Apache-2.0），免費把 Codex review 送進 Claude Code。它的 `adversarial-review` 和我們的 `/pi-code-review` 核心指令逐字相同：*"break confidence in the change, not to validate it."* 除此之外，較新的 `codex-cli` 還內建了 `codex review` 與 `codex mcp-server` 兩個 subcommand。
+這一段我們直說。OpenAI 自己出了 [`codex-plugin-cc`](https://github.com/openai/codex-plugin-cc)——官方的 Claude Code plugin（截至 2026-11-14 有 35,119★，Apache-2.0），免費把 Codex review 送進 Claude Code。它的 `adversarial-review` 和我們的 `/pi-code-review` 核心指令逐字相同：*"break confidence in the change, not to validate it."* 除此之外，較新的 `codex-cli` 還內建了 `codex review` 這個 subcommand。
 
 **如果你要的第二意見只有 Codex，那就用官方的。** 它是官方出品、資源更多，架構上也更前面——它透過常駐 broker 連 Codex app-server，不是每次呼叫都開一支 CLI，直接繞開了我們花六個版本在處理的那一整類 timeout 問題。
 
@@ -83,8 +83,8 @@ Anthropic 在 2026-04-16 隨 Claude Opus 4.7 一起推出 [`/ultrareview`](https
 | **背景工作管理** | 無 | 有（`status` / `result` / `cancel`） |
 | **安裝** | `npm` / Homebrew / `./install.sh` | `/plugin marketplace add openai/codex-plugin-cc` |
 | **CI/CD** | `ci-review.sh` 跑在 GitHub Actions | 綁在 Claude Code session 內 |
-| **實作規模** | ~810 行 Bash | 5,349 行 JS + 完整 test suite |
-| **成熟度** | 10★，一個維護者 | 32,960★，OpenAI |
+| **實作規模** | ~1,000 行 Bash（兩支 wrapper） | 5,349 行 JS + 完整 test suite |
+| **成熟度** | 10★，一個維護者 | 35,119★，OpenAI |
 
 誠實的總結：在 Codex 這一半，官方 plugin 是更好的工具，我們不會假裝不是。它結構上做不到的是第二個 provider——OpenAI 沒有任何理由幫你把 review 送去 Gemini。那個缺口是這個專案唯一的存在理由，而「跨 provider 審查是否真的找得到單一 provider 漏掉的東西」，是我們目前正在驗證的主張，不是我們宣稱的結論。
 
@@ -261,11 +261,14 @@ Gemini 讀取設計規格文件，產出可在瀏覽器預覽的自包含 HTML m
 
 **信心度評分**（[spec](spec/confidence-scoring-v1.md)）：所有 provider 的每個 issue 都會被打 0–100 分，基於**證據品質**而非 Claude 的觀點。只有 ≥ 80 分的 issue 會進入最終輸出。Base score 40，正面因子：具體行號（+25）、本次 diff 引入的程式碼（+25）、引用規則（+20）、可重現場景（+15）、多方共識（+20）。雜訊因子：主觀風格偏好（-25）、linter 可偵測（-25）、幻覺引用（-50）。此 framework 是 deterministic、model-agnostic 的[獨立標準](spec/confidence-scoring-v1.md)。
 
-**智慧路由**（v0.7.0）：自動從檔案副檔名和路徑偵測改動的 domain（frontend/backend/fullstack）。合成時，domain 權威的 provider 享有更高權重——前端由 Gemini 主導（UI/UX 專長），後端由 Codex 主導（安全/演算法專長）。兩方 provider 都會被呼叫，權重只影響 Claude 如何處理分歧。
+**智慧路由**（v0.7.0）：自動從檔案副檔名和路徑偵測改動的 domain（frontend/backend/fullstack）。合成時，domain 權威的 provider 享有更高權重——前端由 Gemini 主導（UI/UX 專長），後端由 Codex 主導（安全/演算法專長）。第一輪審查兩方 provider 都會呼叫，權重只影響 Claude 如何處理分歧。
+
+**先到先出報告、修完再複審**（已在 `main`，npm 套件還沒有）：不用等比較慢的那一家。哪家先回來（通常是 Codex）就先出完整報告，另一家標 `pending`，晚到的結果補在報告後面。如果那時你已經開始修了，補充段會註明它審的是舊版，每一條標上「已修」「仍存在」或「位置已變」。修完再跑一次 `--recheck`：這次只叫 Codex，Codex 和 Claude 會把上一份報告的每一條（包括 Gemini 提的）逐條對照現在的程式碼，標「已修」「仍存在」或「沒驗到」。複審就是最後一輪，剩下的問題只分「現在修」和「記成待辦」，不會再建議審第三輪。
 
 ```
 /pi-multi-review                   # review staged changes
 /pi-multi-review --pr              # review 整個 PR
+/pi-multi-review --recheck         # 修完之後：只送 Codex，逐條核對上一輪的問題
 ```
 
 ### `/pi-plan` — 多方觀點實作規劃
@@ -380,7 +383,7 @@ sequenceDiagram
 | Markdown | Slash command 定義 | Claude Code 讀取這些檔案作為指令 |
 | Claude Code | 調度者 | 讀取 command，透過 sub-agent fan-out 分派 |
 | Codex CLI | OpenAI 存取 | Code review 與 Q&A（模型可設定） |
-| agy（Antigravity CLI） | Google 存取 | 研究、UI 審查、Q&A（模型可設定） |
+| agy（Antigravity CLI） | Google 存取 | 研究、UI mockup、Q&A（模型可設定） |
 | GitHub Actions | CI/CD 整合 | 自動化 PR review，透過 REST API |
 
 ## 專案結構
@@ -393,6 +396,7 @@ claude-prism/
 │       ├── ai-review.yml       # Label 觸發 CI review
 │       ├── release.yml         # npm OIDC 發布 + GitHub Release
 │       ├── shellcheck.yml      # ShellCheck 靜態分析
+│       ├── smoke-test.yml      # Linux 上跑 smoke test
 │       └── traffic-stats.yml   # GitHub traffic 資料收集（每週）
 ├── docs/                       # 深度文件（見下方延伸閱讀）
 ├── spec/                       # 獨立規格文件
