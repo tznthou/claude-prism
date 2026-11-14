@@ -25,6 +25,7 @@ Same as `/pi-code-review`, based on `$ARGUMENTS`:
 - `--diff` → unstaged changes
 - `--pr` → PR diff
 - `--verbose` → also show issues that were filtered out (< 80 confidence) with their scores
+- `--recheck` → this run reviews the fixes for the previous round's findings. Combine it with any scope above (e.g. `--recheck --diff`). Only Codex is consulted (Step 3c), and this is the last round for this change (Step 7, Action Items)
 
 ### 2. Get the code
 
@@ -187,12 +188,33 @@ $(code)
 - **Domain-aware surface trim**: if the domain detected in Step 2.5 is `backend`, omit item 2 (accessibility/responsive/UI states — inapplicable to backend-only diffs) and renumber the remaining items. For `frontend` and `fullstack`, keep the full list.
 - **No tools**: do not write a no-tools instruction into the Gemini prompt. The Gemini agent's Bash command passes `--no-tools` (see the Gemini agent substitutions below), and `call-gemini.sh` prepends the line itself. Gemini runs through agy in headless mode, where a tool call that needs permission is auto-denied and the turn ends with no output (EMPTY_OUTPUT). Codex gets no such flag — it keeps its repository access.
 
+**Recheck additions** (only with `--recheck`; Codex prompt only):
+- **Gather the previous round's findings.** Take them from the previous `/pi-multi-review` report in this conversation: every finding that report listed, from every provider (Codex, Gemini, and Claude's own supplements), with its provider, severity, `file:line`, title, and one-line failure scenario. If there is no previous report in this conversation, ask the user once to paste it. If they do not, run the recheck as a plain review and say in the report: "No previous findings available — fixes were not checked item by item."
+- **Insert this block into the Codex prompt immediately before the `Code:` line:**
+
+  ```
+  This is a recheck: the code below is meant to fix the findings from the previous review round.
+
+  Previous findings:
+  --- BEGIN PREVIOUS FINDINGS ---
+  <one line per finding: [provider] [severity] file:line — title — failure scenario>
+  --- END PREVIOUS FINDINGS ---
+
+  Before your own review, go through every previous finding — including those outside your focus area — and output one line for each:
+  [Fixed|Still present|Not verified] file:line — title — what in the current code shows it
+  Use Not verified when the code the finding points at is not in the diff below and you cannot check it, or when you cannot tell. Do not leave a previous finding out.
+
+  Then review the code below for new problems as instructed above.
+  ```
+
 **Step 3b — Persist each prompt to its own temp file**:
 
 1. Bash: `CODEX_PROMPT=$(mktemp -t prism-review-codex-XXXXXX.md) && GEMINI_PROMPT=$(mktemp -t prism-review-gemini-XXXXXX.md) && echo "CODEX=$CODEX_PROMPT" && echo "GEMINI=$GEMINI_PROMPT"` — capture both paths.
 2. Use the Write tool twice — write the Codex-focus prompt to `$CODEX_PROMPT` and the Gemini-focus prompt to `$GEMINI_PROMPT`.
 
 **Step 3c — Send ONE response with two `Agent` tool calls in parallel.** Both use `subagent_type: "general-purpose"`. Fill `<CODEX_PROMPT>` / `<GEMINI_PROMPT>` with the actual paths from Step 3b, and `<WORKDIR>` with the path from Step 0 — do not run `pwd` again here.
+
+**With `--recheck`, send only the Codex agent.** A recheck reviews fixes to findings already raised, and Codex is the provider whose findings held up when they were checked. Do not build or write the Gemini prompt in Steps 3a–3b, and do not spawn the Gemini agent. Gemini's Provider Status is `skipped (recheck)` and its Verdict Comparison cell is `—`. The report is written once Codex returns, so Step 7.1 does not apply. If Codex fails or is hollow, Claude reviews alone and notes "⚠️ Codex unavailable ([reason]) — recheck by Claude alone." Do not send Gemini in its place.
 
 <!-- Keep in sync with commands/pi-askall.md and commands/pi-plan.md — the sub-agent Bash template shape is shared across these three skills. -->
 
@@ -244,7 +266,7 @@ Same template as the Codex agent, with these substitutions:
 
 Both agents dispatch in parallel because they share a single main-conversation response. Sub-agents run in the background and each one notifies the main conversation when it finishes, so the two results arrive separately — Gemini usually several minutes after Codex.
 
-**Report on the first result; do not wait for the second.** As soon as the first provider returns (usually Codex), run Steps 4–7 with that provider plus Claude and present the full report, with the other provider marked `pending` in Provider Status and Verdict Comparison. When the second provider's notification arrives, append its results under Step 7.1. If Gemini returns first, the roles swap: the report uses Gemini plus Claude, and Codex is the one marked `pending` and added in the addendum.
+**Report on the first result; do not wait for the second** (without `--recheck`; a recheck has only one provider). As soon as the first provider returns (usually Codex), run Steps 4–7 with that provider plus Claude and present the full report, with the other provider marked `pending` in Provider Status and Verdict Comparison. When the second provider's notification arrives, append its results under Step 7.1. If Gemini returns first, the roles swap: the report uses Gemini plus Claude, and Codex is the one marked `pending` and added in the addendum.
 
 - If both results are already in when you start Step 4, write a single report with both and skip Step 7.1.
 - If the first provider to return failed or is hollow (Steps 4–5), wait for the second before reporting, so the report is not Claude alone while a provider is still running.
@@ -365,6 +387,13 @@ Violations of project guidelines (`CLAUDE.md`, `Agents.md`) that passed confiden
 #### 6.4 Claude's independent perspective
 Issues no other provider caught but worth noting.
 
+#### 6.4a Previous findings (`--recheck` only)
+Claude checks every previous finding against the current code itself (Read/Grep), with the same three labels — Fixed, Still present, Not verified — and does not just adopt Codex's label. Gemini's findings from the previous round need this most: Gemini is not consulted in a recheck, and Codex's focus is security, so Claude is the reviewer of record for them.
+- When Claude's label and Codex's label agree, use it.
+- When they disagree, Claude reads the code again and gives the label that holds, with the reason: "Codex: Fixed / Claude: Still present — line 7 still passes `$days` unquoted."
+- If Codex failed, gave no label for a finding, or no previous findings were available, Claude's label stands alone; say so.
+- Every Still present finding becomes an Action Item (Fix now or Defer, Step 7). Not verified findings are listed with what would verify them.
+
 #### GitHub suggestion blocks
 
 When an issue has a **concrete code fix** (not just a description of the problem), include a GitHub suggestion block so the fix can be applied with one click in a PR:
@@ -437,7 +466,7 @@ Render provider text severity tags as emoji in the final output: CRITICAL→🔴
 | Provider | Status |
 |----------|--------|
 | Codex | [available/unavailable — reason] |
-| Gemini | [available/unavailable — reason/pending] |
+| Gemini | [available/unavailable — reason/pending/skipped (recheck)] |
 | Claude | available (always) |
 
 ### Domain & Weighting
@@ -484,6 +513,20 @@ A verdict split between providers is a real signal — call it out explicitly an
 ```
 
 The template shows the usual order, Gemini `pending`; if Gemini returned first, Codex is the `pending` row. While a provider is `pending`, end the report with: "⏳ [Provider] is still reviewing — its findings will be added as an addendum."
+
+**Two rounds at most per change.** A first-round report (no `--recheck`) ends its Action Items with: "After fixing these, run `/pi-multi-review --recheck` at most once." A `--recheck` report is the last round:
+- Put a **Previous Findings** section right after Verdict Comparison, one row per previous finding (Step 6.4a):
+
+  ```
+  ### Previous Findings (recheck)
+  | # | Finding | Raised by | Codex | Claude | Result |
+  |---|---------|-----------|-------|--------|--------|
+  | 1 | cleanup.sh:6 — unquoted $dir in rm -rf | Gemini | Fixed | Fixed | Fixed |
+  | 2 | cleanup.sh:7 — find fails when logs/ missing | Gemini | Not verified | Still present | Still present |
+  ```
+
+- Mark every Action Item either **Fix now** or **Defer** (record it as a follow-up task — an issue or TODO — rather than leaving it in the report).
+- Do not suggest another review round, and do not end with the `--recheck` line above.
 
 ### 7.1 Gemini addendum (the provider that returns second)
 

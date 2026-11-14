@@ -1404,6 +1404,30 @@ else
     fail "T25.1 pi-multi-review: expected no 'When both return', a '### 7.1 Gemini addendum' step, DIFF_HASH, and a pending status"
 fi
 
+# ─── Test 26: /pi-multi-review --recheck ───
+# A recheck goes to Codex only, Gemini is marked skipped, and it is the
+# last round: the report does not suggest a third.
+echo ""
+echo "26. pi-multi-review --recheck..."
+
+T26_SKILL="$SCRIPT_DIR/commands/pi-multi-review.md"
+if grep -q '^- `--recheck`' "$T26_SKILL" && grep -q 'send only the Codex agent' "$T26_SKILL" && \
+   grep -q 'skipped (recheck)' "$T26_SKILL" && grep -q 'Two rounds at most per change' "$T26_SKILL" && \
+   grep -q 'run `/pi-multi-review --recheck` at most once' "$T26_SKILL"; then
+    pass "T26.1 pi-multi-review has --recheck (Codex only) and a two-round cap"
+else
+    fail "T26.1 pi-multi-review: expected --recheck in the argument list, Codex-only dispatch, 'skipped (recheck)', and the two-round cap"
+fi
+
+# T26.2 a recheck checks the previous round's findings one by one: Codex gets
+# them in its prompt, and Claude checks them too (Gemini is not consulted).
+if grep -q 'BEGIN PREVIOUS FINDINGS' "$T26_SKILL" && grep -qF '[Fixed|Still present|Not verified]' "$T26_SKILL" && \
+   grep -q '^#### 6\.4a Previous findings' "$T26_SKILL" && grep -qF '### Previous Findings (recheck)' "$T26_SKILL"; then
+    pass "T26.2 pi-multi-review --recheck checks previous findings item by item"
+else
+    fail "T26.2 pi-multi-review: expected the previous-findings block in the Codex prompt, the three labels, Step 6.4a, and the Previous Findings table"
+fi
+
 # ─── Summary ───
 echo ""
 echo "─────────────────────────────────────────"
