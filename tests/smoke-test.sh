@@ -1390,6 +1390,20 @@ else
     fail "T24.1 pi-multi-review still mentions review-insights or has a '### 8.' step"
 fi
 
+# ─── Test 25: /pi-multi-review reports on the first provider ───
+# The report no longer waits for both providers; the later one is added as
+# an addendum that checks whether it reviewed the current diff.
+echo ""
+echo "25. pi-multi-review early report + addendum..."
+
+T25_SKILL="$SCRIPT_DIR/commands/pi-multi-review.md"
+if ! grep -q 'When both return' "$T25_SKILL" && grep -q '^### 7\.1 Gemini addendum' "$T25_SKILL" && \
+   grep -q 'DIFF_HASH' "$T25_SKILL" && grep -q 'reason/pending' "$T25_SKILL"; then
+    pass "T25.1 pi-multi-review reports early and has a Gemini addendum step"
+else
+    fail "T25.1 pi-multi-review: expected no 'When both return', a '### 7.1 Gemini addendum' step, DIFF_HASH, and a pending status"
+fi
+
 # ─── Summary ───
 echo ""
 echo "─────────────────────────────────────────"

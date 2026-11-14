@@ -41,7 +41,7 @@ AI code review 很吵。市場上最好的工具 F1 score 大概也才 64%——
 | **Provider 多樣性** | Codex + Gemini + Claude（3 個獨立模型） | 多個 agent，同一底層模型 |
 | **盲點覆蓋** | 跨訓練資料：每個模型抓到其他模型漏掉的 | 同一訓練資料偏差在 agent 間放大 |
 | **成本** | 近乎零（用現有 Codex CLI / Antigravity CLI 訂閱） | 每 PR $15–25（官方工具，Team/Enterprise 方案） |
-| **速度** | 只叫一家約 1–2 分鐘；`/pi-multi-review` 要等 Gemini 3.8，通常 3–7 分鐘 | ~20 分鐘 |
+| **速度** | 只叫一家約 1–2 分鐘；`/pi-multi-review` 先回來的那家（通常是 Codex）一到就出報告，Gemini 之後補一段 | ~20 分鐘 |
 | **可用性** | 任何有 CLI 的人 | 僅限付費團隊方案 |
 | **評分方式** | 證據導向公式（[公開 spec](spec/confidence-scoring-v1.md)），deterministic 核心，同樣證據 = 同樣分數 | LLM 自評，AI 給自己打信心分數 |
 | **資料路徑** | Local-first：直連 provider API，無中繼伺服器 | 依服務而異 |
