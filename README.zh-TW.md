@@ -403,7 +403,6 @@ claude-prism/
 │   ├── detect-domain.sh        # 智慧路由 domain 偵測
 │   ├── analyze-log.sh          # 呼叫生命週期診斷
 │   ├── ci-review.sh            # CI/CD review 調度器（curl API）
-│   ├── calibrate-timeout.sh     # Per-skill timeout 校準器（p99-based）
 │   └── usage-summary.sh        # API 使用量統計
 ├── tests/smoke-test.sh
 ├── checksums.sha256            # SHA256 checksum 完整性驗證

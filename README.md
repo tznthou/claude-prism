@@ -403,7 +403,6 @@ claude-prism/
 │   ├── detect-domain.sh        # Domain detection for smart routing
 │   ├── analyze-log.sh          # Invocation lifecycle diagnostics
 │   ├── ci-review.sh            # CI/CD review orchestrator (curl APIs)
-│   ├── calibrate-timeout.sh     # Per-skill timeout calibrator (p99-based)
 │   └── usage-summary.sh        # API usage statistics
 ├── tests/smoke-test.sh
 ├── checksums.sha256            # SHA256 checksums for integrity verification

@@ -137,16 +137,24 @@ else
     fail "usage-summary.sh unexpected output: $SUMMARY_OUT"
 fi
 
-# ─── Test 7: review-insights.sh retired (v0.19.0) ───
+# ─── Test 7: retired scripts (v0.19.0) ───
 # No command writes review-insights.jsonl since /pi-code-review was folded
 # into /pi-multi-review --codex-only, so the script that read it is gone.
+# calibrate-timeout.sh left timed-out calls out of its p99, so it suggested
+# timeouts that were too short; nothing called it.
 echo ""
-echo "7. Review insights (retired)..."
+echo "7. Retired scripts..."
 
 if [[ ! -e "$SCRIPT_DIR/scripts/review-insights.sh" ]]; then
     pass "T7.1 review-insights.sh is no longer shipped"
 else
     fail "T7.1 review-insights.sh still in scripts/"
+fi
+
+if [[ ! -e "$SCRIPT_DIR/scripts/calibrate-timeout.sh" ]]; then
+    pass "T7.2 calibrate-timeout.sh is no longer shipped"
+else
+    fail "T7.2 calibrate-timeout.sh still in scripts/"
 fi
 
 # ─── Test 8: CI review script ───
@@ -1092,10 +1100,10 @@ set +e
 HOME="$T20_HOME2" bash "$SCRIPT_DIR/install.sh" > "$T20_HOME2/install.out" 2>&1
 T20_RC2=$?
 set -e
-if [[ $T20_RC2 -eq 0 ]] && ! grep -q -E "pi-ui-review|pi-fact-check|pi-code-review|review-insights" "$T20_HOME2/install.out"; then
+if [[ $T20_RC2 -eq 0 ]] && ! grep -q -E "pi-ui-review|pi-fact-check|pi-code-review|review-insights|calibrate-timeout" "$T20_HOME2/install.out"; then
     pass "T20.2 fresh install prints nothing about retired commands or scripts"
 else
-    fail "T20.2 fresh install: rc=$T20_RC2; $(grep -E 'pi-ui-review|pi-fact-check|pi-code-review|review-insights' "$T20_HOME2/install.out" | head -2 | tr '\n' ' ')"
+    fail "T20.2 fresh install: rc=$T20_RC2; $(grep -E 'pi-ui-review|pi-fact-check|pi-code-review|review-insights|calibrate-timeout' "$T20_HOME2/install.out" | head -2 | tr '\n' ' ')"
 fi
 
 # T20.3 an earlier install left pi-fact-check.md behind → removed, with a reason
@@ -1148,6 +1156,22 @@ if [[ $T20_RC5 -eq 0 ]] && [[ ! -e "$T20_HOME5/.claude/scripts/review-insights.s
     pass "T20.5 upgrade removes the retired review-insights.sh and keeps review-insights.jsonl"
 else
     fail "T20.5 retired-script cleanup: rc=$T20_RC5 still_installed=$([[ -e "$T20_HOME5/.claude/scripts/review-insights.sh" ]] && echo yes || echo no) jsonl_kept=$([[ -s "$T20_HOME5/.claude/logs/review-insights.jsonl" ]] && echo yes || echo no)"
+fi
+
+# T20.6 an earlier install left calibrate-timeout.sh behind → removed, with a reason
+T20_HOME6=$(mktemp -d); T13_LOGDIRS+=("$T20_HOME6")
+mkdir -p "$T20_HOME6/.claude/scripts"
+echo "# copy installed by an earlier version" > "$T20_HOME6/.claude/scripts/calibrate-timeout.sh"
+set +e
+HOME="$T20_HOME6" bash "$SCRIPT_DIR/install.sh" > "$T20_HOME6/install.out" 2>&1
+T20_RC6=$?
+set -e
+if [[ $T20_RC6 -eq 0 ]] && [[ ! -e "$T20_HOME6/.claude/scripts/calibrate-timeout.sh" ]] && \
+   grep -q "Removed calibrate-timeout.sh" "$T20_HOME6/install.out" && \
+   [[ -f "$T20_HOME6/.claude/scripts/call-codex.sh" ]]; then
+    pass "T20.6 upgrade removes the retired calibrate-timeout.sh and says why (other scripts installed)"
+else
+    fail "T20.6 retired-script cleanup: rc=$T20_RC6 still_installed=$([[ -e "$T20_HOME6/.claude/scripts/calibrate-timeout.sh" ]] && echo yes || echo no) message=$(grep -c 'Removed calibrate-timeout.sh' "$T20_HOME6/install.out")"
 fi
 
 # ─── Test 21: fan-out sub-agents pin the working directory (v0.17.0) ───
