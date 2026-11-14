@@ -102,7 +102,7 @@ shellcheck scripts/*.sh tests/*.sh install.sh uninstall.sh
 - Command definitions live in `commands/pi-*.md`
 - Prompts are written in English; output language follows the user's Claude Code settings
 - Include graceful degradation instructions for provider failures
-- Reference the [Confidence Scoring Framework](spec/confidence-scoring-v1.md) where applicable
+- Review commands check findings against the code: `/pi-multi-review` labels each one Confirmed / Refuted / Unconfirmed / Out of scope; `/pi-code-review` still uses the [Confidence Scoring Framework](spec/confidence-scoring-v1.md), which is retired for `/pi-multi-review`
 
 ### Commit Convention
 

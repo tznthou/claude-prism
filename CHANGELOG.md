@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+#### Documentation
+
+- **README, CONTRIBUTING and the scoring spec describe the labels** — both READMEs said `/pi-multi-review` scores findings 0–100 and filters below 80; they now describe the four labels (Confirmed / Refuted / Unconfirmed / Out of scope), present the trust argument as a second model checking each finding with its reason shown rather than a deterministic formula, and mark the feature as on `main` but not yet in the npm package. The late-provider addendum's labels read Fixed / Still present / Not verified. `spec/confidence-scoring-v1.md` is marked retired for `/pi-multi-review`, kept and not deleted, since `/pi-code-review` and the CI review still use it; CONTRIBUTING and `/pi-askall`'s pointer to the review commands are updated to match
+
 #### Removed (commands)
 
 - **BREAKING: `/pi-multi-review --verbose` and `show scores`** — both existed to display confidence scores, which the command no longer computes (see below). Findings Claude rejects are now always listed with a reason, so there is nothing left to reveal

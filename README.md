@@ -30,7 +30,7 @@ There's a deeper structural issue: when Claude Code writes your code **and** rev
 
 **1. Cross-provider juxtaposition** — Claude orchestrates, but dispatches review tasks to **Gemini** and **Codex** via their CLIs. Three providers, three training datasets, three sets of blind spots. The findings are laid side by side rather than merged into one verdict: **what Codex flagged and Claude didn't is the line worth your attention**. The disagreement is the signal — not because one model is right, but because the gap is where your own reading probably went too.
 
-**2. Evidence-based confidence scoring** — Instead of asking AI "how confident are you?", each finding is scored by verifiable evidence: specific line numbers (+25), rule citations (+20), reproducible scenarios (+15), hallucinated references (-50). The core formula is deterministic — same evidence, same score. [Open spec](spec/confidence-scoring-v1.md), no black box.
+**2. Every finding checked against the code** — A finding isn't trusted because a model said so. Every finding Codex or Gemini raises is checked against the code by a different model, Claude: cited files and symbols are looked up with Glob/Grep, and the finding is labeled Confirmed, Refuted, Unconfirmed, or Out of scope, with the reason. Refuted findings stay in the report with that reason, so you can see what was dropped and disagree.
 
 **3. Local-first** — Your code goes directly to each provider's API. No intermediary server, no relay, no third party touching your code.
 
@@ -43,7 +43,7 @@ There's a deeper structural issue: when Claude Code writes your code **and** rev
 | **Cost** | Near-zero (runs on existing Codex CLI / Antigravity CLI subscriptions) | $15–25 per PR (official tools, Team/Enterprise plans) |
 | **Speed** | 1–2 min with a single provider; `/pi-multi-review` reports when the first provider returns (usually Codex) and adds Gemini as an addendum | ~20 minutes |
 | **Availability** | Anyone with CLI access | Paid team plans only |
-| **Scoring method** | Evidence-based formula ([open spec](spec/confidence-scoring-v1.md)) — deterministic core, same evidence = same score | LLM self-assessment — AI grades its own confidence |
+| **Finding checks** | Second-party: Claude checks each finding against the code and labels it, with the reason; cited references are verified with Glob/Grep | LLM self-assessment — AI grades its own confidence |
 | **Data path** | Local-first: direct to provider APIs, no intermediary server | Varies by service |
 
 ### Compared to `/ultrareview` (released 2026-04-16)
@@ -77,7 +77,7 @@ What it won't do is call Gemini.
 |---|---|---|
 | **Providers** | Codex + Gemini + Claude | Codex only |
 | **Cross-provider juxtaposition** | Yes — the point of the tool | N/A (single provider) |
-| **Confidence scoring** | Second-party: Claude re-scores Codex's findings and Glob/Greps every cited reference to catch hallucinations | Self-reported 0–1 by Codex, no cross-check |
+| **Finding checks** | Second-party: Claude checks Codex's findings against the code and Glob/Greps every cited reference to catch hallucinations | Self-reported 0–1 by Codex, no cross-check |
 | **Architecture** | Bash wrappers, one CLI invocation per call | Persistent broker over unix socket + JSON-RPC, job files on disk |
 | **Write access to your code** | None — read-only by design | `/codex:rescue` delegates fixes to Codex |
 | **Background jobs** | No | Yes (`status` / `result` / `cancel`) |
@@ -92,7 +92,9 @@ The honest summary: on the Codex half, the official plugin is the better tool an
 
 Most AI review tools use a similar approach: have the AI score its own findings on a 0–100 confidence scale, then filter below a threshold. [Anthropic's official code review plugin](https://github.com/anthropics/claude-code/blob/main/plugins/code-review/README.md), for example, uses a ≥80 threshold. The problem is that LLM-generated confidence scores are non-deterministic — run the same review twice, you may get different scores.
 
-claude-prism's [Confidence Scoring Framework](spec/confidence-scoring-v1.md) works differently: it scores findings by **verifiable evidence**, not AI self-assessment. Does the comment cite a specific line number? +25. Does it reference an OWASP rule? +20. Does it mention a file that doesn't exist? -50. The formula is deterministic, model-agnostic, and fully auditable — you can open the spec and verify exactly how every point was calculated.
+claude-prism doesn't ask the reviewer how sure it is. A second model checks the finding instead: in `/pi-multi-review`, Claude reads the code each finding points at and labels it **Confirmed** (the failure scenario holds), **Refuted** (it doesn't — the code is not there, or doesn't behave as claimed), **Unconfirmed** (the code can't settle it, and the report says what would), or **Out of scope** (possibly real, but not this diff's to fix). The label is still a model's judgment, not a formula; what makes it checkable is that every label comes with its reason, and nothing is filtered out of sight. Cited files and symbols are looked up mechanically with Glob/Grep, so a reference to code that isn't there can't pass as Confirmed.
+
+`/pi-code-review` and the CI review still use the earlier evidence-based 0–100 score ([Confidence Scoring Framework](spec/confidence-scoring-v1.md)), which `/pi-multi-review` has retired.
 
 ---
 
@@ -177,7 +179,7 @@ npx claud-prism-aireview --uninstall
 | `/pi-fact-check` | Gemini + WebSearch + Claude | Fact-check content — dual-track search (Gemini + WebSearch), Claude validates with convergence scoring |
 | `/pi-ui-design` | Gemini | HTML mockup from design spec |
 | `/pi-research` | Gemini + WebSearch + Claude | Structured technical research — dual-track search (Gemini + WebSearch parallel) |
-| `/pi-multi-review` | Codex + Gemini + Claude | Triple-provider adversarial review with divided attack surfaces (smart routing + confidence scoring) |
+| `/pi-multi-review` | Codex + Gemini + Claude | Triple-provider adversarial review with divided attack surfaces (smart routing + every finding checked and labeled) |
 | `/pi-plan` | Codex + Gemini + Claude | Multi-provider implementation planning for architectural decisions |
 
 > `/pi-ui-review` was removed in v0.17.0: ask Claude Code directly for UI/UX review; for a cross-provider second opinion, use `/pi-multi-review <file>` — its Gemini track focuses on design, UX, and accessibility.
@@ -254,16 +256,16 @@ Dual-track search: Gemini (search grounding) and WebSearch run in parallel for s
 
 The flagship command. Sends the same code to **both** Codex and Gemini for **adversarial review with divided attack surfaces** — Codex attacks security & data integrity (auth, data loss, race conditions, schema drift, etc.), Gemini attacks design, UX & maintainability (edge-case UX, accessibility, abstraction leaks, test coverage, etc.). Claude synthesizes:
 
-1. **Consensus** — issues both providers flagged (high confidence, fix first)
+1. **Consensus** — issues both providers flagged (fix first)
 2. **Divergence** — issues only one found (Claude judges validity)
 3. **Guideline compliance** — violations of `CLAUDE.md` / `Agents.md` project rules
 4. **Claude supplement** — issues neither caught
 
-**Confidence Scoring** ([spec](spec/confidence-scoring-v1.md)): Every issue from all providers is scored 0–100 based on evidence quality — not Claude's opinion. Only issues ≥ 80 make it to the output. Base score 40, with evidence-based factors: specific line numbers (+25), code introduced in this diff (+25), cited rules (+20), reproducible scenario (+15), multi-provider consensus (+20). Noise signals reduce the score: subjective style (-25), linter-catchable (-25), hallucinated references (-50). The framework is deterministic, model-agnostic, and [independently reusable](spec/confidence-scoring-v1.md).
+**Every finding checked** (on `main`, not yet in the npm package — v0.17.0 still scores findings 0–100): Claude checks each finding from every provider against the code and gives it one label — **Confirmed**, **Refuted**, **Unconfirmed** (with what would settle it), or **Out of scope** (real but outside this diff: untouched existing code, or something the project's linter already catches). Cited files and symbols are verified with Glob/Grep; a reference that doesn't exist makes the finding Refuted. Refuted and Out of scope findings are listed at the end with their reasons rather than hidden. `--verbose` and `show scores` are gone along with the scores.
 
 **Smart Routing** (v0.7.0): Automatically detects the domain of changes (frontend/backend/fullstack) from file extensions and paths. During synthesis, the domain-authoritative provider gets higher weight — Gemini for frontend (UI/UX expertise), Codex for backend (security/algorithm expertise). Both providers are called on every first-round review; weighting only affects how Claude resolves disagreements.
 
-**Report on the first result, recheck the fixes** (on `main`, not yet in the npm package): you don't wait for the slower provider. The report appears as soon as one returns — usually Codex — with the other shown as `pending`, and the late one is appended as an addendum. If you've already started fixing by then, the addendum says it reviewed an earlier version and marks each of its findings Fixed, Still present, or Moved. After fixing, run it once more with `--recheck`: only Codex is called, and Codex and Claude both go through every finding from the previous report, Gemini's included, marking each Fixed, Still present, or Not verified. That's the last round — whatever is left is marked Fix now or Defer, and no third pass is suggested.
+**Report on the first result, recheck the fixes** (on `main`, not yet in the npm package): you don't wait for the slower provider. The report appears as soon as one returns — usually Codex — with the other shown as `pending`, and the late one is appended as an addendum. If you've already started fixing by then, the addendum says it reviewed an earlier version and marks each of its findings Fixed, Still present, or Not verified. After fixing, run it once more with `--recheck`: only Codex is called, and Codex and Claude both go through every finding from the previous report, Gemini's included, marking each Fixed, Still present, or Not verified. That's the last round — whatever is left is marked Fix now or Defer, and no third pass is suggested.
 
 ```
 /pi-multi-review                   # review staged changes
@@ -400,7 +402,7 @@ claude-prism/
 │       └── traffic-stats.yml   # GitHub traffic data collection (weekly)
 ├── docs/                       # Deep-dive documentation (see Documentation below)
 ├── spec/                       # Standalone specifications
-│   └── confidence-scoring-v1.md  # Evidence-based noise filtering framework
+│   └── confidence-scoring-v1.md  # Evidence-based scoring (retired in /pi-multi-review; /pi-code-review and CI still use it)
 ├── commands/                   # Slash command definitions (Markdown)
 ├── scripts/                    # CLI wrappers & utilities (Bash)
 │   ├── call-codex.sh           # Codex CLI wrapper (with soft-timeout)
@@ -495,7 +497,7 @@ Everything beyond "how to install and use" lives in [`docs/`](docs/):
 | Privacy & Data Flow — what leaves your machine, what stays local, provider terms | [docs/privacy.md](docs/privacy.md) | [docs/privacy.zh-TW.md](docs/privacy.zh-TW.md) |
 | Reflections — design notes and lessons learned | [docs/reflections.md](docs/reflections.md) | [docs/reflections.zh-TW.md](docs/reflections.zh-TW.md) |
 | Research — Bash tool parallelism study behind the sub-agent fan-out design | [docs/research/bash-tool-parallelism.md](docs/research/bash-tool-parallelism.md) | — |
-| [Confidence Scoring Framework](spec/confidence-scoring-v1.md) | normative spec | — |
+| [Confidence Scoring Framework](spec/confidence-scoring-v1.md) | spec — retired in `/pi-multi-review`, still used by `/pi-code-review` and CI | — |
 | [CHANGELOG](CHANGELOG.md) | version history | — |
 
 ---

@@ -30,7 +30,7 @@ AI code review 很吵。市場上最好的工具 F1 score 大概也才 64%——
 
 **1. 跨 Provider 對照**：Claude 負責調度，review 任務分派給 **Gemini** 和 **Codex**。三個 provider、三組訓練資料、三組盲點。這些發現是**並排攤開**給你看，不是合成一個結論——**Codex 提了而 Claude 沒提的那條，才是你最該看的**。差異本身就是訊號：不是因為誰對誰錯，而是因為那個 gap 很可能也正是你自己讀漏的地方。
 
-**2. 證據導向信心度評分**：不問 AI「你有多確定」，而是用可驗證的證據算分：具體行號（+25）、規則引用（+20）、可重現場景（+15）、幻覺引用（-50）。核心公式是 deterministic——同樣的證據永遠得到同樣的分數。[公開 spec](spec/confidence-scoring-v1.md)，沒有黑盒。
+**2. 每一條發現都對照程式碼檢查**：模型說有問題，不代表就有問題。Codex、Gemini 提出的每一條發現，都由另一個模型 Claude 對照程式碼檢查：引用的檔案和符號用 Glob/Grep 查是否真的存在，再標上「成立」（Confirmed）、「不成立」（Refuted）、「判斷不了」（Unconfirmed）或「不在這次範圍」（Out of scope），並附上理由。判定不成立的也留在報告裡、寫明原因，你看得到哪些被排除，覺得判錯可以自己再看。
 
 **3. Local-first**：程式碼直接送到各家 provider 的 API，中間沒有任何中繼伺服器、沒有第三方經手你的 code。
 
@@ -43,7 +43,7 @@ AI code review 很吵。市場上最好的工具 F1 score 大概也才 64%——
 | **成本** | 近乎零（用現有 Codex CLI / Antigravity CLI 訂閱） | 每 PR $15–25（官方工具，Team/Enterprise 方案） |
 | **速度** | 只叫一家約 1–2 分鐘；`/pi-multi-review` 先回來的那家（通常是 Codex）一到就出報告，Gemini 之後補一段 | ~20 分鐘 |
 | **可用性** | 任何有 CLI 的人 | 僅限付費團隊方案 |
-| **評分方式** | 證據導向公式（[公開 spec](spec/confidence-scoring-v1.md)），deterministic 核心，同樣證據 = 同樣分數 | LLM 自評，AI 給自己打信心分數 |
+| **發現怎麼把關** | 第二方檢查：Claude 對照程式碼逐條判定並附理由，引用的檔案與符號用 Glob/Grep 實查 | LLM 自評，AI 給自己打信心分數 |
 | **資料路徑** | Local-first：直連 provider API，無中繼伺服器 | 依服務而異 |
 
 ### 與 `/ultrareview` 的比較（2026-04-16 發布）
@@ -77,7 +77,7 @@ Anthropic 在 2026-04-16 隨 Claude Opus 4.7 一起推出 [`/ultrareview`](https
 |---|---|---|
 | **Provider** | Codex + Gemini + Claude | 僅 Codex |
 | **跨 Provider 對照** | 有——這就是這個工具的存在理由 | 不適用（單一 provider） |
-| **信心度評分** | 第二方評分：Claude 重算 Codex 的發現，並用 Glob/Grep 實查每一條引用是否存在，抓幻覺 | Codex 自報 0–1，無交叉驗證 |
+| **發現怎麼把關** | 第二方檢查：Claude 對照程式碼檢查 Codex 的發現，並用 Glob/Grep 實查每一條引用是否存在，抓幻覺 | Codex 自報 0–1，無交叉驗證 |
 | **架構** | Bash wrapper，每次呼叫開一支 CLI | 常駐 broker over unix socket + JSON-RPC，job file 落盤 |
 | **對你的程式碼有寫入權嗎** | 沒有——設計上全 read-only | 有，`/codex:rescue` 委派 Codex 直接改 |
 | **背景工作管理** | 無 | 有（`status` / `result` / `cancel`） |
@@ -92,7 +92,9 @@ Anthropic 在 2026-04-16 隨 Claude Opus 4.7 一起推出 [`/ultrareview`](https
 
 多數 AI review 工具都用類似做法：讓 AI 對自己的發現打 0–100 信心分數，低於門檻就過濾。[Anthropic 官方 code review plugin](https://github.com/anthropics/claude-code/blob/main/plugins/code-review/README.md) 也使用 ≥80 門檻。問題是 LLM 產生的信心分數不穩定——同一份 review 跑兩次可能得到不同分數。
 
-claude-prism 的 [Confidence Scoring Framework](spec/confidence-scoring-v1.md) 做法不同：用**可驗證的證據**打分，不靠 AI 自我評估。comment 有指出具體行號？+25。有引用 OWASP 規則？+20。提到一個不存在的檔案？-50。公式是 deterministic、model-agnostic 的，你可以打開 spec 驗證每一分怎麼來的。
+claude-prism 不問 reviewer 有多確定，而是換另一個模型來查。在 `/pi-multi-review` 裡，Claude 會讀每一條發現指到的程式碼，標上 **Confirmed**（失敗情境確實會發生）、**Refuted**（不會：程式碼根本不在，或行為跟它說的不一樣）、**Unconfirmed**（光看程式碼判斷不了，報告會寫要知道什麼才能判斷），或 **Out of scope**（可能是真的，但不是這次 diff 該修的）。標籤仍然是模型的判斷，不是公式算出來的；能讓人檢查的地方在於每個標籤都附理由，而且沒有任何一條被藏起來。引用的檔案和符號用 Glob/Grep 機械式查證，指向不存在程式碼的發現不可能被標成 Confirmed。
+
+`/pi-code-review` 和 CI review 還在用先前的證據導向 0–100 分（[Confidence Scoring Framework](spec/confidence-scoring-v1.md)），`/pi-multi-review` 已經不用了。
 
 ---
 
@@ -177,7 +179,7 @@ npx claud-prism-aireview --uninstall
 | `/pi-fact-check` | Gemini + WebSearch + Claude | 事實查核 — 雙軌搜尋（Gemini + WebSearch 同步），Claude 以收斂度評分驗證 |
 | `/pi-ui-design` | Gemini | 從設計規格產生 HTML mockup |
 | `/pi-research` | Gemini + WebSearch + Claude | 結構化技術研究 — 雙軌搜尋（Gemini + WebSearch 同步） |
-| `/pi-multi-review` | Codex + Gemini + Claude | 三方對抗式審查 — 分工攻擊面（智慧路由 + 信心度評分） |
+| `/pi-multi-review` | Codex + Gemini + Claude | 三方對抗式審查 — 分工攻擊面（智慧路由 + 每條發現逐一查證標註） |
 | `/pi-plan` | Codex + Gemini + Claude | 多方觀點實作規劃，適用於架構決策 |
 
 > `/pi-ui-review` 已在 v0.17.0 移除：UI/UX 審查直接請 Claude Code 做；想要跨 provider 的第二意見，用 `/pi-multi-review <file>`，它的 Gemini 那一路專審設計、UX 和無障礙。
@@ -254,16 +256,16 @@ Gemini 讀取設計規格文件，產出可在瀏覽器預覽的自包含 HTML m
 
 旗艦指令。同一份程式碼**同時**送給 Codex 和 Gemini 進行**分工 adversarial review**——Codex 攻擊 security 與 data integrity（auth、data loss、race condition、schema drift 等 7 類），Gemini 攻擊 design、UX 與 maintainability（edge case UX、accessibility、abstraction leak、test coverage 等 7 類）。Claude 整合分析：
 
-1. **共識區** — 雙方都指出的問題（高信心度，優先修復）
+1. **共識區** — 雙方都指出的問題（優先修復）
 2. **分歧區** — 只有一方發現的問題（Claude 判斷有效性）
 3. **規範合規** — 違反 `CLAUDE.md` / `Agents.md` 專案規則的問題
 4. **Claude 補充** — 雙方都沒抓到但值得注意的問題
 
-**信心度評分**（[spec](spec/confidence-scoring-v1.md)）：所有 provider 的每個 issue 都會被打 0–100 分，基於**證據品質**而非 Claude 的觀點。只有 ≥ 80 分的 issue 會進入最終輸出。Base score 40，正面因子：具體行號（+25）、本次 diff 引入的程式碼（+25）、引用規則（+20）、可重現場景（+15）、多方共識（+20）。雜訊因子：主觀風格偏好（-25）、linter 可偵測（-25）、幻覺引用（-50）。此 framework 是 deterministic、model-agnostic 的[獨立標準](spec/confidence-scoring-v1.md)。
+**每一條發現都查證**（已在 `main`，npm 套件還沒有；v0.17.0 仍是 0–100 打分）：Claude 對照程式碼檢查每一家提出的每一條發現，標上一個標籤：**Confirmed**、**Refuted**、**Unconfirmed**（附上要知道什麼才能判斷），或 **Out of scope**（問題可能是真的，但不在這次 diff 的範圍：沒被動到的既有程式碼，或專案的 linter 本來就會抓）。引用的檔案和符號用 Glob/Grep 查證，引用了不存在的東西就判 Refuted。Refuted 和 Out of scope 的發現列在報告最後並附理由，不會被藏起來。分數拿掉之後，`--verbose` 和 `show scores` 也一起拿掉了。
 
 **智慧路由**（v0.7.0）：自動從檔案副檔名和路徑偵測改動的 domain（frontend/backend/fullstack）。合成時，domain 權威的 provider 享有更高權重——前端由 Gemini 主導（UI/UX 專長），後端由 Codex 主導（安全/演算法專長）。第一輪審查兩方 provider 都會呼叫，權重只影響 Claude 如何處理分歧。
 
-**先到先出報告、修完再複審**（已在 `main`，npm 套件還沒有）：不用等比較慢的那一家。哪家先回來（通常是 Codex）就先出完整報告，另一家標 `pending`，晚到的結果補在報告後面。如果那時你已經開始修了，補充段會註明它審的是舊版，每一條標上「已修」「仍存在」或「位置已變」。修完再跑一次 `--recheck`：這次只叫 Codex，Codex 和 Claude 會把上一份報告的每一條（包括 Gemini 提的）逐條對照現在的程式碼，標「已修」「仍存在」或「沒驗到」。複審就是最後一輪，剩下的問題只分「現在修」和「記成待辦」，不會再建議審第三輪。
+**先到先出報告、修完再複審**（已在 `main`，npm 套件還沒有）：不用等比較慢的那一家。哪家先回來（通常是 Codex）就先出完整報告，另一家標 `pending`，晚到的結果補在報告後面。如果那時你已經開始修了，補充段會註明它審的是舊版，每一條標上「已修」「仍存在」或「沒驗到」。修完再跑一次 `--recheck`：這次只叫 Codex，Codex 和 Claude 會把上一份報告的每一條（包括 Gemini 提的）逐條對照現在的程式碼，標「已修」「仍存在」或「沒驗到」。複審就是最後一輪，剩下的問題只分「現在修」和「記成待辦」，不會再建議審第三輪。
 
 ```
 /pi-multi-review                   # review staged changes
@@ -400,7 +402,7 @@ claude-prism/
 │       └── traffic-stats.yml   # GitHub traffic 資料收集（每週）
 ├── docs/                       # 深度文件（見下方延伸閱讀）
 ├── spec/                       # 獨立規格文件
-│   └── confidence-scoring-v1.md  # Evidence-based 雜訊過濾 framework
+│   └── confidence-scoring-v1.md  # 證據導向評分（/pi-multi-review 已停用；/pi-code-review 與 CI 仍在用）
 ├── commands/                   # Slash command 定義（Markdown）
 ├── scripts/                    # CLI 包裝腳本與工具（Bash）
 │   ├── call-codex.sh           # Codex CLI 包裝（含 soft-timeout）
@@ -495,7 +497,7 @@ export CODEX_MODEL="o3"
 | 隱私與資料流向 — 送出什麼、留在本地什麼、Provider 條款 | [docs/privacy.md](docs/privacy.md) | [docs/privacy.zh-TW.md](docs/privacy.zh-TW.md) |
 | 隨想 — 設計筆記與心得 | [docs/reflections.md](docs/reflections.md) | [docs/reflections.zh-TW.md](docs/reflections.zh-TW.md) |
 | 研究 — sub-agent fan-out 設計背後的 Bash tool 分層研究 | [docs/research/bash-tool-parallelism.md](docs/research/bash-tool-parallelism.md) | — |
-| [Confidence Scoring Framework](spec/confidence-scoring-v1.md) | normative spec | — |
+| [Confidence Scoring Framework](spec/confidence-scoring-v1.md) | spec：`/pi-multi-review` 已停用，`/pi-code-review` 與 CI 仍在用 | — |
 | [CHANGELOG](CHANGELOG.md) | 版本歷史 | — |
 
 ---

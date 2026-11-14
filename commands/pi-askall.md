@@ -157,4 +157,4 @@ Claude's integrated conclusion. Not a vote count — weigh arguments by reasonin
 - Works with any topic: code, architecture, strategy, writing, decisions, plans
 - Works outside git repos — Codex sandbox auto-downgrades to `none` for pure Q&A
 - Keep injected context under 4000 chars per provider — summarize larger content
-- For structured code review with confidence scoring, use `/pi-code-review` or `/pi-multi-review` instead
+- For structured code review, use `/pi-code-review` (confidence scoring) or `/pi-multi-review` (each finding checked and labeled) instead
