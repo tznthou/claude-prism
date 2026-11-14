@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - **BREAKING: `/pi-fact-check`** — ask Claude Code directly to fact-check with web search. The command's Gemini track only added a second search engine, one whose links the command itself treated as the less trustworthy, and under agy's headless mode it came back empty whenever Gemini tried to open a page (`ReadUrlContent` is auto-denied). What was left, WebSearch plus Claude's own judgment, is something Claude Code does without a wrapper. On upgrade, `install.sh` removes the installed copy, as it did for `/pi-ui-review`.
 - **BREAKING: `/pi-code-review`** — use `/pi-multi-review --codex-only` (see Added). The two commands shared their scope rules, guideline and PR-history gathering, prompt template and output rules, kept in sync by hand; `/pi-code-review` also still scored findings 0–100, which `/pi-multi-review` dropped in v0.18.0 because nearly every finding scored 100. On upgrade, `install.sh` removes the installed copy and points to `--codex-only`.
 - **BREAKING: `review-insights.sh`** — it summarized `~/.claude/logs/review-insights.jsonl`, and `/pi-code-review` was the last command writing that file. `install.sh` now also removes retired scripts: it deletes an installed `review-insights.sh` and leaves an existing `review-insights.jsonl` in place, since that is the user's data.
+- **BREAKING: `calibrate-timeout.sh`** — its p99 left out the calls that hit the timeout, the slow calls a timeout is there to bound, so following its suggestion pushed timeouts down; no command or workflow called it. On upgrade, `install.sh` removes the installed copy.
 
 #### Added (`/pi-multi-review`)
 
@@ -17,7 +18,7 @@ All notable changes to this project will be documented in this file.
 #### Fixed (`/pi-research`)
 
 - **Gemini stays on its search results** — agy's headless print mode auto-denies any tool that needs approval (opening a page, reading a file, running a command), and a single denial ends the turn with no output. The Gemini prompt now says to work only from search results, and the rule that asks for an exact quote behind version numbers, release dates and breaking changes now quotes from the search results instead of sending Gemini to the page. One verification run on agy 1.4.6: a search-grounded answer, no tool denials.
-- **Waits up to 540s for Gemini** (was 300s) — that verification run took 319s, so the old ceiling would have cut it off. The wrapper returns as soon as Gemini does, so a higher ceiling costs nothing on normal runs and only bounds a stalled call. `calibrate-timeout.sh` now counts `pi-research` in the heavy class, in the slot `pi-fact-check` held.
+- **Waits up to 540s for Gemini** (was 300s) — that verification run took 319s, so the old ceiling would have cut it off. The wrapper returns as soon as Gemini does, so a higher ceiling costs nothing on normal runs and only bounds a stalled call.
 - **Gemini's citation links are resolved** — Gemini cites through Google grounding redirect links (`vertexaisearch.cloud.google.com/grounding-api-redirect/…`), which hide the source's domain. Source validation now resolves them to the real URLs first, and the Sources table shows the resolved URL.
 - **WebFetch isn't shown the quote it is checking** — WebFetch answers through a small model that tends to agree with what it is shown. Source validation now asks for the page's own sentences on the topic and compares them itself; a "not on the page" answer marks the source unverified and is never treated as evidence that the claim is false.
 
@@ -25,10 +26,12 @@ All notable changes to this project will be documented in this file.
 
 - Smoke T20.3: an earlier install's `pi-fact-check.md` is removed on upgrade, with the reason printed; T20.2 also checks that a fresh install says nothing about it.
 - Smoke T20.4 / T20.5: an earlier install's `pi-code-review.md` and `review-insights.sh` are removed on upgrade, and `review-insights.jsonl` is kept; T20.2 covers both. T7 now checks that `review-insights.sh` is no longer shipped (its three tests of the script are gone). T29: `--codex-only` text checks, and no command points to `/pi-code-review`. T20.1 uses `pi-multi-review.md` as its "other commands installed" sample.
+- Smoke T7.2 / T20.6: `calibrate-timeout.sh` is no longer shipped, and an earlier install's copy is removed on upgrade with the reason printed; T20.2 covers it. T7 is now "Retired scripts".
+- **README.md + README.zh-TW.md** — `calibrate-timeout.sh` removed from the file tree.
 - **`/pi-code-review` removed from the docs** — both READMEs (command list, its section, the architecture diagram, How It Works, the Codex-only note, the FAQ, the file trees), CONTRIBUTING, `docs/cost`, and `/pi-askall`'s pointer to the review commands; `/pi-multi-review`'s README section describes `--codex-only`. The confidence scoring spec, README and CONTRIBUTING now say only the CI review uses scores. `docs/observability` replaces the Review Insights section with a removal note, and `docs/privacy` describes `review-insights.jsonl` as pre-v0.19.0 data.
 - **README.md + README.zh-TW.md** — `/pi-fact-check` removed from the command list, the architecture diagram and the fan-out note; the acknowledgment keeps its credit in the past tense; `/pi-research` now says how it keeps Gemini on search results and resolves its citations.
 - **docs/cost{,.zh-TW}.md** — `/pi-fact-check` row removed.
-- **checksums.sha256** — regenerated; 16 entries after the removals.
+- **checksums.sha256** — regenerated; 15 entries after the removals.
 
 ## v0.18.0 (2026-11-14) — `/pi-multi-review`: findings labeled instead of scored, report on the first provider, `--recheck` for fixes; Antigravity terms risk documented
 

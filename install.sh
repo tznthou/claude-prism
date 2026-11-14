@@ -199,6 +199,12 @@ if [[ -f "$CLAUDE_DIR/scripts/review-insights.sh" ]]; then
     rm "$CLAUDE_DIR/scripts/review-insights.sh"
     info "Removed review-insights.sh (retired in v0.19.0): no command writes review-insights.jsonl anymore; an existing one is left in ~/.claude/logs/"
 fi
+# calibrate-timeout.sh: retired in v0.19.0. Its p99 left out calls that hit
+# the timeout, so its suggestion pushed timeouts down; nothing calls it.
+if [[ -f "$CLAUDE_DIR/scripts/calibrate-timeout.sh" ]]; then
+    rm "$CLAUDE_DIR/scripts/calibrate-timeout.sh"
+    info "Removed calibrate-timeout.sh (retired in v0.19.0): its p99 left out timed-out calls, so it suggested timeouts that were too short"
+fi
 
 # ─── Install commands ───
 echo ""
