@@ -1419,6 +1419,15 @@ else
     fail "T26.1 pi-multi-review: expected --recheck in the argument list, Codex-only dispatch, 'skipped (recheck)', and the two-round cap"
 fi
 
+# T26.2 a recheck checks the previous round's findings one by one: Codex gets
+# them in its prompt, and Claude checks them too (Gemini is not consulted).
+if grep -q 'BEGIN PREVIOUS FINDINGS' "$T26_SKILL" && grep -qF '[Fixed|Still present|Not verified]' "$T26_SKILL" && \
+   grep -q '^#### 6\.4a Previous findings' "$T26_SKILL" && grep -qF '### Previous Findings (recheck)' "$T26_SKILL"; then
+    pass "T26.2 pi-multi-review --recheck checks previous findings item by item"
+else
+    fail "T26.2 pi-multi-review: expected the previous-findings block in the Codex prompt, the three labels, Step 6.4a, and the Previous Findings table"
+fi
+
 # ─── Summary ───
 echo ""
 echo "─────────────────────────────────────────"
