@@ -25,6 +25,7 @@ Same as `/pi-code-review`, based on `$ARGUMENTS`:
 - `--diff` → unstaged changes
 - `--pr` → PR diff
 - `--verbose` → also show issues that were filtered out (< 80 confidence) with their scores
+- `--recheck` → this run reviews the fixes for the previous round's findings. Combine it with any scope above (e.g. `--recheck --diff`). Only Codex is consulted (Step 3c), and this is the last round for this change (Step 7, Action Items)
 
 ### 2. Get the code
 
@@ -194,6 +195,8 @@ $(code)
 
 **Step 3c — Send ONE response with two `Agent` tool calls in parallel.** Both use `subagent_type: "general-purpose"`. Fill `<CODEX_PROMPT>` / `<GEMINI_PROMPT>` with the actual paths from Step 3b, and `<WORKDIR>` with the path from Step 0 — do not run `pwd` again here.
 
+**With `--recheck`, send only the Codex agent.** A recheck reviews fixes to findings already raised, and Codex is the provider whose findings held up when they were checked. Do not build or write the Gemini prompt in Steps 3a–3b, and do not spawn the Gemini agent. Gemini's Provider Status is `skipped (recheck)` and its Verdict Comparison cell is `—`. The report is written once Codex returns, so Step 7.1 does not apply. If Codex fails or is hollow, Claude reviews alone and notes "⚠️ Codex unavailable ([reason]) — recheck by Claude alone." Do not send Gemini in its place.
+
 <!-- Keep in sync with commands/pi-askall.md and commands/pi-plan.md — the sub-agent Bash template shape is shared across these three skills. -->
 
 **Why the Bash template below uses `wrapper_out=$(...) < "<PATH>"` rather than `cat <PATH> | ...`** (skill-maintainer note — NOT shipped to the sub-agent):
@@ -244,7 +247,7 @@ Same template as the Codex agent, with these substitutions:
 
 Both agents dispatch in parallel because they share a single main-conversation response. Sub-agents run in the background and each one notifies the main conversation when it finishes, so the two results arrive separately — Gemini usually several minutes after Codex.
 
-**Report on the first result; do not wait for the second.** As soon as the first provider returns (usually Codex), run Steps 4–7 with that provider plus Claude and present the full report, with the other provider marked `pending` in Provider Status and Verdict Comparison. When the second provider's notification arrives, append its results under Step 7.1. If Gemini returns first, the roles swap: the report uses Gemini plus Claude, and Codex is the one marked `pending` and added in the addendum.
+**Report on the first result; do not wait for the second** (without `--recheck`; a recheck has only one provider). As soon as the first provider returns (usually Codex), run Steps 4–7 with that provider plus Claude and present the full report, with the other provider marked `pending` in Provider Status and Verdict Comparison. When the second provider's notification arrives, append its results under Step 7.1. If Gemini returns first, the roles swap: the report uses Gemini plus Claude, and Codex is the one marked `pending` and added in the addendum.
 
 - If both results are already in when you start Step 4, write a single report with both and skip Step 7.1.
 - If the first provider to return failed or is hollow (Steps 4–5), wait for the second before reporting, so the report is not Claude alone while a provider is still running.
@@ -437,7 +440,7 @@ Render provider text severity tags as emoji in the final output: CRITICAL→🔴
 | Provider | Status |
 |----------|--------|
 | Codex | [available/unavailable — reason] |
-| Gemini | [available/unavailable — reason/pending] |
+| Gemini | [available/unavailable — reason/pending/skipped (recheck)] |
 | Claude | available (always) |
 
 ### Domain & Weighting
@@ -484,6 +487,10 @@ A verdict split between providers is a real signal — call it out explicitly an
 ```
 
 The template shows the usual order, Gemini `pending`; if Gemini returned first, Codex is the `pending` row. While a provider is `pending`, end the report with: "⏳ [Provider] is still reviewing — its findings will be added as an addendum."
+
+**Two rounds at most per change.** A first-round report (no `--recheck`) ends its Action Items with: "After fixing these, run `/pi-multi-review --recheck` at most once." A `--recheck` report is the last round:
+- Mark every Action Item either **Fix now** or **Defer** (record it as a follow-up task — an issue or TODO — rather than leaving it in the report).
+- Do not suggest another review round, and do not end with the `--recheck` line above.
 
 ### 7.1 Gemini addendum (the provider that returns second)
 

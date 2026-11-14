@@ -1404,6 +1404,21 @@ else
     fail "T25.1 pi-multi-review: expected no 'When both return', a '### 7.1 Gemini addendum' step, DIFF_HASH, and a pending status"
 fi
 
+# ─── Test 26: /pi-multi-review --recheck ───
+# A recheck goes to Codex only, Gemini is marked skipped, and it is the
+# last round: the report does not suggest a third.
+echo ""
+echo "26. pi-multi-review --recheck..."
+
+T26_SKILL="$SCRIPT_DIR/commands/pi-multi-review.md"
+if grep -q '^- `--recheck`' "$T26_SKILL" && grep -q 'send only the Codex agent' "$T26_SKILL" && \
+   grep -q 'skipped (recheck)' "$T26_SKILL" && grep -q 'Two rounds at most per change' "$T26_SKILL" && \
+   grep -q 'run `/pi-multi-review --recheck` at most once' "$T26_SKILL"; then
+    pass "T26.1 pi-multi-review has --recheck (Codex only) and a two-round cap"
+else
+    fail "T26.1 pi-multi-review: expected --recheck in the argument list, Codex-only dispatch, 'skipped (recheck)', and the two-round cap"
+fi
+
 # ─── Summary ───
 echo ""
 echo "─────────────────────────────────────────"
