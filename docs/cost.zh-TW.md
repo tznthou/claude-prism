@@ -13,10 +13,9 @@ claude-prism 是本地端 wrapper——它本身不處理也不計費 token。�
 | `/pi-ask-codex` | 1 (Codex) | 500–2K | 500–2K | 隨問題複雜度增減 |
 | `/pi-ask-gemini` | 1 (Gemini) | 500–2K | 500–2K | 隨問題複雜度增減 |
 | `/pi-askall` | 2 (Codex + Gemini) | 各 500–2K | 各 500–2K | 兩個 provider 並行呼叫 |
-| `/pi-code-review` | 1 (Codex) | 2K–10K | 1K–4K | 隨 diff 大小增減 |
 | `/pi-ui-design` | 1 (Gemini) | 1K–3K | 3K–8K | 產出較重（HTML 生成） |
 | `/pi-research` | 1 (Gemini) + 2–4 (WebSearch) | 1K–5K | 2K–8K | 雙軌搜尋；隨主題複雜度增減 |
-| `/pi-multi-review` | 2 (Codex + Gemini) | 上述 ×2 | 上述 ×2 | 兩個 provider 並行呼叫 |
+| `/pi-multi-review` | 2 (Codex + Gemini) | 各 2K–10K | 各 1K–4K | 兩個 provider 並行呼叫；帶 `--codex-only` 或 `--recheck` 時只有 1 (Codex) |
 | `/pi-plan` | 0–2（可選） | 各 1K–5K | 各 1K–4K | 僅在 provider 可用時諮詢 |
 
 Token 範圍為近似值，隨輸入大小（diff 長度、檔案數、問題複雜度）變動。不同 provider 使用不同的 tokenization 方法——這些數字是數量級估算，非帳單精確值。

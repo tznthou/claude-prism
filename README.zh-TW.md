@@ -67,7 +67,7 @@ Anthropic 在 2026-04-16 隨 Claude Opus 4.7 一起推出 [`/ultrareview`](https
 
 ### 與 `codex-plugin-cc`（OpenAI 官方）的比較
 
-這一段我們直說。OpenAI 自己出了 [`codex-plugin-cc`](https://github.com/openai/codex-plugin-cc)——官方的 Claude Code plugin（截至 2026-11-14 有 35,119★，Apache-2.0），免費把 Codex review 送進 Claude Code。它的 `adversarial-review` 和我們的 `/pi-code-review` 核心指令逐字相同：*"break confidence in the change, not to validate it."* 除此之外，較新的 `codex-cli` 還內建了 `codex review` 這個 subcommand。
+這一段我們直說。OpenAI 自己出了 [`codex-plugin-cc`](https://github.com/openai/codex-plugin-cc)——官方的 Claude Code plugin（截至 2026-11-14 有 35,119★，Apache-2.0），免費把 Codex review 送進 Claude Code。它的 `adversarial-review` 和我們的 `/pi-multi-review --codex-only` 核心指令逐字相同：*"break confidence in the change, not to validate it."* 除此之外，較新的 `codex-cli` 還內建了 `codex review` 這個 subcommand。
 
 **如果你要的第二意見只有 Codex，那就用官方的。** 它是官方出品、資源更多，架構上也更前面——它透過常駐 broker 連 Codex app-server，不是每次呼叫都開一支 CLI，直接繞開了我們花六個版本在處理的那一整類 timeout 問題。
 
@@ -94,7 +94,7 @@ Anthropic 在 2026-04-16 隨 Claude Opus 4.7 一起推出 [`/ultrareview`](https
 
 claude-prism 不問 reviewer 有多確定，而是換另一個模型來查。在 `/pi-multi-review` 裡，Claude 會讀每一條發現指到的程式碼，標上 **Confirmed**（失敗情境確實會發生）、**Refuted**（不會：程式碼根本不在，或行為跟它說的不一樣）、**Unconfirmed**（光看程式碼判斷不了，報告會寫要知道什麼才能判斷），或 **Out of scope**（可能是真的，但不是這次 diff 該修的）。標籤仍然是模型的判斷，不是公式算出來的；能讓人檢查的地方在於每個標籤都附理由，而且沒有任何一條被藏起來。引用的檔案和符號用 Glob/Grep 機械式查證，指向不存在程式碼的發現不可能被標成 Confirmed。
 
-`/pi-code-review` 和 CI review 還在用先前的證據導向 0–100 分（[Confidence Scoring Framework](spec/confidence-scoring-v1.md)），`/pi-multi-review` 已經不用了。
+只剩 CI review 還在用先前的證據導向 0–100 分（[Confidence Scoring Framework](spec/confidence-scoring-v1.md)），slash command 都不再打分數。
 
 ---
 
@@ -126,7 +126,7 @@ claude-prism 不問 reviewer 有多確定，而是換另一個模型來查。在
 > - [Antigravity 附加服務條款](https://antigravity.google/terms)第 6 條：*"This includes, but is not limited to, using the Service in connection with products not provided by us. Using third party software, tools, or services to access the Service (e.g. using OpenClaw with Antigravity OAuth) is a breach of this Agreement. Such actions may be grounds for suspension or termination of your Antigravity and/or Gemini CLI accounts."*
 > - FAQ [點名 Claude Code 的那一條](https://antigravity.google/docs/faq#why-cant-i-use-third-party-software-such-as-claude-code-openclaw-or-opencode-with-my-antigravity-login)，建議第三方 coding agent 改用 Gemini Enterprise 或 Google AI Studio 的 API key。
 >
-> 所以在個人方案上跑 Gemini 指令，可能導致 Antigravity 帳號被停權或終止。互動式的 Gemini 指令目前只支援 `agy` 登入；只有 `ci-review.sh` 是用 `GEMINI_API_KEY` 直接呼叫 Gemini API。不想承擔這個風險，就不要安裝 `agy`：`/pi-ask-codex` 和 `/pi-code-review` 只靠 Codex 就能跑。
+> 所以在個人方案上跑 Gemini 指令，可能導致 Antigravity 帳號被停權或終止。互動式的 Gemini 指令目前只支援 `agy` 登入；只有 `ci-review.sh` 是用 `GEMINI_API_KEY` 直接呼叫 Gemini API。不想承擔這個風險，就不要安裝 `agy`：`/pi-ask-codex` 和 `/pi-multi-review --codex-only` 只靠 Codex 就能跑。
 
 ### 安裝
 
@@ -187,15 +187,16 @@ npx claud-prism-aireview --uninstall
 | `/pi-ask-codex` | Codex | 直接提問 — 取得 OpenAI 觀點 |
 | `/pi-ask-gemini` | Gemini | 直接提問 — 取得 Google 觀點 |
 | `/pi-askall` | Codex + Gemini + Claude | 同時詢問所有 provider — 三方觀點 + 綜合分析 |
-| `/pi-code-review` | Codex | 對抗式程式碼審查 — 打破信心而非驗證（含信心度評分） |
 | `/pi-ui-design` | Gemini | 從設計規格產生 HTML mockup |
 | `/pi-research` | Gemini + WebSearch + Claude | 結構化技術研究 — 雙軌搜尋（Gemini + WebSearch 同步） |
-| `/pi-multi-review` | Codex + Gemini + Claude | 三方對抗式審查 — 分工攻擊面（智慧路由 + 每條發現逐一查證標註） |
+| `/pi-multi-review` | Codex + Gemini + Claude | 三方對抗式審查 — 分工攻擊面（智慧路由 + 每條發現逐一查證標註）；`--codex-only` 只送 Codex |
 | `/pi-plan` | Codex + Gemini + Claude | 多方觀點實作規劃，適用於架構決策 |
 
 > `/pi-ui-review` 已在 v0.17.0 移除：UI/UX 審查直接請 Claude Code 做；想要跨 provider 的第二意見，用 `/pi-multi-review <file>`，它的 Gemini 那一路專審設計、UX 和無障礙。
 >
 > `/pi-fact-check` 已在 v0.19.0 移除：事實查核直接請 Claude Code 用網路搜尋做。它的 Gemini 那一路只是多一個搜尋引擎，而且在 agy 的 headless 模式下，Gemini 只要想打開網頁，整次就沒有輸出。
+>
+> `/pi-code-review` 已在 v0.19.0 移除：改用 `/pi-multi-review --codex-only`。同樣是 Codex 審查、同樣的攻擊面，發現改成跟其他 `/pi-multi-review` 報告一樣逐條查證標註，不再打分數。
 
 所有指令皆內建 **graceful degradation** — 若某個 provider 不可用，Claude 會用剩餘的 provider 繼續執行，而非直接失敗。每次失敗都附帶**結構化錯誤診斷**（TIMEOUT、RATE_LIMIT、AUTH_ERROR、PERMISSION、SANDBOX、NETWORK、EMPTY_OUTPUT、CLI_ERROR 或 CLI_NOT_FOUND）並建議替代指令。
 
@@ -222,19 +223,6 @@ npx claud-prism-aireview --uninstall
 ```
 /pi-askall 新的微服務該用 monorepo 還是 polyrepo？
 /pi-askall 協作編輯器的即時同步最佳方案？
-```
-
-### `/pi-code-review` — 對抗式 Code Review
-
-Codex 以**對抗式立場** review Claude 寫的程式碼——reviewer 的任務是打破你對這份改動的信心，而非驗證它。核心用例依然是**不同 AI 寫、不同 AI 審**，但 prompt 從中性的 "Senior Reviewer" 升級為 adversarial stance，定義了 9 類攻擊面（auth、data loss、race condition、rollback safety 等），每個 finding 必須回答四個問題：會出什麼問題、為什麼脆弱、影響多大、怎麼修。
-
-每個 issue 都會使用 [Confidence Scoring Framework](spec/confidence-scoring-v1.md) 打 0–100 分——evidence-based、deterministic 的雜訊過濾。只有 ≥ 80 分的 issue 會顯示。Review 同時檢查 inline annotation 合規性（`IMPORTANT`/`WARNING`/`TODO` 註解），`--pr` 模式下還會查詢同檔案的歷史 PR 評論，浮現反覆出現的問題。
-
-```
-/pi-code-review                    # review staged changes
-/pi-code-review src/auth.ts        # review 指定檔案
-/pi-code-review --diff             # review unstaged changes
-/pi-code-review --pr               # review 整個 PR
 ```
 
 ### `/pi-ui-design` — 從設計規格產生 HTML Mockup
@@ -270,9 +258,12 @@ Gemini 讀取設計規格文件，產出可在瀏覽器預覽的自包含 HTML m
 
 **先到先出報告、修完再複審**：不用等比較慢的那一家。哪家先回來（通常是 Codex）就先出完整報告，另一家標 `pending`，晚到的結果補在報告後面。如果那時你已經開始修了，補充段會註明它審的是舊版，每一條標上「已修」「仍存在」或「沒驗到」。修完再跑一次 `--recheck`：這次只叫 Codex，Codex 和 Claude 會把上一份報告的每一條（包括 Gemini 提的）逐條對照現在的程式碼，標「已修」「仍存在」或「沒驗到」。複審就是最後一輪，剩下的問題只分「現在修」和「記成待辦」，不會再建議審第三輪。
 
+**只送 Codex**：`--codex-only` 不叫 Gemini，改讓 Codex 看完整的攻擊面，而不是只看安全那一半（安全那份清單，再加上空狀態、null、逾時、依賴降級）。發現一樣逐條查證標註。沒裝 `agy`，或不想等 Gemini、一兩分鐘就要結果時用它。它取代了 v0.19.0 移除的 `/pi-code-review`。
+
 ```
 /pi-multi-review                   # review staged changes
 /pi-multi-review --pr              # review 整個 PR
+/pi-multi-review --codex-only      # 只送 Codex，完整攻擊面
 /pi-multi-review --recheck         # 修完之後：只送 Codex，逐條核對上一輪的問題
 ```
 
@@ -296,7 +287,7 @@ Gemini 讀取設計規格文件，產出可在瀏覽器預覽的自包含 HTML m
 ```mermaid
 flowchart LR
     User["👤 使用者"] <--> Claude["🟣 Claude Code\n(調度者)"]
-    Claude -->|"/pi-ask-codex\n/pi-askall\n/pi-code-review\n/pi-multi-review\n/pi-plan"| Codex["🟢 Codex CLI"]
+    Claude -->|"/pi-ask-codex\n/pi-askall\n/pi-multi-review\n/pi-plan"| Codex["🟢 Codex CLI"]
     Claude -->|"/pi-ask-gemini\n/pi-askall\n/pi-ui-design\n/pi-research\n/pi-multi-review\n/pi-plan"| Gemini["🔵 agy (Antigravity CLI)"]
     CI["⚙️ GitHub Actions"] -->|"ci-review.sh"| GeminiAPI["🔵 Gemini API"]
     CI -->|"ci-review.sh"| OpenAIAPI["🟢 OpenAI API"]
@@ -305,14 +296,13 @@ flowchart LR
 
 ### 運作原理
 
-1. 使用者在 Claude Code 輸入 slash command（如 `/pi-code-review src/auth.ts`）
+1. 使用者在 Claude Code 輸入 slash command（如 `/pi-multi-review src/auth.ts`）
 2. Claude Code 讀取 command 定義（含指示的 Markdown）
 3. Claude 讀取相關程式碼，組裝 prompt
 4. 若指令需要同時呼叫兩個以上 provider，Claude 透過 **sub-agent fan-out** 分派（詳見下方[實證基礎](#實證基礎)）
 5. 各 sub-agent 透過 Bash tool 呼叫 shell script → script 調用外部 CLI
 6. 外部 AI 並行處理請求並回傳結果
 7. Claude 呈現綜合結果，適時加入自己的觀點
-8. `/pi-code-review` 完成後，Claude 會解讀 provider 的輸出（嚴重度、分類、來源），把結構化結果寫入 `review-insights.jsonl` 供日後趨勢分析
 
 ---
 
@@ -405,7 +395,7 @@ claude-prism/
 │       └── traffic-stats.yml   # GitHub traffic 資料收集（每週）
 ├── docs/                       # 深度文件（見下方延伸閱讀）
 ├── spec/                       # 獨立規格文件
-│   └── confidence-scoring-v1.md  # 證據導向評分（/pi-multi-review 已停用；/pi-code-review 與 CI 仍在用）
+│   └── confidence-scoring-v1.md  # 證據導向評分（只剩 CI review 在用）
 ├── commands/                   # Slash command 定義（Markdown）
 ├── scripts/                    # CLI 包裝腳本與工具（Bash）
 │   ├── call-codex.sh           # Codex CLI 包裝（含 soft-timeout）
@@ -414,8 +404,7 @@ claude-prism/
 │   ├── analyze-log.sh          # 呼叫生命週期診斷
 │   ├── ci-review.sh            # CI/CD review 調度器（curl API）
 │   ├── calibrate-timeout.sh     # Per-skill timeout 校準器（p99-based）
-│   ├── usage-summary.sh        # API 使用量統計
-│   └── review-insights.sh      # Review 趨勢分析
+│   └── usage-summary.sh        # API 使用量統計
 ├── tests/smoke-test.sh
 ├── checksums.sha256            # SHA256 checksum 完整性驗證
 ├── install.sh / uninstall.sh
@@ -431,8 +420,7 @@ claude-prism/
 ├── scripts/                    # ← 包裝腳本複製到此
 └── logs/
     ├── multi-ai-YYYY-MM.log    # 呼叫紀錄，月度輪替（v0.14.4+）
-    ├── multi-ai.log            # Symlink → 當月 log 檔
-    └── review-insights.jsonl   # 結構化 review 歷史（由 /pi-code-review 寫入）
+    └── multi-ai.log            # Symlink → 當月 log 檔
 ```
 
 ---
@@ -500,7 +488,7 @@ export CODEX_MODEL="o3"
 | 隱私與資料流向 — 送出什麼、留在本地什麼、Provider 條款 | [docs/privacy.md](docs/privacy.md) | [docs/privacy.zh-TW.md](docs/privacy.zh-TW.md) |
 | 隨想 — 設計筆記與心得 | [docs/reflections.md](docs/reflections.md) | [docs/reflections.zh-TW.md](docs/reflections.zh-TW.md) |
 | 研究 — sub-agent fan-out 設計背後的 Bash tool 分層研究 | [docs/research/bash-tool-parallelism.md](docs/research/bash-tool-parallelism.md) | — |
-| [Confidence Scoring Framework](spec/confidence-scoring-v1.md) | spec：`/pi-multi-review` 已停用，`/pi-code-review` 與 CI 仍在用 | — |
+| [Confidence Scoring Framework](spec/confidence-scoring-v1.md) | spec：slash command 已停用，只剩 CI review 在用 | — |
 | [CHANGELOG](CHANGELOG.md) | 版本歷史 | — |
 
 ---
@@ -513,7 +501,7 @@ Logging 預設開啟，檢查 `~/.claude/logs/multi-ai.log` 即可驗證。每�
 
 **Q: 如果我只裝了其中一個 provider 的 CLI？**
 
-沒問題。所有指令都內建 graceful degradation 和**結構化錯誤診斷**——若 provider 不可用，失敗訊息會包含具體原因（TIMEOUT、RATE_LIMIT、AUTH_ERROR、PERMISSION、SANDBOX、NETWORK、EMPTY_OUTPUT、CLI_ERROR 或 CLI_NOT_FOUND）並建議替代指令。`/pi-multi-review` 和 `/pi-askall` 會使用 Claude + 可用的 provider（兩方觀點取代三方）。`/pi-code-review` 會退回 Claude 獨立審查並加註同源盲點警告，同時建議改用 `/pi-multi-review`。`/pi-research` 採用雙軌搜尋（Gemini + WebSearch 同步）；若兩者皆失敗才退至 Claude 訓練資料。
+沒問題。所有指令都內建 graceful degradation 和**結構化錯誤診斷**——若 provider 不可用，失敗訊息會包含具體原因（TIMEOUT、RATE_LIMIT、AUTH_ERROR、PERMISSION、SANDBOX、NETWORK、EMPTY_OUTPUT、CLI_ERROR 或 CLI_NOT_FOUND）並建議替代指令。`/pi-multi-review` 和 `/pi-askall` 會使用 Claude + 可用的 provider（兩方觀點取代三方）。帶 `--codex-only` 時若 Codex 不可用，Claude 會自己審並註明。`/pi-research` 採用雙軌搜尋（Gemini + WebSearch 同步）；若兩者皆失敗才退至 Claude 訓練資料。
 
 **Q: 如果 provider 回傳格式不符預期？**
 

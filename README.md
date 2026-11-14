@@ -67,7 +67,7 @@ The two tools optimize for different scenarios. `/ultrareview` is a solid pre-me
 
 ### Compared to `codex-plugin-cc` (OpenAI official)
 
-Let's be direct about this one. OpenAI ships [`codex-plugin-cc`](https://github.com/openai/codex-plugin-cc) — an official Claude Code plugin (35,119★ as of 2026-11-14, Apache-2.0) that puts Codex review inside Claude Code for free. Its `adversarial-review` prompt and our `/pi-code-review` share the same core instruction, word for word: *"break confidence in the change, not to validate it."* On top of that, recent `codex-cli` builds ship `codex review` as a built-in subcommand.
+Let's be direct about this one. OpenAI ships [`codex-plugin-cc`](https://github.com/openai/codex-plugin-cc) — an official Claude Code plugin (35,119★ as of 2026-11-14, Apache-2.0) that puts Codex review inside Claude Code for free. Its `adversarial-review` prompt and our `/pi-multi-review --codex-only` share the same core instruction, word for word: *"break confidence in the change, not to validate it."* On top of that, recent `codex-cli` builds ship `codex review` as a built-in subcommand.
 
 **If Codex is the only second opinion you want, use theirs.** It's official, better resourced, and architecturally ahead — it talks to the Codex app-server through a persistent broker instead of spawning a CLI per call, which sidesteps an entire class of timeout problems we spent six releases on.
 
@@ -94,7 +94,7 @@ Most AI review tools use a similar approach: have the AI score its own findings 
 
 claude-prism doesn't ask the reviewer how sure it is. A second model checks the finding instead: in `/pi-multi-review`, Claude reads the code each finding points at and labels it **Confirmed** (the failure scenario holds), **Refuted** (it doesn't — the code is not there, or doesn't behave as claimed), **Unconfirmed** (the code can't settle it, and the report says what would), or **Out of scope** (possibly real, but not this diff's to fix). The label is still a model's judgment, not a formula; what makes it checkable is that every label comes with its reason, and nothing is filtered out of sight. Cited files and symbols are looked up mechanically with Glob/Grep, so a reference to code that isn't there can't pass as Confirmed.
 
-`/pi-code-review` and the CI review still use the earlier evidence-based 0–100 score ([Confidence Scoring Framework](spec/confidence-scoring-v1.md)), which `/pi-multi-review` has retired.
+Only the CI review still uses the earlier evidence-based 0–100 score ([Confidence Scoring Framework](spec/confidence-scoring-v1.md)); the slash commands no longer score findings.
 
 ---
 
@@ -126,7 +126,7 @@ claude-prism doesn't ask the reviewer how sure it is. A second model checks the 
 > - [Antigravity Additional Terms](https://antigravity.google/terms), section 6: *"This includes, but is not limited to, using the Service in connection with products not provided by us. Using third party software, tools, or services to access the Service (e.g. using OpenClaw with Antigravity OAuth) is a breach of this Agreement. Such actions may be grounds for suspension or termination of your Antigravity and/or Gemini CLI accounts."*
 > - The [FAQ entry that names Claude Code](https://antigravity.google/docs/faq#why-cant-i-use-third-party-software-such-as-claude-code-openclaw-or-opencode-with-my-antigravity-login) recommends a Gemini Enterprise or Google AI Studio API key for third-party coding agents.
 >
-> Running the Gemini commands on a consumer plan may therefore get your Antigravity account suspended or terminated. The interactive Gemini commands currently support only `agy` sign-in; `ci-review.sh` is the only path that calls the Gemini API with `GEMINI_API_KEY`. If you'd rather not take the risk, don't install `agy`: `/pi-ask-codex` and `/pi-code-review` run on Codex alone.
+> Running the Gemini commands on a consumer plan may therefore get your Antigravity account suspended or terminated. The interactive Gemini commands currently support only `agy` sign-in; `ci-review.sh` is the only path that calls the Gemini API with `GEMINI_API_KEY`. If you'd rather not take the risk, don't install `agy`: `/pi-ask-codex` and `/pi-multi-review --codex-only` run on Codex alone.
 
 ### Install
 
@@ -187,15 +187,16 @@ npx claud-prism-aireview --uninstall
 | `/pi-ask-codex` | Codex | Direct Q&A — get OpenAI's perspective |
 | `/pi-ask-gemini` | Gemini | Direct Q&A — get Google's perspective |
 | `/pi-askall` | Codex + Gemini + Claude | Ask all providers the same question — three perspectives with synthesis |
-| `/pi-code-review` | Codex | Adversarial code review — break confidence in changes, not validate them (with confidence scoring) |
 | `/pi-ui-design` | Gemini | HTML mockup from design spec |
 | `/pi-research` | Gemini + WebSearch + Claude | Structured technical research — dual-track search (Gemini + WebSearch parallel) |
-| `/pi-multi-review` | Codex + Gemini + Claude | Triple-provider adversarial review with divided attack surfaces (smart routing + every finding checked and labeled) |
+| `/pi-multi-review` | Codex + Gemini + Claude | Triple-provider adversarial review with divided attack surfaces (smart routing + every finding checked and labeled); `--codex-only` for a Codex-only review |
 | `/pi-plan` | Codex + Gemini + Claude | Multi-provider implementation planning for architectural decisions |
 
 > `/pi-ui-review` was removed in v0.17.0: ask Claude Code directly for UI/UX review; for a cross-provider second opinion, use `/pi-multi-review <file>` — its Gemini track focuses on design, UX, and accessibility.
 >
 > `/pi-fact-check` was removed in v0.19.0: ask Claude Code directly to fact-check with web search. Its Gemini track only added a second search engine, and under agy's headless mode it came back empty whenever Gemini tried to open a page.
+>
+> `/pi-code-review` was removed in v0.19.0: use `/pi-multi-review --codex-only`. It is the same Codex review with the same attack surface, and its findings are checked and labeled like every other `/pi-multi-review` report instead of scored.
 
 All commands include **graceful degradation** — if a provider is unavailable, Claude continues with the remaining providers instead of failing. Every failure includes a **structured error diagnostic** (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, SANDBOX, NETWORK, EMPTY_OUTPUT, CLI_ERROR, or CLI_NOT_FOUND) and suggests an alternative command.
 
@@ -222,19 +223,6 @@ Ask Codex and Gemini the same question in parallel and read the answers side by 
 ```
 /pi-askall Should we use a monorepo or polyrepo for the new microservices?
 /pi-askall What's the best approach for real-time sync in a collaborative editor?
-```
-
-### `/pi-code-review` — Adversarial Code Review
-
-Codex reviews code that Claude wrote with an **adversarial stance** — the reviewer's job is to break confidence in the change, not validate it. The core use case is still **different AI, different blind spots**, but the prompt has been upgraded from a neutral "Senior Reviewer" to an adversarial role with 9 attack surface categories (auth, data loss, race conditions, rollback safety, etc.), a finding bar (every finding must answer: what can go wrong, why vulnerable, likely impact, concrete fix), and calibration rules ("prefer one strong finding over several weak ones").
-
-Each issue is scored 0–100 using the [Confidence Scoring Framework](spec/confidence-scoring-v1.md) — evidence-based, deterministic noise filtering. Only issues scoring ≥ 80 are shown. Reviews also check inline annotation compliance (`IMPORTANT`/`WARNING`/`TODO` comments) and, in `--pr` mode, surface recurring issues from historical PR comments on the same files.
-
-```
-/pi-code-review                    # review staged changes
-/pi-code-review src/auth.ts        # review specific file
-/pi-code-review --diff             # review unstaged changes
-/pi-code-review --pr               # review entire PR
 ```
 
 ### `/pi-ui-design` — HTML Mockup from Design Spec
@@ -270,9 +258,12 @@ The flagship command. Sends the same code to **both** Codex and Gemini for **adv
 
 **Report on the first result, recheck the fixes**: you don't wait for the slower provider. The report appears as soon as one returns — usually Codex — with the other shown as `pending`, and the late one is appended as an addendum. If you've already started fixing by then, the addendum says it reviewed an earlier version and marks each of its findings Fixed, Still present, or Not verified. After fixing, run it once more with `--recheck`: only Codex is called, and Codex and Claude both go through every finding from the previous report, Gemini's included, marking each Fixed, Still present, or Not verified. That's the last round — whatever is left is marked Fix now or Defer, and no third pass is suggested.
 
+**Codex only**: `--codex-only` skips Gemini and gives Codex the whole attack surface instead of the security half (the security list plus empty-state, null, timeout, and degraded-dependency behavior). The findings are checked and labeled the same way. Use it when you don't have `agy`, or want a review in a minute or two instead of waiting on Gemini. It replaces `/pi-code-review`, removed in v0.19.0.
+
 ```
 /pi-multi-review                   # review staged changes
 /pi-multi-review --pr              # review entire PR
+/pi-multi-review --codex-only      # Codex alone, full attack surface
 /pi-multi-review --recheck         # after fixing: Codex only, previous findings checked one by one
 ```
 
@@ -296,7 +287,7 @@ Best for complex decisions; for simple task breakdown, use Claude Code's built-i
 ```mermaid
 flowchart LR
     User["👤 You"] <--> Claude["🟣 Claude Code\n(Orchestrator)"]
-    Claude -->|"/pi-ask-codex\n/pi-askall\n/pi-code-review\n/pi-multi-review\n/pi-plan"| Codex["🟢 Codex CLI"]
+    Claude -->|"/pi-ask-codex\n/pi-askall\n/pi-multi-review\n/pi-plan"| Codex["🟢 Codex CLI"]
     Claude -->|"/pi-ask-gemini\n/pi-askall\n/pi-ui-design\n/pi-research\n/pi-multi-review\n/pi-plan"| Gemini["🔵 agy (Antigravity CLI)"]
     CI["⚙️ GitHub Actions"] -->|"ci-review.sh"| GeminiAPI["🔵 Gemini API"]
     CI -->|"ci-review.sh"| OpenAIAPI["🟢 OpenAI API"]
@@ -305,14 +296,13 @@ flowchart LR
 
 ### How It Works
 
-1. User types a slash command in Claude Code (e.g., `/pi-code-review src/auth.ts`)
+1. User types a slash command in Claude Code (e.g., `/pi-multi-review src/auth.ts`)
 2. Claude Code reads the command definition (Markdown with instructions)
 3. Claude reads the relevant code, builds a prompt
 4. For commands that call two or more providers, Claude fans out via **sub-agents** (see [Empirical Foundation](#empirical-foundation) below)
 5. Each sub-agent calls its shell script via Bash tool → script invokes the external CLI
 6. External AIs process requests in parallel, return results
 7. Claude presents the synthesis, adding its own perspective where relevant
-8. For `/pi-code-review`, Claude interprets the provider's output (severity, category, source) and appends a structured record to `review-insights.jsonl` for trend analysis
 
 ---
 
@@ -405,7 +395,7 @@ claude-prism/
 │       └── traffic-stats.yml   # GitHub traffic data collection (weekly)
 ├── docs/                       # Deep-dive documentation (see Documentation below)
 ├── spec/                       # Standalone specifications
-│   └── confidence-scoring-v1.md  # Evidence-based scoring (retired in /pi-multi-review; /pi-code-review and CI still use it)
+│   └── confidence-scoring-v1.md  # Evidence-based scoring (only the CI review still uses it)
 ├── commands/                   # Slash command definitions (Markdown)
 ├── scripts/                    # CLI wrappers & utilities (Bash)
 │   ├── call-codex.sh           # Codex CLI wrapper (with soft-timeout)
@@ -414,8 +404,7 @@ claude-prism/
 │   ├── analyze-log.sh          # Invocation lifecycle diagnostics
 │   ├── ci-review.sh            # CI/CD review orchestrator (curl APIs)
 │   ├── calibrate-timeout.sh     # Per-skill timeout calibrator (p99-based)
-│   ├── usage-summary.sh        # API usage statistics
-│   └── review-insights.sh      # Review pattern analysis
+│   └── usage-summary.sh        # API usage statistics
 ├── tests/smoke-test.sh
 ├── checksums.sha256            # SHA256 checksums for integrity verification
 ├── install.sh / uninstall.sh
@@ -431,8 +420,7 @@ Installed to:
 ├── scripts/                    # ← wrapper scripts copied here
 └── logs/
     ├── multi-ai-YYYY-MM.log    # Call logs, monthly rotation (v0.14.4+)
-    ├── multi-ai.log            # Symlink → current month's log file
-    └── review-insights.jsonl   # Structured review history (written by /pi-code-review)
+    └── multi-ai.log            # Symlink → current month's log file
 ```
 
 ---
@@ -500,7 +488,7 @@ Everything beyond "how to install and use" lives in [`docs/`](docs/):
 | Privacy & Data Flow — what leaves your machine, what stays local, provider terms | [docs/privacy.md](docs/privacy.md) | [docs/privacy.zh-TW.md](docs/privacy.zh-TW.md) |
 | Reflections — design notes and lessons learned | [docs/reflections.md](docs/reflections.md) | [docs/reflections.zh-TW.md](docs/reflections.zh-TW.md) |
 | Research — Bash tool parallelism study behind the sub-agent fan-out design | [docs/research/bash-tool-parallelism.md](docs/research/bash-tool-parallelism.md) | — |
-| [Confidence Scoring Framework](spec/confidence-scoring-v1.md) | spec — retired in `/pi-multi-review`, still used by `/pi-code-review` and CI | — |
+| [Confidence Scoring Framework](spec/confidence-scoring-v1.md) | spec — retired in the slash commands, still used by the CI review | — |
 | [CHANGELOG](CHANGELOG.md) | version history | — |
 
 ---
@@ -513,7 +501,7 @@ With logging enabled (default), check `~/.claude/logs/multi-ai.log` to verify. E
 
 **Q: What if I only have one provider CLI installed?**
 
-That's fine. All commands include graceful degradation with **structured error diagnostics** — if a provider is unavailable, the failure message includes the specific reason (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, SANDBOX, NETWORK, EMPTY_OUTPUT, CLI_ERROR, or CLI_NOT_FOUND) and suggests an alternative command. `/pi-multi-review` and `/pi-askall` will use Claude + the available provider (two perspectives instead of three). `/pi-code-review` will fall back to a Claude-only review with a caveat note and suggest `/pi-multi-review`. `/pi-research` uses dual-track search (Gemini + WebSearch simultaneously); if both fail, it falls back to Claude's training data.
+That's fine. All commands include graceful degradation with **structured error diagnostics** — if a provider is unavailable, the failure message includes the specific reason (TIMEOUT, RATE_LIMIT, AUTH_ERROR, PERMISSION, SANDBOX, NETWORK, EMPTY_OUTPUT, CLI_ERROR, or CLI_NOT_FOUND) and suggests an alternative command. `/pi-multi-review` and `/pi-askall` will use Claude + the available provider (two perspectives instead of three). With `--codex-only`, if Codex is unavailable, Claude reviews alone and says so. `/pi-research` uses dual-track search (Gemini + WebSearch simultaneously); if both fail, it falls back to Claude's training data.
 
 **Q: What if a provider returns an unexpected format?**
 

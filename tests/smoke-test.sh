@@ -40,7 +40,7 @@ done
 echo ""
 echo "2. Command files..."
 
-for cmd in pi-ask-codex pi-ask-gemini pi-code-review pi-multi-review pi-plan pi-research pi-ui-design; do
+for cmd in pi-ask-codex pi-ask-gemini pi-multi-review pi-plan pi-research pi-ui-design; do
     if [[ -f "$SCRIPT_DIR/commands/$cmd.md" ]]; then
         pass "/$(basename "$cmd") command definition exists"
     else
@@ -137,35 +137,16 @@ else
     fail "usage-summary.sh unexpected output: $SUMMARY_OUT"
 fi
 
-# ─── Test 7: Review insights script ───
+# ─── Test 7: review-insights.sh retired (v0.19.0) ───
+# No command writes review-insights.jsonl since /pi-code-review was folded
+# into /pi-multi-review --codex-only, so the script that read it is gone.
 echo ""
-echo "7. Review insights..."
+echo "7. Review insights (retired)..."
 
-if [[ -x "$SCRIPT_DIR/scripts/review-insights.sh" ]]; then
-    pass "review-insights.sh exists and is executable"
+if [[ ! -e "$SCRIPT_DIR/scripts/review-insights.sh" ]]; then
+    pass "T7.1 review-insights.sh is no longer shipped"
 else
-    fail "review-insights.sh missing or not executable"
-fi
-
-# Test with synthetic data
-TEMP_LOG=$(mktemp -d)
-echo '{"date":"2026-01-01T00:00:00Z","project":"test","scope":"staged","domain":"fullstack","providers":["claude"],"issues":[{"category":"security","severity":"critical","confidence":85,"title":"Test issue","source":"claude-only"}]}' > "$TEMP_LOG/review-insights.jsonl"
-INSIGHTS_OUT=$(MULTI_AI_LOG_DIR="$TEMP_LOG" "$SCRIPT_DIR/scripts/review-insights.sh" 2>&1) || true
-rm -rf "$TEMP_LOG"
-if echo "$INSIGHTS_OUT" | grep -q "Issues by Category"; then
-    pass "review-insights.sh parses JSONL and produces report"
-else
-    fail "review-insights.sh unexpected output"
-fi
-
-# Test empty state (no file)
-EMPTY_DIR=$(mktemp -d)
-EMPTY_OUT=$(MULTI_AI_LOG_DIR="$EMPTY_DIR" "$SCRIPT_DIR/scripts/review-insights.sh" 2>&1) || true
-rm -rf "$EMPTY_DIR"
-if echo "$EMPTY_OUT" | grep -q "No review insights"; then
-    pass "review-insights.sh handles missing file gracefully"
-else
-    fail "review-insights.sh empty state handling unexpected"
+    fail "T7.1 review-insights.sh still in scripts/"
 fi
 
 # ─── Test 8: CI review script ───
@@ -1099,7 +1080,7 @@ T20_RC1=$?
 set -e
 if [[ $T20_RC1 -eq 0 ]] && [[ ! -e "$T20_HOME1/.claude/commands/pi-ui-review.md" ]] && \
    grep -q "Removed /pi-ui-review" "$T20_HOME1/install.out" && \
-   [[ -f "$T20_HOME1/.claude/commands/pi-code-review.md" ]]; then
+   [[ -f "$T20_HOME1/.claude/commands/pi-multi-review.md" ]]; then
     pass "T20.1 upgrade removes the retired /pi-ui-review and says why (other commands installed)"
 else
     fail "T20.1 retired-command cleanup: rc=$T20_RC1 still_installed=$([[ -e "$T20_HOME1/.claude/commands/pi-ui-review.md" ]] && echo yes || echo no) message=$(grep -c 'Removed /pi-ui-review' "$T20_HOME1/install.out")"
@@ -1111,10 +1092,10 @@ set +e
 HOME="$T20_HOME2" bash "$SCRIPT_DIR/install.sh" > "$T20_HOME2/install.out" 2>&1
 T20_RC2=$?
 set -e
-if [[ $T20_RC2 -eq 0 ]] && ! grep -q -E "pi-ui-review|pi-fact-check" "$T20_HOME2/install.out"; then
-    pass "T20.2 fresh install prints nothing about /pi-ui-review or /pi-fact-check"
+if [[ $T20_RC2 -eq 0 ]] && ! grep -q -E "pi-ui-review|pi-fact-check|pi-code-review|review-insights" "$T20_HOME2/install.out"; then
+    pass "T20.2 fresh install prints nothing about retired commands or scripts"
 else
-    fail "T20.2 fresh install: rc=$T20_RC2; $(grep -E 'pi-ui-review|pi-fact-check' "$T20_HOME2/install.out" | head -2 | tr '\n' ' ')"
+    fail "T20.2 fresh install: rc=$T20_RC2; $(grep -E 'pi-ui-review|pi-fact-check|pi-code-review|review-insights' "$T20_HOME2/install.out" | head -2 | tr '\n' ' ')"
 fi
 
 # T20.3 an earlier install left pi-fact-check.md behind → removed, with a reason
@@ -1131,6 +1112,42 @@ if [[ $T20_RC3 -eq 0 ]] && [[ ! -e "$T20_HOME3/.claude/commands/pi-fact-check.md
     pass "T20.3 upgrade removes the retired /pi-fact-check and says why (other commands installed)"
 else
     fail "T20.3 retired-command cleanup: rc=$T20_RC3 still_installed=$([[ -e "$T20_HOME3/.claude/commands/pi-fact-check.md" ]] && echo yes || echo no) message=$(grep -c 'Removed /pi-fact-check' "$T20_HOME3/install.out")"
+fi
+
+# T20.4 an earlier install left pi-code-review.md behind → removed, pointing at
+# its replacement
+T20_HOME4=$(mktemp -d); T13_LOGDIRS+=("$T20_HOME4")
+mkdir -p "$T20_HOME4/.claude/commands"
+echo "# copy installed by an earlier version" > "$T20_HOME4/.claude/commands/pi-code-review.md"
+set +e
+HOME="$T20_HOME4" bash "$SCRIPT_DIR/install.sh" > "$T20_HOME4/install.out" 2>&1
+T20_RC4=$?
+set -e
+if [[ $T20_RC4 -eq 0 ]] && [[ ! -e "$T20_HOME4/.claude/commands/pi-code-review.md" ]] && \
+   grep -q "Removed /pi-code-review.*--codex-only" "$T20_HOME4/install.out" && \
+   [[ -f "$T20_HOME4/.claude/commands/pi-multi-review.md" ]]; then
+    pass "T20.4 upgrade removes the retired /pi-code-review and points to --codex-only"
+else
+    fail "T20.4 retired-command cleanup: rc=$T20_RC4 still_installed=$([[ -e "$T20_HOME4/.claude/commands/pi-code-review.md" ]] && echo yes || echo no) message=$(grep -c 'Removed /pi-code-review' "$T20_HOME4/install.out")"
+fi
+
+# T20.5 an earlier install left review-insights.sh behind → removed; the
+# user's review-insights.jsonl is left alone
+T20_HOME5=$(mktemp -d); T13_LOGDIRS+=("$T20_HOME5")
+mkdir -p "$T20_HOME5/.claude/scripts" "$T20_HOME5/.claude/logs"
+echo "# copy installed by an earlier version" > "$T20_HOME5/.claude/scripts/review-insights.sh"
+echo '{"date":"2026-01-01T00:00:00Z"}' > "$T20_HOME5/.claude/logs/review-insights.jsonl"
+set +e
+HOME="$T20_HOME5" bash "$SCRIPT_DIR/install.sh" > "$T20_HOME5/install.out" 2>&1
+T20_RC5=$?
+set -e
+if [[ $T20_RC5 -eq 0 ]] && [[ ! -e "$T20_HOME5/.claude/scripts/review-insights.sh" ]] && \
+   grep -q "Removed review-insights.sh" "$T20_HOME5/install.out" && \
+   [[ -s "$T20_HOME5/.claude/logs/review-insights.jsonl" ]] && \
+   [[ -f "$T20_HOME5/.claude/scripts/call-codex.sh" ]]; then
+    pass "T20.5 upgrade removes the retired review-insights.sh and keeps review-insights.jsonl"
+else
+    fail "T20.5 retired-script cleanup: rc=$T20_RC5 still_installed=$([[ -e "$T20_HOME5/.claude/scripts/review-insights.sh" ]] && echo yes || echo no) jsonl_kept=$([[ -s "$T20_HOME5/.claude/logs/review-insights.jsonl" ]] && echo yes || echo no)"
 fi
 
 # ─── Test 21: fan-out sub-agents pin the working directory (v0.17.0) ───
@@ -1396,7 +1413,8 @@ fi
 
 # ─── Test 24: /pi-multi-review no longer writes review insights ───
 # The step that appended a record to review-insights.jsonl after every
-# multi-provider review was removed; /pi-code-review still writes it.
+# multi-provider review was removed (v0.18.0); since v0.19.0 no command
+# writes it.
 echo ""
 echo "24. pi-multi-review insights step removed..."
 
@@ -1476,6 +1494,31 @@ if grep -q '^| \*\*Out of scope\*\* |' "$T28_SKILL" && grep -q '^#### 6\.6 Out o
     pass "T28.1 pi-multi-review has an Out of scope label and section; Refuted excludes pre-existing and linter cases"
 else
     fail "T28.1 pi-multi-review: expected the Out of scope label row, 6.6, the Out of Scope Findings table, and a Refuted row without pre-existing/linter"
+fi
+
+# ─── Test 29: /pi-multi-review --codex-only ───
+# /pi-code-review was folded in: --codex-only sends Codex alone, with the full
+# attack surface (the security list plus empty-state/null/timeout), Gemini
+# marked skipped, and no addendum.
+echo ""
+echo "29. pi-multi-review --codex-only..."
+
+T29_SKILL="$SCRIPT_DIR/commands/pi-multi-review.md"
+if grep -q '^- `--codex-only`' "$T29_SKILL" && grep -q '^\*\*Codex-only substitutions\*\*' "$T29_SKILL" && \
+   grep -q 'With `--codex-only`, send only the Codex agent' "$T29_SKILL" && \
+   grep -q 'skipped (codex-only)' "$T29_SKILL" && \
+   grep -q '^  5\. Empty-state, null, timeout, degraded dependency behavior$' "$T29_SKILL" && \
+   ! grep -q 'pi-code-review' "$T29_SKILL"; then
+    pass "T29.1 pi-multi-review has --codex-only (Codex alone, full attack surface)"
+else
+    fail "T29.1 pi-multi-review: expected --codex-only in the argument list, Codex-only substitutions with the empty-state item, Codex-only dispatch, 'skipped (codex-only)', and no pointer to /pi-code-review"
+fi
+
+if [[ ! -e "$SCRIPT_DIR/commands/pi-code-review.md" ]] && \
+   ! grep -rq 'pi-code-review' "$SCRIPT_DIR/commands/"; then
+    pass "T29.2 /pi-code-review is no longer shipped or pointed to by other commands"
+else
+    fail "T29.2 pi-code-review.md still shipped, or a command still mentions it: $(grep -rl 'pi-code-review' "$SCRIPT_DIR/commands/" | tr '\n' ' ')"
 fi
 
 # ─── Summary ───

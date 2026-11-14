@@ -2,11 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
-## v0.19.0 (unreleased) — `/pi-fact-check` retired; `/pi-research` keeps Gemini on its search results
+## v0.19.0 (unreleased) — `/pi-fact-check` retired; `/pi-research` keeps Gemini on its search results; `/pi-code-review` folded into `/pi-multi-review --codex-only`
 
 #### Removed
 
 - **BREAKING: `/pi-fact-check`** — ask Claude Code directly to fact-check with web search. The command's Gemini track only added a second search engine, one whose links the command itself treated as the less trustworthy, and under agy's headless mode it came back empty whenever Gemini tried to open a page (`ReadUrlContent` is auto-denied). What was left, WebSearch plus Claude's own judgment, is something Claude Code does without a wrapper. On upgrade, `install.sh` removes the installed copy, as it did for `/pi-ui-review`.
+- **BREAKING: `/pi-code-review`** — use `/pi-multi-review --codex-only` (see Added). The two commands shared their scope rules, guideline and PR-history gathering, prompt template and output rules, kept in sync by hand; `/pi-code-review` also still scored findings 0–100, which `/pi-multi-review` dropped in v0.18.0 because nearly every finding scored 100. On upgrade, `install.sh` removes the installed copy and points to `--codex-only`.
+- **BREAKING: `review-insights.sh`** — it summarized `~/.claude/logs/review-insights.jsonl`, and `/pi-code-review` was the last command writing that file. `install.sh` now also removes retired scripts: it deletes an installed `review-insights.sh` and leaves an existing `review-insights.jsonl` in place, since that is the user's data.
+
+#### Added (`/pi-multi-review`)
+
+- **`--codex-only`** — sends Codex alone, combined with any scope (`--diff`, `--pr`, a file). Codex gets the full attack surface instead of the security half it covers next to Gemini: the security list plus empty-state, null, timeout and degraded-dependency behavior, the eight items `/pi-code-review` used. Findings are labeled Confirmed / Refuted / Unconfirmed / Out of scope like any other report; Gemini shows `skipped (codex-only)` and there is no addendum. With `--recheck`, the recheck applies as before and `--codex-only` changes nothing.
 
 #### Fixed (`/pi-research`)
 
@@ -18,9 +24,11 @@ All notable changes to this project will be documented in this file.
 #### Changed (tests and docs)
 
 - Smoke T20.3: an earlier install's `pi-fact-check.md` is removed on upgrade, with the reason printed; T20.2 also checks that a fresh install says nothing about it.
+- Smoke T20.4 / T20.5: an earlier install's `pi-code-review.md` and `review-insights.sh` are removed on upgrade, and `review-insights.jsonl` is kept; T20.2 covers both. T7 now checks that `review-insights.sh` is no longer shipped (its three tests of the script are gone). T29: `--codex-only` text checks, and no command points to `/pi-code-review`. T20.1 uses `pi-multi-review.md` as its "other commands installed" sample.
+- **`/pi-code-review` removed from the docs** — both READMEs (command list, its section, the architecture diagram, How It Works, the Codex-only note, the FAQ, the file trees), CONTRIBUTING, `docs/cost`, and `/pi-askall`'s pointer to the review commands; `/pi-multi-review`'s README section describes `--codex-only`. The confidence scoring spec, README and CONTRIBUTING now say only the CI review uses scores. `docs/observability` replaces the Review Insights section with a removal note, and `docs/privacy` describes `review-insights.jsonl` as pre-v0.19.0 data.
 - **README.md + README.zh-TW.md** — `/pi-fact-check` removed from the command list, the architecture diagram and the fan-out note; the acknowledgment keeps its credit in the past tense; `/pi-research` now says how it keeps Gemini on search results and resolves its citations.
 - **docs/cost{,.zh-TW}.md** — `/pi-fact-check` row removed.
-- **checksums.sha256** — regenerated; 18 entries after the removal.
+- **checksums.sha256** — regenerated; 16 entries after the removals.
 
 ## v0.18.0 (2026-11-14) — `/pi-multi-review`: findings labeled instead of scored, report on the first provider, `--recheck` for fixes; Antigravity terms risk documented
 

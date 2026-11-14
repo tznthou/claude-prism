@@ -102,7 +102,7 @@ shellcheck scripts/*.sh tests/*.sh install.sh uninstall.sh
 - Command definitions live in `commands/pi-*.md`
 - Prompts are written in English; output language follows the user's Claude Code settings
 - Include graceful degradation instructions for provider failures
-- Review commands check findings against the code: `/pi-multi-review` labels each one Confirmed / Refuted / Unconfirmed / Out of scope; `/pi-code-review` still uses the [Confidence Scoring Framework](spec/confidence-scoring-v1.md), which is retired for `/pi-multi-review`
+- Review commands check findings against the code: `/pi-multi-review` labels each one Confirmed / Refuted / Unconfirmed / Out of scope. Only the CI review (`ci-review.sh`) still uses the [Confidence Scoring Framework](spec/confidence-scoring-v1.md)
 
 ### Commit Convention
 
@@ -148,7 +148,7 @@ For changes to command prompts or provider interactions, manually test in Claude
 ./install.sh
 
 # Test in Claude Code
-# /pi-code-review --dry-run
+# /pi-ask-codex --dry-run "test prompt"
 # /pi-ask-gemini --dry-run "test prompt"
 ```
 

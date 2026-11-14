@@ -13,10 +13,9 @@ claude-prism is a local wrapper — it does not process or bill tokens itself. E
 | `/pi-ask-codex` | 1 (Codex) | 500–2K | 500–2K | Scales with question complexity |
 | `/pi-ask-gemini` | 1 (Gemini) | 500–2K | 500–2K | Scales with question complexity |
 | `/pi-askall` | 2 (Codex + Gemini) | 500–2K each | 500–2K each | Both providers called in parallel |
-| `/pi-code-review` | 1 (Codex) | 2K–10K | 1K–4K | Scales with diff size |
 | `/pi-ui-design` | 1 (Gemini) | 1K–3K | 3K–8K | Output-heavy (HTML generation) |
 | `/pi-research` | 1 (Gemini) + 2–4 (WebSearch) | 1K–5K | 2K–8K | Dual-track search; scales with topic complexity |
-| `/pi-multi-review` | 2 (Codex + Gemini) | Above ×2 | Above ×2 | Both providers called in parallel |
+| `/pi-multi-review` | 2 (Codex + Gemini) | 2K–10K each | 1K–4K each | Both providers called in parallel; 1 (Codex) with `--codex-only` or `--recheck` |
 | `/pi-plan` | 0–2 (optional) | 1K–5K each | 1K–4K each | Providers consulted only if available |
 
 Token ranges are approximate and vary with input size (diff length, file count, question complexity). Different providers use different tokenization methods — these figures are order-of-magnitude estimates, not billing-accurate counts.
