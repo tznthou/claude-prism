@@ -1445,6 +1445,22 @@ else
     fail "T27.1 pi-multi-review: expected no 'score = clamp', --verbose, show scores or Moved; the three labels, hallucination verification, and 6.5 Refuted findings"
 fi
 
+# ─── Test 28: /pi-multi-review Out of scope label ───
+# Real issues outside the diff (existing code, linter-caught) are Out of
+# scope, listed apart from Refuted; Refuted no longer covers pre-existing code.
+echo ""
+echo "28. pi-multi-review Out of scope label..."
+
+T28_SKILL="$SCRIPT_DIR/commands/pi-multi-review.md"
+T28_REFUTED=$(grep '^| \*\*Refuted\*\* |' "$T28_SKILL")
+if grep -q '^| \*\*Out of scope\*\* |' "$T28_SKILL" && grep -q '^#### 6\.6 Out of scope findings' "$T28_SKILL" && \
+   grep -qF '### Out of Scope Findings' "$T28_SKILL" && [[ -n "$T28_REFUTED" ]] && \
+   ! grep -qi 'pre-existing' <<< "$T28_REFUTED" && ! grep -qi 'linter' <<< "$T28_REFUTED"; then
+    pass "T28.1 pi-multi-review has an Out of scope label and section; Refuted excludes pre-existing and linter cases"
+else
+    fail "T28.1 pi-multi-review: expected the Out of scope label row, 6.6, the Out of Scope Findings table, and a Refuted row without pre-existing/linter"
+fi
+
 # ─── Summary ───
 echo ""
 echo "─────────────────────────────────────────"
