@@ -1,6 +1,6 @@
 # 可觀測性
 
-claude-prism 在本地留下的紀錄與診斷——使用量、review 趨勢、呼叫生命週期、以及 Claude Code 快取 TTL 行為的注意事項。
+claude-prism 在本地留下的紀錄與診斷——使用量、呼叫生命週期、以及 Claude Code 快取 TTL 行為的注意事項。
 
 [English](observability.md) · [← 返回 README](../README.zh-TW.md)
 
@@ -19,45 +19,9 @@ claude-prism 在本地留下的紀錄與診斷——使用量、review 趨勢、
 
 輸出包含各 provider 呼叫次數、成功/失敗/dry-run 分佈、粗估 token 量（~4 字元/token）。
 
-## Review 趨勢分析
+## Review 趨勢分析（v0.19.0 移除）
 
-每次 `/pi-code-review` 結束時，Claude 會解讀 provider 的輸出——把 emoji 嚴重度對應為字串、推斷發現來源、依信心門檻過濾——再把結構化結果寫入 `~/.claude/logs/review-insights.jsonl`。底下的腳本用 `jq` 讀這個檔案產出純粹的計數，趨勢解讀則可請 Claude 接手：
-
-```bash
-~/.claude/scripts/review-insights.sh              # 計數統計（不含 AI 解讀）
-~/.claude/scripts/review-insights.sh --recent 10  # 最近 10 次
-~/.claude/scripts/review-insights.sh --project my-app  # 篩選專案
-```
-
-輸出包含：
-- **分類分佈** — security、performance、design、logic 等（含長條圖）
-- **嚴重度分佈** — critical / medium / suggestion
-- **發現來源** — 共識 vs 單一 provider 發現
-- **最常見問題** — 重複出現的模式會標記
-- **近期 review 時間軸** — 最近 5 次 review 及問題數量
-
-每筆 review 紀錄格式：
-
-```json
-{
-  "date": "2026-02-24T10:30:00Z",
-  "project": "my-app",
-  "scope": "pr",
-  "domain": "backend",
-  "providers": ["codex", "gemini", "claude"],
-  "issues": [
-    {
-      "category": "security",
-      "severity": "critical",
-      "confidence": 95,
-      "title": "SQL injection in user input handler",
-      "source": "consensus"
-    }
-  ]
-}
-```
-
-分類：`security`、`performance`、`design`、`logic`、`maintainability`、`guideline`、`accessibility`、`other`。`guideline` 分類追蹤專案規範違規（`CLAUDE.md` / `Agents.md`）。
+`review-insights.sh` 和它讀的 `review-insights.jsonl` 紀錄已在 v0.19.0 移除：最後一個寫入紀錄的 `/pi-code-review` 已併成 `/pi-multi-review --codex-only`，現在沒有任何指令會寫入。既有的 `~/.claude/logs/review-insights.jsonl` 不會被動到，不需要的話可以自己刪掉。
 
 ## 呼叫生命週期診斷
 

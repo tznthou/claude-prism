@@ -1,6 +1,6 @@
 # AI Code Review Confidence Scoring Framework v1.0
 
-> **Status**: Retired for `/pi-multi-review` — that command now labels each finding Confirmed / Refuted / Unconfirmed / Out of scope instead of scoring it. `/pi-code-review` and the CI review (`ci-review.sh`) still apply this framework. Kept for reference; not deleted.
+> **Status**: Retired for the slash commands — `/pi-multi-review` labels each finding Confirmed / Refuted / Unconfirmed / Out of scope instead of scoring it, and `/pi-code-review` was folded into `/pi-multi-review --codex-only` in v0.19.0. Only the CI review (`ci-review.sh`) still applies this framework. Kept for reference; not deleted.
 > **Authors**: claude-prism contributors
 > **License**: MIT
 > **Date**: 2026-03-09

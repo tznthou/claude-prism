@@ -1,6 +1,6 @@
 # Observability
 
-Everything claude-prism records locally about what it did — usage, review trends, invocation diagnostics, and a note on Claude Code's cache TTL behavior.
+Everything claude-prism records locally about what it did — usage, invocation diagnostics, and a note on Claude Code's cache TTL behavior.
 
 [繁體中文](observability.zh-TW.md) · [← Back to README](../README.md)
 
@@ -19,45 +19,9 @@ Track API call volume and estimated token consumption:
 
 Output includes per-provider call counts, success/error/dry-run breakdown, and a rough token estimate (~4 chars/token).
 
-## Review Insights
+## Review Insights (removed in v0.19.0)
 
-After each `/pi-code-review`, Claude interprets the provider's output — mapping emoji severity to strings, inferring discovery source, filtering by the confidence threshold — and appends a structured record to `~/.claude/logs/review-insights.jsonl`. The script below reads that file with `jq` for raw counts; ask Claude to layer interpretation on top of the numbers:
-
-```bash
-~/.claude/scripts/review-insights.sh              # raw counts (no AI interpretation)
-~/.claude/scripts/review-insights.sh --recent 10  # last 10 reviews
-~/.claude/scripts/review-insights.sh --project my-app  # filter by project
-```
-
-Output includes:
-- **Category distribution** — security, performance, design, logic, etc. (with bar chart)
-- **Severity breakdown** — critical / medium / suggestion
-- **Discovery source** — consensus vs. single-provider findings
-- **Most frequent issues** — recurring patterns highlighted
-- **Recent review timeline** — last 5 reviews with issue counts
-
-Each review record follows this schema:
-
-```json
-{
-  "date": "2026-02-24T10:30:00Z",
-  "project": "my-app",
-  "scope": "pr",
-  "domain": "backend",
-  "providers": ["codex", "gemini", "claude"],
-  "issues": [
-    {
-      "category": "security",
-      "severity": "critical",
-      "confidence": 95,
-      "title": "SQL injection in user input handler",
-      "source": "consensus"
-    }
-  ]
-}
-```
-
-Categories: `security`, `performance`, `design`, `logic`, `maintainability`, `guideline`, `accessibility`, `other`. The `guideline` category tracks violations of project-specific rules (`CLAUDE.md` / `Agents.md`).
+`review-insights.sh` and the `review-insights.jsonl` record it read were removed in v0.19.0: `/pi-code-review`, the last command that wrote the record, was folded into `/pi-multi-review --codex-only`, and no command writes it anymore. An existing `~/.claude/logs/review-insights.jsonl` is left where it is; delete it if you don't need it.
 
 ## Invocation Diagnostics
 

@@ -63,7 +63,7 @@ else
     if [[ -x "$HOME/.npm-global/bin/codex" ]]; then
         ok "Codex CLI found at ~/.npm-global/bin/codex"
     else
-        warn "Codex CLI not found — /pi-ask-codex, /pi-code-review will not work"
+        warn "Codex CLI not found — /pi-ask-codex, /pi-multi-review --codex-only will not work"
         info "Install: npm install -g @openai/codex"
         PREREQ_OK=false
     fi
@@ -181,6 +181,24 @@ if [[ -f "$CLAUDE_DIR/commands/pi-fact-check.md" ]]; then
     rm "$CLAUDE_DIR/commands/pi-fact-check.md"
     info "Removed /pi-fact-check (retired in v0.19.0): ask Claude Code directly to fact-check with web search"
 fi
+# /pi-code-review: retired in v0.19.0. It was a Codex-only copy of
+# /pi-multi-review's review, kept in sync by hand; /pi-multi-review --codex-only
+# now runs the same review with the same attack surface.
+if [[ -f "$CLAUDE_DIR/commands/pi-code-review.md" ]]; then
+    rm "$CLAUDE_DIR/commands/pi-code-review.md"
+    info "Removed /pi-code-review (retired in v0.19.0): use /pi-multi-review --codex-only"
+fi
+
+# ─── Remove retired scripts (installed by earlier versions) ───
+# Same reason as retired commands: only what scripts/ ships is copied, so a
+# dropped script would otherwise stay installed.
+# review-insights.sh: retired in v0.19.0. It read review-insights.jsonl, which
+# no command writes since /pi-code-review was retired. The .jsonl file itself
+# is user data and is left in place.
+if [[ -f "$CLAUDE_DIR/scripts/review-insights.sh" ]]; then
+    rm "$CLAUDE_DIR/scripts/review-insights.sh"
+    info "Removed review-insights.sh (retired in v0.19.0): no command writes review-insights.jsonl anymore; an existing one is left in ~/.claude/logs/"
+fi
 
 # ─── Install commands ───
 echo ""
@@ -202,18 +220,15 @@ echo "Available commands in Claude Code:"
 echo "  /pi-ask-codex     — Ask Codex a question"
 echo "  /pi-ask-gemini    — Ask Gemini a question"
 echo "  /pi-askall        — Ask all providers + Claude synthesis"
-echo "  /pi-code-review   — Cross-provider code review via Codex"
 echo "  /pi-ui-design     — HTML mockup from design spec via Gemini"
 echo "  /pi-research      — Technical research via Gemini"
-echo "  /pi-multi-review  — Triple-provider adversarial review (with smart routing)"
+echo "  /pi-multi-review  — Triple-provider adversarial review (with smart routing; --codex-only for Codex alone)"
 echo "  /pi-plan          — Multi-provider planning for architectural decisions"
 echo ""
 echo "Utilities:"
 echo "  usage-summary    — View API usage stats (today/--week/--all)"
-echo "  review-insights  — Analyze recurring issues from review history"
 echo "  analyze-log      — Inspect call-*.sh lifecycle (diagnose auto-background kills)"
 echo "                     Run: ~/.claude/scripts/usage-summary.sh"
-echo "                          ~/.claude/scripts/review-insights.sh"
 echo "                          ~/.claude/scripts/analyze-log.sh"
 echo ""
 echo "Logs: $CLAUDE_DIR/logs/multi-ai.log"

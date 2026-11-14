@@ -19,16 +19,17 @@ Before any other step, run `pwd` and keep the result as `<WORKDIR>`. Sub-agents 
 
 ### 1. Determine review scope
 
-Same as `/pi-code-review`, based on `$ARGUMENTS`:
+Based on `$ARGUMENTS`:
 - No args → staged changes
 - File path → specified file
 - `--diff` → unstaged changes
 - `--pr` → PR diff
-- `--recheck` → this run reviews the fixes for the previous round's findings. Combine it with any scope above (e.g. `--recheck --diff`). Only Codex is consulted (Step 3c), and this is the last round for this change (Step 7, Action Items)
+- `--codex-only` → a single-provider review: only Codex is consulted, and it covers the full attack surface instead of the security half (Step 3a, Codex-only substitutions). Combine it with any scope above (e.g. `--codex-only --pr`)
+- `--recheck` → this run reviews the fixes for the previous round's findings. Combine it with any scope above (e.g. `--recheck --diff`). Only Codex is consulted (Step 3c), and this is the last round for this change (Step 7, Action Items). With both flags, `--recheck` applies as written and `--codex-only` changes nothing
 
 ### 2. Get the code
 
-Use Bash / Read tool. **The same code goes to both providers.**
+Use Bash / Read tool. **The same code goes to both providers** (to Codex alone with `--codex-only` or `--recheck`).
 
 Record a hash of the code as `<DIFF_HASH>`, using the same source as the code itself, so the provider that reports second can tell whether it reviewed what is in the tree now (Step 7.1):
 
@@ -187,6 +188,21 @@ $(code)
 - **Domain-aware surface trim**: if the domain detected in Step 2.5 is `backend`, omit item 2 (accessibility/responsive/UI states — inapplicable to backend-only diffs) and renumber the remaining items. For `frontend` and `fullstack`, keep the full list.
 - **No tools**: do not write a no-tools instruction into the Gemini prompt. The Gemini agent's Bash command passes `--no-tools` (see the Gemini agent substitutions below), and `call-gemini.sh` prepends the line itself. Gemini runs through agy in headless mode, where a tool call that needs permission is auto-denied and the turn ends with no output (EMPTY_OUTPUT). Codex gets no such flag — it keeps its repository access.
 
+**Codex-only substitutions** (only with `--codex-only` and no `--recheck`; replace the Codex substitutions above). With no Gemini to cover the other half, Codex reviews the whole change:
+- `<FOCUS>` → `correctness, security, data integrity, and resilience`
+- `<ATTACK_SURFACE_LIST>`:
+  ```
+  1. Auth, permissions, tenant isolation, trust boundary violations
+  2. Data loss, corruption, duplication, irreversible state changes
+  3. Rollback safety, retry logic, partial failure, idempotency gaps
+  4. Race conditions, ordering assumptions, stale state, re-entrancy
+  5. Empty-state, null, timeout, degraded dependency behavior
+  6. Version skew, schema drift, migration hazards
+  7. Observability gaps that would hide failures in production
+  8. Inline annotation violations (IMPORTANT/WARNING/FIXME/TODO/NOTE comments)
+  ```
+- The guideline line in the shared template is numbered `9.` instead of `8.`.
+
 **Recheck additions** (only with `--recheck`; Codex prompt only):
 - **Gather the previous round's findings.** Take them from the previous `/pi-multi-review` report in this conversation: every finding that report listed, from every provider (Codex, Gemini, and Claude's own supplements), with its provider, severity, `file:line`, title, and one-line failure scenario. If there is no previous report in this conversation, ask the user once to paste it. If they do not, run the recheck as a plain review and say in the report: "No previous findings available — fixes were not checked item by item."
 - **Insert this block into the Codex prompt immediately before the `Code:` line:**
@@ -211,9 +227,13 @@ $(code)
 1. Bash: `CODEX_PROMPT=$(mktemp -t prism-review-codex-XXXXXX.md) && GEMINI_PROMPT=$(mktemp -t prism-review-gemini-XXXXXX.md) && echo "CODEX=$CODEX_PROMPT" && echo "GEMINI=$GEMINI_PROMPT"` — capture both paths.
 2. Use the Write tool twice — write the Codex-focus prompt to `$CODEX_PROMPT` and the Gemini-focus prompt to `$GEMINI_PROMPT`.
 
+With `--codex-only` or `--recheck`, create and write only `$CODEX_PROMPT`.
+
 **Step 3c — Send ONE response with two `Agent` tool calls in parallel.** Both use `subagent_type: "general-purpose"`. Fill `<CODEX_PROMPT>` / `<GEMINI_PROMPT>` with the actual paths from Step 3b, and `<WORKDIR>` with the path from Step 0 — do not run `pwd` again here.
 
 **With `--recheck`, send only the Codex agent.** A recheck reviews fixes to findings already raised, and Codex is the provider whose findings held up when they were checked. Do not build or write the Gemini prompt in Steps 3a–3b, and do not spawn the Gemini agent. Gemini's Provider Status is `skipped (recheck)` and its Verdict Comparison cell is `—`. The report is written once Codex returns, so Step 7.1 does not apply. If Codex fails or is hollow, Claude reviews alone and notes "⚠️ Codex unavailable ([reason]) — recheck by Claude alone." Do not send Gemini in its place.
+
+**With `--codex-only`, send only the Codex agent** the same way, using the Codex-only substitutions in Step 3a. Gemini's Provider Status is `skipped (codex-only)` and its Verdict Comparison cell is `—`; Step 7.1 does not apply. If Codex fails or is hollow, Claude reviews alone and notes "⚠️ Codex unavailable ([reason]) — review by Claude alone." Do not send Gemini in its place: the user asked for Codex only.
 
 <!-- Keep in sync with commands/pi-askall.md and commands/pi-plan.md — the sub-agent Bash template shape is shared across these three skills. -->
 
@@ -235,7 +255,7 @@ Step 1. Run this exact Bash command (timeout 600000 ms; no `&`, `nohup`, or `run
     start_ts=$(date +%s)
     # CLAUDE_PRISM_TIMEOUT=540: 60s buffer below 600s Bash tool ceiling so
     # wrapper soft-timeout fires first (structured error log). Keep in sync:
-    # pi-plan.md, pi-multi-review.md, pi-code-review.md.
+    # pi-plan.md, pi-multi-review.md.
     wrapper_out=$(CLAUDE_PRISM_OUT_TMP="$OUT_PATH" CLAUDE_PRISM_TIMEOUT=540 CLAUDE_PRISM_CALLER=pi-multi-review ~/.claude/scripts/call-codex.sh "adversarial review" < "<CODEX_PROMPT>" 2>&1)
     rc=$?
     end_ts=$(date +%s)
@@ -265,7 +285,7 @@ Same template as the Codex agent, with these substitutions:
 
 Both agents dispatch in parallel because they share a single main-conversation response. Sub-agents run in the background and each one notifies the main conversation when it finishes, so the two results arrive separately — Gemini usually several minutes after Codex.
 
-**Report on the first result; do not wait for the second** (without `--recheck`; a recheck has only one provider). As soon as the first provider returns (usually Codex), run Steps 4–7 with that provider plus Claude and present the full report, with the other provider marked `pending` in Provider Status and Verdict Comparison. When the second provider's notification arrives, append its results under Step 7.1. If Gemini returns first, the roles swap: the report uses Gemini plus Claude, and Codex is the one marked `pending` and added in the addendum.
+**Report on the first result; do not wait for the second** (without `--recheck` or `--codex-only`; those have only one provider). As soon as the first provider returns (usually Codex), run Steps 4–7 with that provider plus Claude and present the full report, with the other provider marked `pending` in Provider Status and Verdict Comparison. When the second provider's notification arrives, append its results under Step 7.1. If Gemini returns first, the roles swap: the report uses Gemini plus Claude, and Codex is the one marked `pending` and added in the addendum.
 
 - If both results are already in when you start Step 4, write a single report with both and skip Step 7.1.
 - If the first provider to return failed or is hollow (Steps 4–5), wait for the second before reporting, so the report is not Claude alone while a provider is still running.
@@ -279,7 +299,7 @@ If one provider fails (script exits non-zero or returns an error message):
 - Claude always participates, so at minimum you have Claude + one external provider.
 - Include the specific failure reason from stderr (TIMEOUT, RATE_LIMIT, AUTH_ERROR, SANDBOX, PERMISSION, NETWORK, EMPTY_OUTPUT, CLI_ERROR, or CLI_NOT_FOUND).
 - In the output, clearly note: "⚠️ [Provider] unavailable ([reason]) — continuing with [other provider] + Claude."
-- If **both** external providers fail (both have returned, neither usable), Claude performs a solo review and notes: "⚠️ Both external providers unavailable ([Codex reason] / [Gemini reason]) — single-perspective review. For a single-provider review, try `/pi-code-review` (Codex) when it recovers."
+- If **both** external providers fail (both have returned, neither usable), Claude performs a solo review and notes: "⚠️ Both external providers unavailable ([Codex reason] / [Gemini reason]) — single-perspective review. For a single-provider review, try `/pi-multi-review --codex-only` when Codex recovers."
 
 A provider whose reply is hollow (see Step 5) counts as failed here: continue without it, and give it the Provider Status `unavailable — DEGRADED (hollow response)`.
 
@@ -346,6 +366,7 @@ Apply provider authority based on the detected domain:
 - When providers **disagree** → the domain-authoritative provider's opinion gets the benefit of the doubt. Note: "Weighted toward [Provider] (domain: [domain])."
 - When the domain-authoritative provider raises an issue **alone** → check it first, and when the code supports either reading, prefer its reading.
 - **Never discard** any provider's finding due to weighting. Weighting affects synthesis priority, not labels.
+- With `--codex-only` there is only one external provider and nothing to weigh: the Domain & Weighting row reads `n/a (Codex only)`.
 
 #### 6.1 Consensus (multiple providers flagged; Confirmed or Unconfirmed)
 Issues that two or more reviewers identified — **fix the Confirmed ones first**.
@@ -406,13 +427,13 @@ Render provider text severity tags as emoji in the final output: CRITICAL→🔴
 | Provider | Status |
 |----------|--------|
 | Codex | [available/unavailable — reason] |
-| Gemini | [available/unavailable — reason/pending/skipped (recheck)] |
+| Gemini | [available/unavailable — reason/pending/skipped (recheck)/skipped (codex-only)] |
 | Claude | available (always) |
 
 ### Domain & Weighting
 | Domain | Provider Authority |
 |--------|-------------------|
-| [frontend/backend/fullstack] | [Gemini-weighted / Codex-weighted / Balanced] |
+| [frontend/backend/fullstack] | [Gemini-weighted / Codex-weighted / Balanced / n/a (Codex only)] |
 
 ### Verdict Comparison
 | Provider | Verdict | Focus Area |
