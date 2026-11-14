@@ -24,7 +24,6 @@ Same as `/pi-code-review`, based on `$ARGUMENTS`:
 - File path → specified file
 - `--diff` → unstaged changes
 - `--pr` → PR diff
-- `--verbose` → also show issues that were filtered out (< 80 confidence) with their scores
 - `--recheck` → this run reviews the fixes for the previous round's findings. Combine it with any scope above (e.g. `--recheck --diff`). Only Codex is consulted (Step 3c), and this is the last round for this change (Step 7, Action Items)
 
 ### 2. Get the code
@@ -250,7 +249,7 @@ Step 1. Run this exact Bash command (timeout 600000 ms; no `&`, `nohup`, or `run
     echo "runtime=$((end_ts - start_ts))s"
     echo "response_bytes=$(wc -c < "$OUT_PATH" 2>/dev/null || echo NA)"
 
-Step 2. Return to me: the complete printed output verbatim (do NOT summarize, paraphrase, or reformat the Codex review — it will feed Claude's synthesis and confidence scoring with full fidelity), including the META block. If the Bash command printed a `[FALLBACK: ...]` line, relay that too — it signals the wrapper was silently killed and the response came from the tee safety net. If rc != 0, include any stderr — the wrapper classifies failures as TIMEOUT / RATE_LIMIT / AUTH_ERROR / SANDBOX / NETWORK / EMPTY_OUTPUT / CLI_ERROR / CLI_NOT_FOUND. If the `cd` on the first line fails, return its error as is — do not change the path or re-run the command without the `cd`.
+Step 2. Return to me: the complete printed output verbatim (do NOT summarize, paraphrase, or reformat the Codex review — it will feed Claude's synthesis with full fidelity), including the META block. If the Bash command printed a `[FALLBACK: ...]` line, relay that too — it signals the wrapper was silently killed and the response came from the tee safety net. If rc != 0, include any stderr — the wrapper classifies failures as TIMEOUT / RATE_LIMIT / AUTH_ERROR / SANDBOX / NETWORK / EMPTY_OUTPUT / CLI_ERROR / CLI_NOT_FOUND. If the `cd` on the first line fails, return its error as is — do not change the path or re-run the command without the `cd`.
 
 Only use Bash and Read tools.
 ```
@@ -302,59 +301,33 @@ External providers may not follow the requested format (no severity tags, no VER
 
 After receiving results (from the providers that have returned and succeeded so far), Claude performs integrated analysis using the domain detected in Step 2.5.
 
-#### Confidence scoring & filtering
+#### Check each finding: Confirmed / Refuted / Unconfirmed
 
-Before synthesis, Claude scores **every** issue from all providers using the [Confidence Scoring Framework](../spec/confidence-scoring-v1.md). **Only issues scoring ≥ 80 enter the synthesis.**
+Before synthesis, Claude checks **every** finding from every provider against the code and gives it exactly one label:
 
-##### Evidence extraction
+| Label | Meaning |
+|-------|---------|
+| **Confirmed** | Claude checked the code and the failure scenario holds: the cited code exists, is introduced in this diff (or is directly used by it), and behaves as the finding says. |
+| **Refuted** | Claude checked and it does not hold: a referenced file, symbol, or API does not exist (see Hallucination verification), the code does not behave as claimed, the issue is only in pre-existing code or only in code the diff removes, a linter the project runs would catch it, or it is a style preference with no guideline backing and no concrete failure. |
+| **Unconfirmed** | The code available does not settle it — it depends on runtime configuration, code outside the repository, or behavior that would have to be run to observe. State what would settle it. |
 
-For each issue from every provider, extract these fields:
-
-1. **line_numbers** — Does the issue reference specific line numbers in the diff? (not vague "around line X")
-2. **is_new_code** — Is the issue about code **introduced in this diff**? (not pre-existing code)
-3. **rule_citation** — Does it cite a concrete rule (OWASP, language spec, project guideline, linter rule name)?
-4. **has_reproduction** — Does it describe a reproducible scenario with steps, input, and expected vs actual outcome?
-5. **flagged_by_providers** — Which providers flagged this issue? Match by semantic similarity (same underlying problem, regardless of wording). Two or more independent providers = consensus.
-6. **references_removed_code_only** — Does it **solely** concern code the diff removes, with no impact on remaining code?
-7. **is_linter_catchable** — Would a linter/formatter catch this? (only applies if the project has such tooling configured)
-8. **is_subjective_style** — Is it a subjective style preference with no guideline backing? (distinguish from: readability backed by language idioms, maintainability with concrete impact, documented team conventions)
-9. **references_exist_in_codebase** — Do all files, symbols, and APIs referenced in the issue actually exist? **Verify using Glob/Grep tools** — do not assume.
-
-Each field is binary: applies or doesn't. When evidence is ambiguous, treat the factor as **not applicable**.
+**Label by checking the code, not by how the finding is worded or which provider raised it.** A finding Claude would not have raised itself is still Confirmed when the code bears it out — the label records what the check found, not Claude's opinion of the provider. When the evidence is ambiguous, use Unconfirmed, not Refuted.
 
 ##### Hallucination verification
 
-If an issue references a specific file, function, class, or API:
+If a finding references a specific file, function, class, or API:
 - Use Glob/Grep to verify the reference exists in the codebase
-- If any referenced symbol does not exist → mark `references_exist_in_codebase = false`
-- This check is mandatory — hallucinated references are the strongest noise signal
+- If any referenced symbol does not exist → the finding is **Refuted** (reason: "reference not found: `<name>`")
+- This check is mandatory — a finding that cites code that is not there cannot be Confirmed
 
-##### Score calculation
+##### Where each label goes
 
-| Factor | Score Impact |
-|--------|-------------|
-| References specific line numbers in the diff | +25 |
-| Code **introduced in this diff** (not pre-existing) | +25 |
-| Cites a concrete rule (OWASP, guideline, language spec) | +20 |
-| Describes a reproducible scenario (steps, input, consequence) | +15 |
-| Multiple providers flagged the same issue (consensus) | +20 |
-| **Solely** concerns code the diff removes, with no impact on remaining code | −30 |
-| Linter/formatter would catch it (and project has such tooling) | −25 |
-| Subjective style preference with no guideline backing | −25 |
-| References a file, symbol, or API that **does not exist** in the codebase | −50 |
-
-```
-score = clamp(40 + sum(applicable_factors), 0, 100)
-```
-
-**Critical rule**: Scoring must be **evidence-based**, not opinion-based. If an issue has strong evidence (line numbers + concrete scenario + cited rule) but Claude "disagrees" with the finding, it still scores high. The goal is noise filtering, not Claude vetoing cross-provider insights.
+- **Confirmed** and **Unconfirmed** findings go into the synthesis sections below (6.1–6.4), each showing its label; an Unconfirmed one also says what would settle it.
+- **Refuted** findings stay out of those sections and are listed with a one-line reason at the end of the report (6.5), so a dropped finding is visible rather than silently filtered.
 
 #### Guideline compliance (if guidelines found in Step 2.3)
 
-Score guideline violations separately (no double-dip with "cites a rule" — use the higher bonus):
-- Violation explicitly mentioned in guideline text → confidence +30 (replaces +20 rule citation if both apply)
-- Violation inferred but not explicitly stated → confidence +10
-- Only include violations that reference a **specific rule** from the guideline files.
+Only include violations that cite a **specific rule** from the guideline files. Label them the same way: Confirmed when the guideline text states the rule and the code breaks it; Unconfirmed when the rule is only implied by the guideline.
 
 #### Domain-aware weighting
 
@@ -369,20 +342,20 @@ Apply provider authority based on the detected domain:
 **How to apply weighting:**
 - When providers **agree** → domain weighting is irrelevant (consensus is consensus).
 - When providers **disagree** → the domain-authoritative provider's opinion gets the benefit of the doubt. Note: "Weighted toward [Provider] (domain: [domain])."
-- When the domain-authoritative provider raises an issue **alone** → treat it with higher confidence than a non-authoritative solo finding.
-- **Never discard** any provider's finding due to weighting. Weighting affects synthesis priority, not inclusion.
+- When the domain-authoritative provider raises an issue **alone** → check it first, and when the code supports either reading, prefer its reading.
+- **Never discard** any provider's finding due to weighting. Weighting affects synthesis priority, not labels.
 
-#### 6.1 Consensus (multiple providers flagged, ≥ 80 confidence)
-Issues that two or more reviewers identified — **high confidence, fix first**.
+#### 6.1 Consensus (multiple providers flagged; Confirmed or Unconfirmed)
+Issues that two or more reviewers identified — **fix the Confirmed ones first**.
 
-#### 6.2 Divergence (only one flagged, ≥ 80 confidence)
+#### 6.2 Divergence (only one flagged; Confirmed or Unconfirmed)
 Issues only one provider raised. Claude judges:
 - Whether it's a real issue
 - Why the others missed it (blind spot analysis)
 - **Apply domain weighting**: if the domain-authoritative provider raised it, lean toward treating it as valid.
 
 #### 6.3 Guideline compliance (if guidelines found)
-Violations of project guidelines (`CLAUDE.md`, `Agents.md`) that passed confidence filtering. Group by source file.
+Violations of project guidelines (`CLAUDE.md`, `Agents.md`) that are not Refuted. Group by source file.
 
 #### 6.4 Claude's independent perspective
 Issues no other provider caught but worth noting.
@@ -414,50 +387,12 @@ Rules:
 - If the fix spans multiple lines, include all lines in a single suggestion block.
 - Issues without a concrete fix (e.g., architectural concerns, design questions) should remain as prose descriptions — do NOT force a suggestion block.
 
-#### 6.5 Filtered out (not shown by default)
-Issues that scored < 80 confidence are omitted by default.
-
-If `--verbose` was specified, add a **Filtered Issues** section after the main results:
-```
-### Filtered Issues (< 80 confidence)
-| # | Issue | Score | Provider | Reason filtered |
-|---|-------|-------|----------|-----------------|
-| 1 | Brief description | 65 | Codex | subjective style (-25) |
-| 2 | Brief description | 40 | Gemini | no line numbers, no evidence |
-| 3 | Brief description | 0 | Codex | hallucinated reference (-50) |
-```
-
-#### Score transparency (Show Your Work)
-
-After presenting all results, end with this line:
-
-> 💡 Type `show scores` to see how each finding was scored. / 輸入 `show scores` 查看每個 finding 的分數計算過程。
-
-When the user responds with `show scores` (or similar intent like "show breakdown", "how was it scored", "分數怎麼算的"), present the factor breakdown for every finding:
-
-```
-### Score Breakdown
-
-**[issue title]** (Codex) — Score: [score]
-├─ Base: 40
-├─ Specific line numbers: +25
-├─ New code in this diff: +25
-├─ OWASP A03:2021 citation: +20
-├─ Multi-provider consensus: +20
-└─ Final: 100 (clamped)
-
-**[issue title]** (Gemini) — Score: [score]
-├─ Base: 40
-├─ Specific line numbers: +25
-├─ Subjective style preference: −25
-└─ Final: 40
-```
-
-Include both shown (≥80) and filtered (<80) findings. For each finding, list only factors that actually applied (skip +0 factors). Include the provider source. Show the arithmetic so the user can verify.
+#### 6.5 Refuted findings
+List every Refuted finding at the end of the report, one line each: provider, `file:line`, title, and why it does not hold. Nothing is hidden: the reader can see what was dropped and disagree.
 
 ### 7. Output format
 
-Render provider text severity tags as emoji in the final output: CRITICAL→🔴, MEDIUM→🟡, SUGGESTION→🟢.
+Render provider text severity tags as emoji in the final output: CRITICAL→🔴, MEDIUM→🟡, SUGGESTION→🟢. Each finding shows its label after the title, e.g. `🔴 src/auth.ts:42 — SQL injection via unsanitized input — Confirmed`.
 
 ```
 ## Multi-Provider Review Results
@@ -483,8 +418,8 @@ Render provider text severity tags as emoji in the final output: CRITICAL→🔴
 
 A verdict split between providers is a real signal — call it out explicitly and explain which reading the synthesis favors and why.
 
-### Consensus Issues (high confidence, fix first)
-(When an issue has a concrete fix, use a GitHub suggestion block — see format below)
+### Consensus Issues (fix Confirmed first)
+(Each issue shows its label — Confirmed or Unconfirmed. When an issue has a concrete fix, use a GitHub suggestion block — see format below)
 ...
 
 ### Divergent Issues (needs judgment)
@@ -497,15 +432,17 @@ A verdict split between providers is a real signal — call it out explicitly an
 ### Claude Supplements
 ...
 
-### Confidence Summary
-| Tier | Count |
-|------|-------|
-| High (≥ 90) | N |
-| Solid (80–89) | N |
-| Filtered (< 80) | N (use --verbose to see) |
+### Label Summary
+| Label | Count |
+|-------|-------|
+| Confirmed | N |
+| Unconfirmed | N |
+| Refuted | N |
 
-### Filtered Issues (--verbose only)
-(Table of filtered issues with scores and filter reasons — omit this section if --verbose was not specified)
+### Refuted Findings
+| Provider | Finding | Why it does not hold |
+|----------|---------|----------------------|
+| Gemini | file:line — title | reference not found: `<name>` |
 
 ### Action Items
 1. ...
@@ -534,14 +471,14 @@ When the second provider's notification arrives after the report is out, do not 
 
 **First, check whether it reviewed the current code.** Fixes often start as soon as the report appears, so the late provider may have reviewed a diff that has since changed. Recompute the hash the same way as in Step 2 and compare it with `<DIFF_HASH>`:
 - **Same hash** — add the findings as below.
-- **Different hash** — open the addendum with "⚠️ Gemini reviewed an earlier version of the diff (`<DIFF_HASH>` → `<current hash>`)." Re-check every finding against the current code and label each one **Fixed**, **Still present**, or **Moved — not re-verified** (the code it points at changed and it has not been checked again). Still-present findings go through the rules below; Fixed and Moved ones are listed with their label and not scored.
+- **Different hash** — open the addendum with "⚠️ Gemini reviewed an earlier version of the diff (`<DIFF_HASH>` → `<current hash>`)." Re-check every finding against the current code and label each one **Fixed**, **Still present**, or **Not verified** (it could not be checked again; if the code it points at has moved, say "code moved" in the reason). Still-present findings go through the rules below, including a Confirmed / Refuted / Unconfirmed label; Fixed and Not verified ones are listed with their fix status only.
 
 **If it failed or is hollow** — timeout, empty output, or the DEGRADED test in Step 5 — add one line and stop: "⚠️ Gemini did not review this round ([reason])." Update its Provider Status row to the same reason.
 
 **Otherwise:**
 - Run its findings through Step 6 the same way as the first provider's, hallucination verification included.
 - A finding that matches one already in the report (semantic match, as in Step 5): mark the existing entry "Gemini also flagged this" and treat it as consensus. Do not list it again.
-- New findings that pass Step 6 go in this section, using the Step 7 severity format.
+- New findings that are not Refuted go in this section, using the Step 7 severity format with their label; Refuted ones get a one-line reason, as in 6.5.
 - If it gave a VERDICT, add it to Verdict Comparison here, and call out a split with the earlier verdicts as Step 7 does.
 
 ```
