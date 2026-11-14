@@ -301,15 +301,16 @@ External providers may not follow the requested format (no severity tags, no VER
 
 After receiving results (from the providers that have returned and succeeded so far), Claude performs integrated analysis using the domain detected in Step 2.5.
 
-#### Check each finding: Confirmed / Refuted / Unconfirmed
+#### Check each finding: Confirmed / Refuted / Unconfirmed / Out of scope
 
 Before synthesis, Claude checks **every** finding from every provider against the code and gives it exactly one label:
 
 | Label | Meaning |
 |-------|---------|
 | **Confirmed** | Claude checked the code and the failure scenario holds: the cited code exists, is introduced in this diff (or is directly used by it), and behaves as the finding says. |
-| **Refuted** | Claude checked and it does not hold: a referenced file, symbol, or API does not exist (see Hallucination verification), the code does not behave as claimed, the issue is only in pre-existing code or only in code the diff removes, a linter the project runs would catch it, or it is a style preference with no guideline backing and no concrete failure. |
+| **Refuted** | Claude checked and it does not hold: a referenced file, symbol, or API does not exist (see Hallucination verification), the code does not behave as claimed, the issue is only in code the diff removes (the code is gone, so the issue is too), or it is a style preference with no guideline backing and no concrete failure. |
 | **Unconfirmed** | The code available does not settle it — it depends on runtime configuration, code outside the repository, or behavior that would have to be run to observe. State what would settle it. |
+| **Out of scope** | The issue may well be real, but it is not this diff's to fix: it is only in existing code the diff does not touch, or a linter the project runs would catch it. Not a false positive — record it as a follow-up task if it matters. |
 
 **Label by checking the code, not by how the finding is worded or which provider raised it.** A finding Claude would not have raised itself is still Confirmed when the code bears it out — the label records what the check found, not Claude's opinion of the provider. When the evidence is ambiguous, use Unconfirmed, not Refuted.
 
@@ -324,6 +325,7 @@ If a finding references a specific file, function, class, or API:
 
 - **Confirmed** and **Unconfirmed** findings go into the synthesis sections below (6.1–6.4), each showing its label; an Unconfirmed one also says what would settle it.
 - **Refuted** findings stay out of those sections and are listed with a one-line reason at the end of the report (6.5), so a dropped finding is visible rather than silently filtered.
+- **Out of scope** findings also stay out of those sections and get their own list at the end (6.6), separate from Refuted, so a real issue outside this diff is not read as a false positive.
 
 #### Guideline compliance (if guidelines found in Step 2.3)
 
@@ -355,7 +357,7 @@ Issues only one provider raised. Claude judges:
 - **Apply domain weighting**: if the domain-authoritative provider raised it, lean toward treating it as valid.
 
 #### 6.3 Guideline compliance (if guidelines found)
-Violations of project guidelines (`CLAUDE.md`, `Agents.md`) that are not Refuted. Group by source file.
+Violations of project guidelines (`CLAUDE.md`, `Agents.md`) that are Confirmed or Unconfirmed. Group by source file.
 
 #### 6.4 Claude's independent perspective
 Issues no other provider caught but worth noting.
@@ -389,6 +391,9 @@ Rules:
 
 #### 6.5 Refuted findings
 List every Refuted finding at the end of the report, one line each: provider, `file:line`, title, and why it does not hold. Nothing is hidden: the reader can see what was dropped and disagree.
+
+#### 6.6 Out of scope findings
+List every Out of scope finding at the end of the report, after the Refuted list, one line each: provider, `file:line`, title, and why it is outside this diff ("existing code, not touched by this diff" or "caught by <linter>"). Where the issue looks real and worth fixing, suggest recording it as a follow-up task.
 
 ### 7. Output format
 
@@ -438,11 +443,17 @@ A verdict split between providers is a real signal — call it out explicitly an
 | Confirmed | N |
 | Unconfirmed | N |
 | Refuted | N |
+| Out of scope | N |
 
 ### Refuted Findings
 | Provider | Finding | Why it does not hold |
 |----------|---------|----------------------|
 | Gemini | file:line — title | reference not found: `<name>` |
+
+### Out of Scope Findings
+| Provider | Finding | Why it is outside this diff | Follow-up |
+|----------|---------|-----------------------------|-----------|
+| Codex | file:line — title | existing code, not touched by this diff | record as TODO / — |
 
 ### Action Items
 1. ...
@@ -471,14 +482,14 @@ When the second provider's notification arrives after the report is out, do not 
 
 **First, check whether it reviewed the current code.** Fixes often start as soon as the report appears, so the late provider may have reviewed a diff that has since changed. Recompute the hash the same way as in Step 2 and compare it with `<DIFF_HASH>`:
 - **Same hash** — add the findings as below.
-- **Different hash** — open the addendum with "⚠️ Gemini reviewed an earlier version of the diff (`<DIFF_HASH>` → `<current hash>`)." Re-check every finding against the current code and label each one **Fixed**, **Still present**, or **Not verified** (it could not be checked again; if the code it points at has moved, say "code moved" in the reason). Still-present findings go through the rules below, including a Confirmed / Refuted / Unconfirmed label; Fixed and Not verified ones are listed with their fix status only.
+- **Different hash** — open the addendum with "⚠️ Gemini reviewed an earlier version of the diff (`<DIFF_HASH>` → `<current hash>`)." Re-check every finding against the current code and label each one **Fixed**, **Still present**, or **Not verified** (it could not be checked again; if the code it points at has moved, say "code moved" in the reason). Still-present findings go through the rules below, including a Confirmed / Refuted / Unconfirmed / Out of scope label; Fixed and Not verified ones are listed with their fix status only.
 
 **If it failed or is hollow** — timeout, empty output, or the DEGRADED test in Step 5 — add one line and stop: "⚠️ Gemini did not review this round ([reason])." Update its Provider Status row to the same reason.
 
 **Otherwise:**
 - Run its findings through Step 6 the same way as the first provider's, hallucination verification included.
 - A finding that matches one already in the report (semantic match, as in Step 5): mark the existing entry "Gemini also flagged this" and treat it as consensus. Do not list it again.
-- New findings that are not Refuted go in this section, using the Step 7 severity format with their label; Refuted ones get a one-line reason, as in 6.5.
+- New findings that are Confirmed or Unconfirmed go in this section, using the Step 7 severity format with their label; Refuted and Out of scope ones get a one-line reason, as in 6.5 and 6.6.
 - If it gave a VERDICT, add it to Verdict Comparison here, and call out a split with the earlier verdicts as Step 7 does.
 
 ```
